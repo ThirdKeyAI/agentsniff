@@ -154,6 +154,14 @@ AGENT_FRAMEWORK_SIGNATURES = {
     "mastra": {
         "endpoints": ["/api/mastra", "/api/agents"],
     },
+    "agent_metadata_standards": {
+        "endpoints": [
+            "/AGENTS.md",
+            "/SKILL.md",
+            "/.well-known/agents.json",
+            "/.well-known/ai-plugin.json",
+        ],
+    },
 }
 
 # ── Common agent-related ports ────────────────────────────────────────────

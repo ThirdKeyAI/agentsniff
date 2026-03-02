@@ -1,5 +1,5 @@
 """
-AgentScan - MCP Protocol Detector
+AgentSniff - MCP Protocol Detector
 
 Detects Model Context Protocol (MCP) servers by probing for
 JSON-RPC 2.0 endpoints with MCP-specific method signatures.
@@ -13,11 +13,10 @@ import logging
 
 import aiohttp
 
-from agentscan.config import MCP_JSONRPC_METHODS, ScanConfig
-from agentscan.detectors.base import BaseDetector, DetectorRegistry
-from agentscan.models import Confidence, DetectionSignal, DetectorType
+from agentsniff.detectors.base import BaseDetector, DetectorRegistry
+from agentsniff.models import Confidence, DetectionSignal, DetectorType
 
-logger = logging.getLogger("agentscan.mcp_detector")
+logger = logging.getLogger("agentsniff.mcp_detector")
 
 # Common MCP server paths
 MCP_PATHS = ["/mcp", "/sse", "/mcp/sse", "/jsonrpc", "/rpc", "/api/mcp", "/v1/mcp"]
@@ -27,7 +26,7 @@ MCP_PORTS = [3000, 3001, 8080, 8000, 8001, 5000, 9000]
 
 
 @DetectorRegistry.register
-class MCPDetectorDetector(BaseDetector):
+class MCPDetector(BaseDetector):
     """
     Detects MCP (Model Context Protocol) servers on the network.
 
@@ -113,7 +112,7 @@ class MCPDetectorDetector(BaseDetector):
                 "protocolVersion": "2024-11-05",
                 "capabilities": {},
                 "clientInfo": {
-                    "name": "agentscan",
+                    "name": "agentsniff",
                     "version": "1.0.0",
                 },
             },
@@ -162,7 +161,6 @@ class MCPDetectorDetector(BaseDetector):
             # Check for MCP-specific fields in initialize response
             has_protocol_version = "protocolVersion" in result if isinstance(result, dict) else False
             has_capabilities = "capabilities" in result if isinstance(result, dict) else False
-            has_server_info = "serverInfo" in result if isinstance(result, dict) else False
 
             if has_protocol_version or has_capabilities:
                 server_info = result.get("serverInfo", {}) if isinstance(result, dict) else {}

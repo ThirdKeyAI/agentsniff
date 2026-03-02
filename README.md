@@ -1,10 +1,10 @@
-# AgentScan
+# AgentSniff
 
 **AI Agent Network Scanner** — Detect AI agents operating on your network through passive monitoring, active probing, protocol detection, and behavioral analysis.
 
 ## Overview
 
-AgentScan identifies AI agents on enterprise networks using seven complementary detection modules:
+AgentSniff identifies AI agents on enterprise networks using seven complementary detection modules:
 
 | Detector | Method | Requires Root | Confidence |
 |---|---|---|---|
@@ -27,37 +27,37 @@ AgentScan identifies AI agents on enterprise networks using seven complementary 
 pip install -e .
 
 # Scan your local network
-agentscan scan 192.168.1.0/24
+agentsniff scan 192.168.1.0/24
 
 # Scan specific hosts
-agentscan scan --hosts server1,server2,server3
+agentsniff scan --hosts server1,server2,server3
 
 # JSON output
-agentscan scan 10.0.0.0/24 --format json --output results.json
+agentsniff scan 10.0.0.0/24 --format json --output results.json
 
 # Continuous monitoring (every 60 seconds)
-agentscan scan 192.168.1.0/24 --continuous 60
+agentsniff scan 192.168.1.0/24 --continuous 60
 
 # Start web dashboard
-agentscan serve --port 9090
+agentsniff serve --port 9090
 ```
 
 ### Docker
 
 ```bash
 # Build
-docker build -t agentscan .
+docker build -t agentsniff .
 
 # Run web dashboard (host network for full visibility)
-docker run -d --name agentscan \
+docker run -d --name agentsniff \
   --network host \
   --cap-add NET_RAW \
   --cap-add NET_ADMIN \
-  agentscan
+  agentsniff
 
 # Run one-shot scan
 docker run --rm --network host --cap-add NET_RAW \
-  agentscan scan 192.168.1.0/24
+  agentsniff scan 192.168.1.0/24
 
 # Docker Compose
 docker compose up -d
@@ -73,7 +73,7 @@ docker compose up -d
 ## CLI Usage
 
 ```
-agentscan <command> [options]
+agentsniff <command> [options]
 
 Commands:
   scan          Run a network scan
@@ -109,10 +109,10 @@ Passively captures DNS queries on the network and matches against 40+ known LLM 
 Async TCP scanner targeting ports associated with MCP servers (3000, 3001, 8080), LLM inference engines (11434/Ollama, 1234/LM Studio), vector databases (6333/Qdrant, 8090/Weaviate, 19530/Milvus), and agent platforms (3080/LibreChat, 8501/Streamlit). Includes banner grabbing for service identification.
 
 ### AgentPin Prober
-Probes hosts for [AgentPin](https://agentpin.org) discovery documents at `/.well-known/agent-identity.json`. Valid AgentPin identities provide **confirmed** detection with full cryptographic provenance including issuer, capabilities, delegation chains, and revocation status. Follows the AgentPin spec's no-redirect security policy.
+Probes hosts for <a href="https://agentpin.org" target="_blank">AgentPin</a> discovery documents at `/.well-known/agent-identity.json`. Valid AgentPin identities provide **confirmed** detection with full cryptographic provenance including issuer, capabilities, delegation chains, and revocation status. Follows the AgentPin spec's no-redirect security policy.
 
 ### MCP Detector
-Actively probes for [Model Context Protocol](https://modelcontextprotocol.io) servers by sending JSON-RPC 2.0 `initialize` requests and checking for SSE endpoints. On confirmed servers, enumerates available tools, resources, and prompts. Detects both HTTP+SSE and direct JSON-RPC transports.
+Actively probes for <a href="https://modelcontextprotocol.io" target="_blank">Model Context Protocol</a> servers by sending JSON-RPC 2.0 `initialize` requests and checking for SSE endpoints. On confirmed servers, enumerates available tools, resources, and prompts. Detects both HTTP+SSE and direct JSON-RPC transports.
 
 ### Endpoint Prober
 Probes HTTP endpoints for signatures of known agent frameworks: LangChain/LangServe, CrewAI, AutoGen, Symbiont, Dify, Flowise, n8n. Checks health endpoints, OpenAPI specs, and framework-specific paths. Analyzes response headers for agent framework fingerprints.
@@ -128,21 +128,21 @@ Profiles network hosts by behavioral patterns characteristic of AI agents: burst
 Generate a default config file:
 
 ```bash
-agentscan init-config
-# Creates agentscan.yaml
+agentsniff init-config
+# Creates agentsniff.yaml
 ```
 
-Configuration can also be set via environment variables with the `AGENTSCAN_` prefix:
+Configuration can also be set via environment variables with the `AGENTSNIFF_` prefix:
 
 ```bash
-export AGENTSCAN_TARGET_NETWORK="10.0.0.0/16"
-export AGENTSCAN_ENABLE_DNS_MONITOR=true
-export AGENTSCAN_HTTP_TIMEOUT=10.0
+export AGENTSNIFF_TARGET_NETWORK="10.0.0.0/16"
+export AGENTSNIFF_ENABLE_DNS_MONITOR=true
+export AGENTSNIFF_HTTP_TIMEOUT=10.0
 ```
 
 ## API Endpoints
 
-When running `agentscan serve`:
+When running `agentsniff serve`:
 
 | Endpoint | Method | Description |
 |---|---|---|
@@ -159,8 +159,8 @@ When running `agentscan serve`:
 
 ```
 ┌──────────────────────────────────────────────────┐
-│                  AgentScan CLI                    │
-│          agentscan scan | serve                   │
+│                 AgentSniff CLI                    │
+│         agentsniff scan | serve                  │
 ├──────────┬───────────────────────┬────────────────┤
 │ REST API │    Scanner Engine     │  Web Dashboard  │
 │ (FastAPI)│                       │  (HTML/JS/CSS)  │
@@ -179,12 +179,12 @@ Signals from all detectors are correlated using noisy-OR probability combination
 
 ## Integration with ThirdKey Trust Stack
 
-AgentScan complements the ThirdKey trust infrastructure:
+AgentSniff complements the ThirdKey trust infrastructure:
 
-- **AgentPin**: Cooperative agent discovery via cryptographic identity documents
-- **SchemaPin**: Verified tools detected on MCP servers can be cross-checked against SchemaPin signatures
-- **Symbiont**: AgentScan can run as a Symbiont agent with policy-enforced scanning boundaries
-- **AgentNull**: Detection evasion research feeds back into scanner improvements
+- <a href="https://agentpin.org/" target="_blank"><strong>AgentPin</strong></a> — Cooperative agent discovery via cryptographic identity documents
+- <a href="https://schemapin.org/" target="_blank"><strong>SchemaPin</strong></a> — Verified tools detected on MCP servers can be cross-checked against SchemaPin signatures
+- <a href="https://symbiont.dev/" target="_blank"><strong>Symbiont</strong></a> — AgentSniff can run as a Symbiont agent with policy-enforced scanning boundaries
+- <a href="https://github.com/ThirdKeyAI/AgentNull" target="_blank"><strong>AgentNull</strong></a> — Detection evasion research feeds back into scanner improvements
 
 ## Requirements
 
@@ -194,4 +194,4 @@ AgentScan complements the ThirdKey trust infrastructure:
 
 ## License
 
-MIT License — ThirdKey AI
+Apache License 2.0 — Jascha Wanger / ThirdKey AI

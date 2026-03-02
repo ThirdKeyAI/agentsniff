@@ -1,5 +1,5 @@
 """
-AgentScan - TLS Fingerprint Detector
+AgentSniff - TLS Fingerprint Detector
 
 Identifies AI agent HTTP clients by their TLS ClientHello fingerprint.
 Uses JA3-style hashing to match against known agent framework HTTP libraries.
@@ -13,11 +13,11 @@ import logging
 import socket
 import struct
 
-from agentscan.config import KNOWN_AGENT_TLS_FINGERPRINTS, ScanConfig
-from agentscan.detectors.base import BaseDetector, DetectorRegistry
-from agentscan.models import Confidence, DetectionSignal, DetectorType
+from agentsniff.config import KNOWN_AGENT_TLS_FINGERPRINTS
+from agentsniff.detectors.base import BaseDetector, DetectorRegistry
+from agentsniff.models import Confidence, DetectionSignal, DetectorType
 
-logger = logging.getLogger("agentscan.tls_fingerprint")
+logger = logging.getLogger("agentsniff.tls_fingerprint")
 
 
 def compute_ja3_from_client_hello(data: bytes) -> str | None:
@@ -35,7 +35,7 @@ def compute_ja3_from_client_hello(data: bytes) -> str | None:
         if content_type != 0x16:  # Handshake
             return None
 
-        tls_version = struct.unpack("!H", data[1:3])[0]
+        struct.unpack("!H", data[1:3])  # TLS version (consumed but not needed)
         record_length = struct.unpack("!H", data[3:5])[0]
 
         if len(data) < 5 + record_length:

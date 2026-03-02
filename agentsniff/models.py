@@ -1,5 +1,5 @@
 """
-AgentScan - Data models for AI agent detection results.
+AgentSniff - Data models for AI agent detection results.
 """
 
 from __future__ import annotations

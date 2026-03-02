@@ -91,6 +91,8 @@ Scan Options:
   --timeout SECS       HTTP timeout (default: 5.0)
   --concurrency N      Max concurrent connections (default: 100)
   --continuous SECS    Repeat scan every N seconds
+  --webhook-url URL    Webhook URL for alerts (auto-enables alerting)
+  --smtp-to ADDR,ADDR  Email recipients for alerts (auto-enables alerting)
   -v, --verbose        Debug logging
   -q, --quiet          Minimal output
 
@@ -140,6 +142,67 @@ export AGENTSNIFF_ENABLE_DNS_MONITOR=true
 export AGENTSNIFF_HTTP_TIMEOUT=10.0
 ```
 
+## Alerting
+
+AgentSniff can send alerts when agents are detected during scans. Configure via YAML, environment variables, CLI flags, or the dashboard settings modal.
+
+### Webhook
+
+```bash
+# CLI — auto-enables alerting
+agentsniff scan 192.168.1.0/24 --webhook-url https://hooks.example.com/agentsniff
+
+# Continuous monitoring with webhook
+agentsniff scan 192.168.1.0/24 --continuous 300 --webhook-url https://hooks.example.com/agentsniff
+```
+
+Webhook payload (POST JSON):
+
+```json
+{
+  "source": "agentsniff",
+  "timestamp": "2026-03-02T12:00:00Z",
+  "scan_id": "scan-20260302-120000",
+  "target_network": "192.168.1.0/24",
+  "total_agents": 3,
+  "by_confidence": {"confirmed": 1, "high": 1, "medium": 1},
+  "agents": [...]
+}
+```
+
+### Email (SMTP)
+
+```yaml
+# In agentsniff.yaml
+alert_enabled: true
+alert_min_agents: 1
+alert_min_confidence: medium
+alert_cooldown: 600  # no more than one alert per 10 minutes
+
+smtp_host: "smtp.example.com"
+smtp_port: 587
+smtp_user: "alerts@example.com"
+smtp_password: "your-password"
+smtp_use_tls: true
+smtp_from: "agentsniff@example.com"
+smtp_to:
+  - "admin@example.com"
+  - "security@example.com"
+```
+
+### Cron Job Example
+
+Run periodic scans from cron with webhook alerts and archived JSON output:
+
+```bash
+# Scan every 10 minutes, alert via webhook, save results
+*/10 * * * * agentsniff scan 192.168.1.0/24 --webhook-url https://hooks.example.com/agentsniff --format json --output /var/log/agentsniff/scan-$(date +\%Y\%m\%d-\%H\%M).json 2>&1 | logger -t agentsniff
+```
+
+### Dashboard Settings
+
+When running the web dashboard (`agentsniff serve`), click the ⚙ gear icon to configure alert settings interactively — including webhook URL, SMTP credentials, thresholds, and a Test Alert button.
+
 ## API Endpoints
 
 When running `agentsniff serve`:
@@ -154,6 +217,9 @@ When running `agentsniff serve`:
 | `GET /api/scan/history` | — | Previous scan results |
 | `GET /api/agents` | — | All detected agents |
 | `GET /api/scan/stream` | SSE | Real-time scan streaming |
+| `GET /api/settings` | — | Get alert settings |
+| `PUT /api/settings` | JSON body | Update alert settings |
+| `POST /api/settings/test` | — | Send test alert |
 
 ## Architecture
 

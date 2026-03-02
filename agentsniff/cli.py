@@ -14,6 +14,7 @@ import sys
 from pathlib import Path
 
 from agentsniff.config import ScanConfig, default_config_yaml
+from agentsniff.notifier import should_alert, send_alerts
 from agentsniff.scanner import run_scan
 
 
@@ -255,6 +256,14 @@ Examples:
         "--continuous", type=int, default=0,
         help="Continuous scanning interval in seconds (0 = one-shot)",
     )
+    scan_parser.add_argument(
+        "--webhook-url", type=str, default="",
+        help="Webhook URL for alert notifications (auto-enables alerting)",
+    )
+    scan_parser.add_argument(
+        "--smtp-to", type=str, default="",
+        help="Comma-separated email recipients for alerts (auto-enables alerting)",
+    )
     scan_parser.add_argument("-v", "--verbose", action="store_true")
     scan_parser.add_argument("-q", "--quiet", action="store_true")
 
@@ -327,6 +336,14 @@ def main():
         if args.exclude:
             config.exclude_hosts = [h.strip() for h in args.exclude.split(",")]
 
+        # Alert CLI overrides (auto-enable alerting)
+        if args.webhook_url:
+            config.webhook_url = args.webhook_url
+            config.alert_enabled = True
+        if args.smtp_to:
+            config.smtp_to = [e.strip() for e in args.smtp_to.split(",")]
+            config.alert_enabled = True
+
         # Selective detector enabling
         if args.detectors:
             enabled = set(d.strip() for d in args.detectors.split(","))
@@ -342,8 +359,14 @@ def main():
         if config.scan_interval > 0:
             asyncio.run(_continuous_scan(config))
         else:
-            result = asyncio.run(run_scan(config))
-            _output_result(result, config)
+            asyncio.run(_oneshot_scan(config))
+
+
+async def _oneshot_scan(config: ScanConfig):
+    """Run a single scan with optional alert dispatch."""
+    result = await run_scan(config)
+    _output_result(result, config)
+    await _maybe_alert(result, config)
 
 
 async def _continuous_scan(config: ScanConfig):
@@ -357,11 +380,21 @@ async def _continuous_scan(config: ScanConfig):
 
             result = await run_scan(config)
             _output_result(result, config)
+            await _maybe_alert(result, config)
 
             logger.info(f"Next scan in {config.scan_interval}s...")
             await asyncio.sleep(config.scan_interval)
     except KeyboardInterrupt:
         print(f"\n{Colors.YELLOW}Scan stopped by user{Colors.RESET}")
+
+
+async def _maybe_alert(result, config: ScanConfig):
+    """Send alerts if the result meets configured thresholds."""
+    if should_alert(result, config):
+        logger = logging.getLogger("agentsniff")
+        outcomes = await send_alerts(result, config)
+        for outcome in outcomes:
+            logger.info(f"Alert: {outcome}")
 
 
 def _output_result(result, config: ScanConfig):

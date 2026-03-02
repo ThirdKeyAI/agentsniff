@@ -249,6 +249,181 @@
   .detail-row { display: none; }
   .detail-row.open { display: table-row; }
   .detail-content { padding: 16px; background: var(--surface2); }
+
+  /* Settings modal */
+  .modal-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.7);
+    z-index: 1000;
+    align-items: center;
+    justify-content: center;
+  }
+  .modal-overlay.open { display: flex; }
+
+  .modal {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    width: 560px;
+    max-height: 85vh;
+    overflow-y: auto;
+    padding: 0;
+  }
+
+  .modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 20px 24px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .modal-header h2 { font-size: 16px; color: var(--accent); }
+  .modal-close {
+    background: none;
+    border: none;
+    color: var(--text-dim);
+    font-size: 20px;
+    cursor: pointer;
+    padding: 4px 8px;
+  }
+  .modal-close:hover { color: var(--text); }
+
+  .modal-body { padding: 20px 24px; }
+
+  .modal-section { margin-bottom: 20px; }
+  .modal-section h3 {
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--text-dim);
+    margin-bottom: 12px;
+    padding-bottom: 6px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .field-row {
+    display: flex;
+    align-items: center;
+    margin-bottom: 10px;
+    gap: 12px;
+  }
+
+  .field-row label {
+    flex: 0 0 120px;
+    font-size: 12px;
+    color: var(--text-dim);
+    text-align: right;
+  }
+
+  .field-row input[type="text"],
+  .field-row input[type="password"],
+  .field-row input[type="number"],
+  .field-row select {
+    flex: 1;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 6px 10px;
+    border-radius: 6px;
+    font-family: inherit;
+    font-size: 12px;
+    outline: none;
+    width: auto;
+  }
+
+  .field-row input:focus,
+  .field-row select:focus { border-color: var(--accent); }
+
+  .toggle-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .toggle {
+    position: relative;
+    width: 36px;
+    height: 20px;
+    cursor: pointer;
+  }
+
+  .toggle input { display: none; }
+  .toggle .slider {
+    position: absolute;
+    inset: 0;
+    background: var(--surface2);
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    transition: background 0.2s;
+  }
+  .toggle .slider::after {
+    content: "";
+    position: absolute;
+    top: 2px; left: 2px;
+    width: 14px; height: 14px;
+    background: var(--text-dim);
+    border-radius: 50%;
+    transition: transform 0.2s, background 0.2s;
+  }
+  .toggle input:checked + .slider { background: var(--accent-dim); border-color: var(--accent); }
+  .toggle input:checked + .slider::after { transform: translateX(16px); background: var(--accent); }
+
+  .modal-footer {
+    display: flex;
+    justify-content: space-between;
+    padding: 16px 24px;
+    border-top: 1px solid var(--border);
+  }
+
+  .modal-footer .left { display: flex; gap: 8px; }
+  .modal-footer .right { display: flex; gap: 8px; }
+
+  button.danger { background: var(--red); color: #fff; border: none; }
+
+  .settings-btn {
+    background: none;
+    border: 1px solid var(--border);
+    color: var(--text-dim);
+    padding: 8px 12px;
+    border-radius: var(--radius);
+    font-family: inherit;
+    font-size: 14px;
+    cursor: pointer;
+    transition: color 0.2s, border-color 0.2s;
+  }
+  .settings-btn:hover { color: var(--accent); border-color: var(--accent); }
+
+  .toast {
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 12px 20px;
+    font-size: 12px;
+    z-index: 2000;
+    opacity: 0;
+    transform: translateY(10px);
+    transition: opacity 0.3s, transform 0.3s;
+  }
+  .toast.show { opacity: 1; transform: translateY(0); }
+  .toast.success { border-color: var(--green); color: var(--green); }
+  .toast.error { border-color: var(--red); color: var(--red); }
+
+  .site-footer {
+    text-align: center;
+    padding: 16px 32px;
+    font-size: 11px;
+    color: var(--text-dim);
+    border-top: 1px solid var(--border);
+    margin-top: 24px;
+  }
+  .site-footer a { color: var(--accent-dim); text-decoration: none; }
+  .site-footer a:hover { color: var(--accent); text-decoration: underline; }
 </style>
 </head>
 <body>
@@ -263,6 +438,7 @@
     <button id="scanBtn" onclick="startScan()">⟐ Scan Network</button>
     <button id="stopBtn" class="secondary" onclick="stopScan()" style="display:none;background:var(--red);color:#fff;border:none">■ Stop</button>
     <button class="secondary" onclick="exportJSON()">↓ Export</button>
+    <button class="settings-btn" onclick="openSettings()" title="Settings">⚙</button>
   </div>
 </div>
 
@@ -305,7 +481,104 @@
   <div class="log-panel" id="logPanel">
     <div class="log-entry"><span class="ts">—</span> AgentSniff ready</div>
   </div>
+
+  <div class="site-footer">
+    <a href="https://agentsniff.org" target="_blank">AgentSniff</a> &copy; 2026 <a href="https://thirdkey.ai" target="_blank">ThirdKey.AI</a>
+  </div>
 </div>
+
+<!-- Settings Modal -->
+<div class="modal-overlay" id="settingsOverlay" onclick="if(event.target===this)closeSettings()">
+  <div class="modal">
+    <div class="modal-header">
+      <h2>⚙ Alert Settings</h2>
+      <button class="modal-close" onclick="closeSettings()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="modal-section">
+        <h3>General</h3>
+        <div class="field-row">
+          <label>Alerts</label>
+          <div class="toggle-row">
+            <label class="toggle"><input type="checkbox" id="setAlertEnabled"><span class="slider"></span></label>
+            <span style="font-size:12px;color:var(--text-dim)">Enable alert notifications</span>
+          </div>
+        </div>
+        <div class="field-row">
+          <label>Min Agents</label>
+          <input type="number" id="setMinAgents" min="1" value="1" style="width:80px;flex:none">
+        </div>
+        <div class="field-row">
+          <label>Min Confidence</label>
+          <select id="setMinConfidence">
+            <option value="low">Low</option>
+            <option value="medium">Medium</option>
+            <option value="high">High</option>
+            <option value="confirmed">Confirmed</option>
+          </select>
+        </div>
+        <div class="field-row">
+          <label>Cooldown (s)</label>
+          <input type="number" id="setCooldown" min="0" value="0" style="width:80px;flex:none">
+        </div>
+      </div>
+
+      <div class="modal-section">
+        <h3>Webhook</h3>
+        <div class="field-row">
+          <label>URL</label>
+          <input type="text" id="setWebhookUrl" placeholder="https://hooks.example.com/agentsniff" style="width:auto;flex:1">
+        </div>
+      </div>
+
+      <div class="modal-section">
+        <h3>Email (SMTP)</h3>
+        <div class="field-row">
+          <label>SMTP Host</label>
+          <input type="text" id="setSmtpHost" placeholder="smtp.example.com">
+        </div>
+        <div class="field-row">
+          <label>SMTP Port</label>
+          <input type="number" id="setSmtpPort" value="587" style="width:80px;flex:none">
+        </div>
+        <div class="field-row">
+          <label>Username</label>
+          <input type="text" id="setSmtpUser" placeholder="user@example.com">
+        </div>
+        <div class="field-row">
+          <label>Password</label>
+          <input type="password" id="setSmtpPassword" placeholder="••••••••">
+        </div>
+        <div class="field-row">
+          <label>TLS</label>
+          <div class="toggle-row">
+            <label class="toggle"><input type="checkbox" id="setSmtpTls" checked><span class="slider"></span></label>
+            <span style="font-size:12px;color:var(--text-dim)">Use STARTTLS</span>
+          </div>
+        </div>
+        <div class="field-row">
+          <label>From</label>
+          <input type="text" id="setSmtpFrom" placeholder="agentsniff@example.com">
+        </div>
+        <div class="field-row">
+          <label>To</label>
+          <input type="text" id="setSmtpTo" placeholder="admin@example.com, security@example.com">
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <div class="left">
+        <button class="secondary" onclick="testAlert()">▶ Test Alert</button>
+      </div>
+      <div class="right">
+        <button class="secondary" onclick="closeSettings()">Cancel</button>
+        <button onclick="saveSettings()">Save</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
 
 <script>
 let lastResult = null;
@@ -532,6 +805,106 @@ function exportJSON() {
   URL.revokeObjectURL(url);
   log('Results exported');
 }
+
+// ── Settings modal ──────────────────────────────────────────────────
+
+function showToast(msg, type) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'toast ' + type + ' show';
+  setTimeout(() => t.className = 'toast', 3000);
+}
+
+async function openSettings() {
+  const overlay = document.getElementById('settingsOverlay');
+  overlay.classList.add('open');
+
+  try {
+    const resp = await fetch('/api/settings');
+    const s = await resp.json();
+
+    document.getElementById('setAlertEnabled').checked = s.alert_enabled || false;
+    document.getElementById('setMinAgents').value = s.alert_min_agents || 1;
+    document.getElementById('setMinConfidence').value = s.alert_min_confidence || 'low';
+    document.getElementById('setCooldown').value = s.alert_cooldown || 0;
+    document.getElementById('setWebhookUrl').value = s.webhook_url || '';
+    document.getElementById('setSmtpHost').value = s.smtp_host || '';
+    document.getElementById('setSmtpPort').value = s.smtp_port || 587;
+    document.getElementById('setSmtpUser').value = s.smtp_user || '';
+    document.getElementById('setSmtpPassword').value = '';
+    document.getElementById('setSmtpPassword').placeholder = s.smtp_password ? '••••••••' : 'password';
+    document.getElementById('setSmtpTls').checked = s.smtp_use_tls !== false;
+    document.getElementById('setSmtpFrom').value = s.smtp_from || '';
+    document.getElementById('setSmtpTo').value = (s.smtp_to || []).join(', ');
+  } catch (e) {
+    log('Failed to load settings: ' + e.message);
+  }
+}
+
+function closeSettings() {
+  document.getElementById('settingsOverlay').classList.remove('open');
+}
+
+async function saveSettings() {
+  const smtpToRaw = document.getElementById('setSmtpTo').value;
+  const smtpTo = smtpToRaw ? smtpToRaw.split(',').map(s => s.trim()).filter(Boolean) : [];
+
+  const body = {
+    alert_enabled: document.getElementById('setAlertEnabled').checked,
+    alert_min_agents: parseInt(document.getElementById('setMinAgents').value) || 1,
+    alert_min_confidence: document.getElementById('setMinConfidence').value,
+    alert_cooldown: parseInt(document.getElementById('setCooldown').value) || 0,
+    webhook_url: document.getElementById('setWebhookUrl').value.trim(),
+    smtp_host: document.getElementById('setSmtpHost').value.trim(),
+    smtp_port: parseInt(document.getElementById('setSmtpPort').value) || 587,
+    smtp_user: document.getElementById('setSmtpUser').value.trim(),
+    smtp_use_tls: document.getElementById('setSmtpTls').checked,
+    smtp_from: document.getElementById('setSmtpFrom').value.trim(),
+    smtp_to: smtpTo,
+  };
+
+  // Only include password if user typed a new one
+  const pw = document.getElementById('setSmtpPassword').value;
+  if (pw) body.smtp_password = pw;
+
+  try {
+    const resp = await fetch('/api/settings', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const data = await resp.json();
+    showToast(`Settings saved (${data.count} fields)`, 'success');
+    log(`Settings saved: ${data.updated.join(', ')}`);
+    closeSettings();
+  } catch (e) {
+    showToast('Failed to save settings', 'error');
+    log('Save settings error: ' + e.message);
+  }
+}
+
+async function testAlert() {
+  try {
+    showToast('Sending test alert...', 'success');
+    const resp = await fetch('/api/settings/test', { method: 'POST' });
+    const data = await resp.json();
+    const outcomes = data.outcomes || [];
+    if (outcomes.length === 0) {
+      showToast('No alert channels configured', 'error');
+    } else {
+      showToast('Test: ' + outcomes.join(', '), outcomes.some(o => o.includes('ok')) ? 'success' : 'error');
+    }
+    log('Test alert: ' + outcomes.join(', '));
+  } catch (e) {
+    showToast('Test alert failed', 'error');
+    log('Test alert error: ' + e.message);
+  }
+}
+
+// Close settings on Escape
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') closeSettings();
+});
 </script>
 </body>
 </html>

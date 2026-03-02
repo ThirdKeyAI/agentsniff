@@ -3,21 +3,21 @@ requires = ["setuptools>=68.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "agentscan"
+name = "agentsniff"
 version = "1.0.0"
 description = "AI Agent Network Scanner - Detect AI agents on your network"
 readme = "README.md"
-license = {text = "MIT"}
+license = {text = "Apache-2.0"}
 requires-python = ">=3.11"
 authors = [
-    {name = "ThirdKey AI"},
+    {name = "Jascha Wanger / ThirdKey AI"},
 ]
 keywords = ["ai", "agent", "security", "scanner", "network", "mcp", "agentpin"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: System Administrators",
     "Intended Audience :: Information Technology",
-    "License :: OSI Approved :: MIT License",
+    "License :: OSI Approved :: Apache Software License",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
@@ -39,18 +39,18 @@ dev = [
 ]
 
 [project.scripts]
-agentscan = "agentscan.cli:main"
+agentsniff = "agentsniff.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/ThirdKeyAI/agentscan"
-Documentation = "https://docs.symbiont.dev/agentscan"
-Repository = "https://github.com/ThirdKeyAI/agentscan"
+Homepage = "https://github.com/ThirdKeyAI/agentsniff"
+Documentation = "https://docs.symbiont.dev/agentsniff"
+Repository = "https://github.com/ThirdKeyAI/agentsniff"
 
 [tool.setuptools.packages.find]
-include = ["agentscan*"]
+include = ["agentsniff*"]
 
 [tool.setuptools.package-data]
-agentscan = ["dashboard/*.html"]
+agentsniff = ["dashboard/*.html"]
 
 [tool.ruff]
 target-version = "py311"

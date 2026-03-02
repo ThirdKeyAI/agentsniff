@@ -1,5 +1,5 @@
 """
-AgentScan - REST API Server
+AgentSniff - REST API Server
 
 FastAPI-based API server providing:
 - Scan management (start, status, results)
@@ -13,23 +13,20 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-import os
 from datetime import datetime, timezone
 from pathlib import Path
 
 from fastapi import FastAPI, BackgroundTasks, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, StreamingResponse, JSONResponse
-from fastapi.staticfiles import StaticFiles
 
-from agentscan.config import ScanConfig
-from agentscan.scanner import run_scan
-from agentscan.models import ScanResult
+from agentsniff.config import ScanConfig
+from agentsniff.scanner import run_scan
 
-logger = logging.getLogger("agentscan.api")
+logger = logging.getLogger("agentsniff.api")
 
 app = FastAPI(
-    title="AgentScan API",
+    title="AgentSniff API",
     description="AI Agent Network Scanner - REST API",
     version="1.0.0",
 )
@@ -55,7 +52,7 @@ _scan_lock = asyncio.Lock()
 async def health():
     return {
         "status": "ok",
-        "service": "agentscan",
+        "service": "agentsniff",
         "version": "1.0.0",
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
@@ -173,7 +170,6 @@ async def scan_stream(
 
         try:
             result = await run_scan(config)
-            result_dict = result.to_dict()
 
             # Send agents one at a time for progressive rendering
             for agent in result.agents_detected:
@@ -196,7 +192,7 @@ async def scan_stream(
 
 @app.get("/", response_class=HTMLResponse)
 async def dashboard():
-    dashboard_path = Path(__file__).parent.parent / "dashboard" / "index.html"
+    dashboard_path = Path(__file__).parent / "dashboard" / "index.html"
     if dashboard_path.exists():
         return HTMLResponse(content=dashboard_path.read_text())
 
@@ -205,9 +201,9 @@ async def dashboard():
 
 
 _FALLBACK_DASHBOARD = """<!DOCTYPE html>
-<html><head><title>AgentScan Dashboard</title></head>
+<html><head><title>AgentSniff Dashboard</title></head>
 <body style="font-family:system-ui;max-width:800px;margin:auto;padding:20px">
-<h1>AgentScan Dashboard</h1>
+<h1>AgentSniff Dashboard</h1>
 <p>Dashboard files not found. Use the API directly at <code>/api/scan</code></p>
 </body></html>"""
 
@@ -219,7 +215,7 @@ def start_server(host: str = "0.0.0.0", port: int = 9090, default_network: str =
     _default_network = default_network
 
     import uvicorn
-    logger.info(f"Starting AgentScan API server on {host}:{port}")
+    logger.info(f"Starting AgentSniff API server on {host}:{port}")
     logger.info(f"Dashboard: http://{host}:{port}/")
     logger.info(f"API docs:  http://{host}:{port}/docs")
     uvicorn.run(app, host=host, port=port, log_level="info")

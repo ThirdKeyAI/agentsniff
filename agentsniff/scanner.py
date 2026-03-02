@@ -1,5 +1,5 @@
 """
-AgentScan - Scanner Orchestrator
+AgentSniff - Scanner Orchestrator
 
 Coordinates all detection modules, resolves target networks,
 correlates signals across detectors, and produces unified results.
@@ -13,17 +13,16 @@ import logging
 import socket
 from datetime import datetime, timezone
 
-from agentscan.config import ScanConfig
-from agentscan.detectors import DetectorRegistry
-from agentscan.models import (
+from agentsniff.config import ScanConfig
+from agentsniff.detectors import DetectorRegistry
+from agentsniff.models import (
     AgentStatus,
-    Confidence,
     DetectedAgent,
     DetectionSignal,
     ScanResult,
 )
 
-logger = logging.getLogger("agentscan")
+logger = logging.getLogger("agentsniff")
 
 
 def resolve_targets(config: ScanConfig) -> list[str]:

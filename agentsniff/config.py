@@ -1,5 +1,5 @@
 """
-AgentScan - Configuration management.
+AgentSniff - Configuration management.
 """
 
 from __future__ import annotations
@@ -234,9 +234,9 @@ class ScanConfig:
 
     @classmethod
     def from_env(cls) -> ScanConfig:
-        """Load config from environment variables (AGENTSCAN_ prefix)."""
+        """Load config from environment variables (AGENTSNIFF_ prefix)."""
         config = cls()
-        prefix = "AGENTSCAN_"
+        prefix = "AGENTSNIFF_"
         for key, val in os.environ.items():
             if key.startswith(prefix):
                 attr = key[len(prefix):].lower()
@@ -268,7 +268,7 @@ class ScanConfig:
 
 def default_config_yaml() -> str:
     """Generate a default configuration YAML file."""
-    return """# AgentScan Configuration
+    return """# AgentSniff Configuration
 # ─────────────────────────────────────────────────────────
 
 # Network targets

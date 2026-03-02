@@ -1,5 +1,5 @@
 """
-AgentScan - AgentPin Prober Detector
+AgentSniff - AgentPin Prober Detector
 
 Probes hosts for AgentPin discovery documents at the standard
 .well-known endpoint. Verified AgentPin identities provide
@@ -11,15 +11,13 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-import ssl
 
 import aiohttp
 
-from agentscan.config import ScanConfig
-from agentscan.detectors.base import BaseDetector, DetectorRegistry
-from agentscan.models import Confidence, DetectionSignal, DetectorType
+from agentsniff.detectors.base import BaseDetector, DetectorRegistry
+from agentsniff.models import Confidence, DetectionSignal, DetectorType
 
-logger = logging.getLogger("agentscan.agentpin_prober")
+logger = logging.getLogger("agentsniff.agentpin_prober")
 
 
 # Fields expected in a valid AgentPin discovery document
@@ -49,12 +47,6 @@ class AgentPinProberDetector(BaseDetector):
         signals = []
         timeout = aiohttp.ClientTimeout(total=self.config.http_timeout)
         semaphore = asyncio.Semaphore(self.config.http_concurrency)
-
-        # Create SSL context that accepts self-signed for internal networks
-        ssl_ctx = ssl.create_default_context()
-        ssl_ctx_permissive = ssl.create_default_context()
-        ssl_ctx_permissive.check_hostname = False
-        ssl_ctx_permissive.verify_mode = ssl.CERT_NONE
 
         self.logger.info(f"Probing {len(targets)} hosts for AgentPin discovery documents...")
 

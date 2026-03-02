@@ -1,5 +1,5 @@
 """
-AgentScan - CLI Interface
+AgentSniff - CLI Interface
 
 Rich terminal interface for running scans with table, JSON, and CSV output.
 """
@@ -13,8 +13,8 @@ import logging
 import sys
 from pathlib import Path
 
-from agentscan.config import ScanConfig, default_config_yaml
-from agentscan.scanner import run_scan
+from agentsniff.config import ScanConfig, default_config_yaml
+from agentsniff.scanner import run_scan
 
 
 # ── Color codes for terminal output ──────────────────────────────────────
@@ -36,12 +36,12 @@ class Colors:
 
 
 BANNER = f"""{Colors.CYAN}{Colors.BOLD}
-    ___                    __  _____                 
-   /   | ____ ____  ____  / /_/ ___/_________ _____ 
-  / /| |/ __ `/ _ \\/ __ \\/ __/\\__ \\/ ___/ __ `/ __ \\
- / ___ / /_/ /  __/ / / / /_ ___/ / /__/ /_/ / / / /
-/_/  |_\\__, /\\___/_/ /_/\\__//____/\\___/\\__,_/_/ /_/ 
-      /____/                                         
+    ___                    __  _____       _ ________
+   /   | ____ ____  ____  / /_/ ___/____  (_) __/ __/
+  / /| |/ __ `/ _ \\/ __ \\/ __/\\__ \\/ __ \\/ / /_/ /_
+ / ___ / /_/ /  __/ / / / /_ ___/ / / / / / __/ __/
+/_/  |_\\__, /\\___/_/ /_/\\__//____/_/ /_/_/_/ /_/
+      /____/
 {Colors.RESET}{Colors.DIM}  AI Agent Network Scanner v1.0.0
   Detect AI agents on your network{Colors.RESET}
 """
@@ -197,17 +197,17 @@ def print_csv(result):
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="agentscan",
+        prog="agentsniff",
         description="AI Agent Network Scanner - Detect AI agents on your network",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  agentscan scan 192.168.1.0/24
-  agentscan scan 10.0.0.0/16 --format json --output results.json
-  agentscan scan 192.168.1.0/24 --detectors port_scanner,mcp_detector
-  agentscan scan --hosts server1,server2,server3
-  agentscan serve --port 9090
-  agentscan init-config
+  agentsniff scan 192.168.1.0/24
+  agentsniff scan 10.0.0.0/16 --format json --output results.json
+  agentsniff scan 192.168.1.0/24 --detectors port_scanner,mcp_detector
+  agentsniff scan --hosts server1,server2,server3
+  agentsniff serve --port 9090
+  agentsniff init-config
         """,
     )
 
@@ -284,14 +284,14 @@ def main():
         sys.exit(0)
 
     if args.command == "init-config":
-        config_path = Path("agentscan.yaml")
+        config_path = Path("agentsniff.yaml")
         config_path.write_text(default_config_yaml())
         print(f"Generated default config: {config_path}")
         sys.exit(0)
 
     if args.command == "serve":
         setup_logging(verbose=args.verbose)
-        from agentscan.api.server import start_server
+        from agentsniff.server import start_server
         start_server(
             host=args.host,
             port=args.port,
@@ -352,7 +352,7 @@ async def _continuous_scan(config: ScanConfig):
     try:
         while True:
             scan_num += 1
-            logger = logging.getLogger("agentscan")
+            logger = logging.getLogger("agentsniff")
             logger.info(f"Starting scan #{scan_num}")
 
             result = await run_scan(config)

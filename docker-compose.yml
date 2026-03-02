@@ -1,12 +1,12 @@
 services:
-  agentscan:
+  agentsniff:
     build: .
-    container_name: agentscan
+    container_name: agentsniff
     ports:
       - "9090:9090"
     environment:
-      - AGENTSCAN_TARGET_NETWORK=192.168.1.0/24
-      - AGENTSCAN_API_ENABLED=true
+      - AGENTSNIFF_TARGET_NETWORK=192.168.1.0/24
+      - AGENTSNIFF_API_ENABLED=true
     # Network mode: host gives full network visibility for passive monitoring
     # Use bridge mode for active scanning only
     network_mode: host
@@ -16,19 +16,19 @@ services:
     restart: unless-stopped
     volumes:
       # Optional: mount config file
-      - ./agentscan.yaml:/app/agentscan.yaml:ro
+      - ./agentsniff.yaml:/app/agentsniff.yaml:ro
       # Optional: persist scan results
       - ./results:/app/results
 
   # Alternative: bridge network mode (active scanning only, no passive monitoring)
-  # agentscan-bridge:
+  # agentsniff-bridge:
   #   build: .
-  #   container_name: agentscan-bridge
+  #   container_name: agentsniff-bridge
   #   ports:
   #     - "9090:9090"
   #   environment:
-  #     - AGENTSCAN_TARGET_NETWORK=192.168.1.0/24
-  #     - AGENTSCAN_ENABLE_DNS_MONITOR=false
-  #     - AGENTSCAN_ENABLE_TLS_FINGERPRINT=false
-  #     - AGENTSCAN_ENABLE_TRAFFIC_ANALYZER=false
+  #     - AGENTSNIFF_TARGET_NETWORK=192.168.1.0/24
+  #     - AGENTSNIFF_ENABLE_DNS_MONITOR=false
+  #     - AGENTSNIFF_ENABLE_TLS_FINGERPRINT=false
+  #     - AGENTSNIFF_ENABLE_TRAFFIC_ANALYZER=false
   #   restart: unless-stopped

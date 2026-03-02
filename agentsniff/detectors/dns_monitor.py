@@ -1,5 +1,5 @@
 """
-AgentScan - DNS Monitor Detector
+AgentSniff - DNS Monitor Detector
 
 Passively monitors DNS queries on the network to detect hosts
 communicating with known LLM API providers.
@@ -13,11 +13,11 @@ import socket
 import struct
 from datetime import datetime, timezone
 
-from agentscan.config import LLM_API_DOMAIN_SUFFIXES, ScanConfig
-from agentscan.detectors.base import BaseDetector, DetectorRegistry
-from agentscan.models import Confidence, DetectionSignal, DetectorType
+from agentsniff.config import LLM_API_DOMAIN_SUFFIXES, ScanConfig
+from agentsniff.detectors.base import BaseDetector, DetectorRegistry
+from agentsniff.models import Confidence, DetectionSignal, DetectorType
 
-logger = logging.getLogger("agentscan.dns_monitor")
+logger = logging.getLogger("agentsniff.dns_monitor")
 
 
 def parse_dns_name(data: bytes, offset: int) -> tuple[str, int]:

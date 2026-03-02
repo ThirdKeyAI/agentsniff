@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>AgentScan Dashboard</title>
+<title>AgentSniff Dashboard</title>
 <style>
   :root {
     --bg: #0a0e14;
@@ -255,7 +255,7 @@
 
 <div class="header">
   <div>
-    <h1>⊘ AGENTSCAN</h1>
+    <h1>⊘ AGENTSNIFF</h1>
     <div class="subtitle">AI Agent Network Scanner</div>
   </div>
   <div class="controls">
@@ -302,7 +302,7 @@
   </div>
 
   <div class="log-panel" id="logPanel">
-    <div class="log-entry"><span class="ts">—</span> AgentScan ready</div>
+    <div class="log-entry"><span class="ts">—</span> AgentSniff ready</div>
   </div>
 </div>
 
@@ -502,7 +502,7 @@ function exportJSON() {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `agentscan-${new Date().toISOString().slice(0, 10)}.json`;
+  a.download = `agentsniff-${new Date().toISOString().slice(0, 10)}.json`;
   a.click();
   URL.revokeObjectURL(url);
   log('Results exported');

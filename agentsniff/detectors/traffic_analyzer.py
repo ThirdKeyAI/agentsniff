@@ -1,5 +1,5 @@
 """
-AgentScan - Traffic Analyzer Detector
+AgentSniff - Traffic Analyzer Detector
 
 Analyzes network traffic patterns to identify behavioral signatures
 of AI agents: bursty LLM calls, tool invocation chains, streaming
@@ -16,11 +16,11 @@ import time
 from collections import defaultdict
 from dataclasses import dataclass, field
 
-from agentscan.config import LLM_API_DOMAIN_SUFFIXES, ScanConfig
-from agentscan.detectors.base import BaseDetector, DetectorRegistry
-from agentscan.models import Confidence, DetectionSignal, DetectorType
+from agentsniff.config import ScanConfig
+from agentsniff.detectors.base import BaseDetector, DetectorRegistry
+from agentsniff.models import Confidence, DetectionSignal, DetectorType
 
-logger = logging.getLogger("agentscan.traffic_analyzer")
+logger = logging.getLogger("agentsniff.traffic_analyzer")
 
 
 @dataclass

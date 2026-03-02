@@ -162,9 +162,15 @@ def _enrich_agent(agent: DetectedAgent, signal: DetectionSignal):
         agent.agent_type = "behavioral_match"
 
 
-async def run_scan(config: ScanConfig) -> ScanResult:
+async def run_scan(
+    config: ScanConfig,
+    cancel_event: asyncio.Event | None = None,
+) -> ScanResult:
     """
     Execute a complete network scan using all enabled detectors.
+
+    If *cancel_event* is provided and becomes set, the scan will stop
+    early and return partial results.
 
     Returns a ScanResult with correlated agent detections.
     """
@@ -173,8 +179,9 @@ async def run_scan(config: ScanConfig) -> ScanResult:
         scan_config=config.to_dict(),
     )
 
-    # Resolve targets
-    targets = resolve_targets(config)
+    # Resolve targets (run in thread to avoid blocking the event loop)
+    loop = asyncio.get_event_loop()
+    targets = await loop.run_in_executor(None, resolve_targets, config)
     if not targets:
         logger.error("No valid targets resolved")
         result.errors.append({"error": "No valid targets resolved"})
@@ -201,6 +208,13 @@ async def run_scan(config: ScanConfig) -> ScanResult:
         except Exception as e:
             logger.warning(f"Detector {detector.name} setup failed: {e}")
 
+    # Check for early cancellation
+    if cancel_event and cancel_event.is_set():
+        logger.info("Scan cancelled before detector execution")
+        result.errors.append({"error": "Scan cancelled by user"})
+        result.completed_at = datetime.now(timezone.utc)
+        return result
+
     # Run all detectors concurrently
     all_signals: list[DetectionSignal] = []
 
@@ -208,6 +222,9 @@ async def run_scan(config: ScanConfig) -> ScanResult:
         try:
             signals = await detector.scan(targets)
             return signals
+        except asyncio.CancelledError:
+            logger.info(f"Detector {detector.name} cancelled")
+            return []
         except Exception as e:
             logger.error(f"Detector {detector.name} failed: {e}")
             result.errors.append({
@@ -216,10 +233,37 @@ async def run_scan(config: ScanConfig) -> ScanResult:
             })
             return []
 
-    detector_results = await asyncio.gather(
-        *[run_detector(d) for d in detectors],
-        return_exceptions=True,
-    )
+    tasks = [asyncio.create_task(run_detector(d)) for d in detectors]
+
+    if cancel_event:
+        # Wait for either all detectors to finish or cancellation
+        cancel_waiter = asyncio.create_task(cancel_event.wait())
+        detector_waiter = asyncio.gather(*tasks, return_exceptions=True)
+
+        done, _ = await asyncio.wait(
+            [cancel_waiter, detector_waiter],
+            return_when=asyncio.FIRST_COMPLETED,
+        )
+
+        if cancel_waiter in done:
+            logger.info("Scan cancelled — stopping detectors")
+            for t in tasks:
+                t.cancel()
+            # Collect whatever already finished
+            detector_results = []
+            for t in tasks:
+                try:
+                    detector_results.append(await t)
+                except (asyncio.CancelledError, Exception):
+                    detector_results.append([])
+            result.errors.append({"error": "Scan cancelled by user"})
+        else:
+            cancel_waiter.cancel()
+            detector_results = detector_waiter.result()
+    else:
+        detector_results = await asyncio.gather(
+            *tasks, return_exceptions=True,
+        )
 
     for res in detector_results:
         if isinstance(res, list):

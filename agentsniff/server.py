@@ -44,6 +44,7 @@ _scan_history: list[dict] = []
 _current_scan: dict | None = None
 _default_network = "192.168.1.0/24"
 _scan_lock = asyncio.Lock()
+_cancel_event: asyncio.Event | None = None
 
 
 # ── Endpoints ─────────────────────────────────────────────────────────────
@@ -98,21 +99,25 @@ async def start_scan(
         "config": {"network": config.target_network},
     }
 
-    background_tasks.add_task(_run_scan_background, config, scan_id)
+    _cancel_event = asyncio.Event()
+    _current_scan["_cancel_event"] = _cancel_event
+
+    background_tasks.add_task(_run_scan_background, config, scan_id, _cancel_event)
 
     return {"scan_id": scan_id, "status": "started", "network": config.target_network}
 
 
-async def _run_scan_background(config: ScanConfig, scan_id: str):
+async def _run_scan_background(config: ScanConfig, scan_id: str, cancel_event: asyncio.Event):
     global _current_scan
     try:
-        result = await run_scan(config)
+        result = await run_scan(config, cancel_event=cancel_event)
         result_dict = result.to_dict()
         result_dict["scan_id"] = scan_id
 
+        status = "cancelled" if cancel_event.is_set() else "completed"
         _current_scan = {
             "scan_id": scan_id,
-            "status": "completed",
+            "status": status,
             **result_dict,
         }
         _scan_history.append(_current_scan)
@@ -133,20 +138,39 @@ async def _run_scan_background(config: ScanConfig, scan_id: str):
 @app.get("/api/scan/status")
 async def scan_status():
     if _current_scan:
-        return _current_scan
+        return {k: v for k, v in _current_scan.items() if not k.startswith("_")}
     return {"status": "idle", "message": "No scan in progress or completed"}
 
 
 @app.get("/api/scan/results")
 async def scan_results():
     if _current_scan and _current_scan.get("status") == "completed":
-        return _current_scan
+        return {k: v for k, v in _current_scan.items() if not k.startswith("_")}
     return {"status": _current_scan.get("status", "idle") if _current_scan else "idle"}
+
+
+@app.post("/api/scan/stop")
+async def stop_scan():
+    if not _current_scan or _current_scan.get("status") != "running":
+        return JSONResponse(
+            status_code=409,
+            content={"error": "No scan currently running"},
+        )
+    cancel_event = _current_scan.get("_cancel_event")
+    if cancel_event:
+        cancel_event.set()
+        logger.info(f"Scan {_current_scan['scan_id']} stop requested")
+        return {"status": "stopping", "scan_id": _current_scan["scan_id"]}
+    return JSONResponse(
+        status_code=500,
+        content={"error": "Scan has no cancel handle"},
+    )
 
 
 @app.get("/api/scan/history")
 async def scan_history():
-    return {"scans": _scan_history, "count": len(_scan_history)}
+    cleaned = [{k: v for k, v in s.items() if not k.startswith("_")} for s in _scan_history]
+    return {"scans": cleaned, "count": len(cleaned)}
 
 
 @app.get("/api/agents")
@@ -162,21 +186,43 @@ async def scan_stream(
     network: str = Query(default=None),
 ):
     """SSE endpoint for real-time scan progress."""
+    global _current_scan
+
     async def event_generator():
+        global _current_scan
         config = ScanConfig()
         config.target_network = network or _default_network
+
+        cancel_event = asyncio.Event()
+        scan_id = f"scan-{datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S')}"
+        _current_scan = {
+            "scan_id": scan_id,
+            "status": "running",
+            "started_at": datetime.now(timezone.utc).isoformat(),
+            "config": {"network": config.target_network},
+            "_cancel_event": cancel_event,
+        }
 
         yield f"data: {json.dumps({'event': 'scan_started', 'network': config.target_network})}\n\n"
 
         try:
-            result = await run_scan(config)
+            result = await run_scan(config, cancel_event=cancel_event)
 
             # Send agents one at a time for progressive rendering
             for agent in result.agents_detected:
                 yield f"data: {json.dumps({'event': 'agent_detected', 'agent': agent.to_dict()})}\n\n"
                 await asyncio.sleep(0.05)
 
-            yield f"data: {json.dumps({'event': 'scan_completed', 'summary': result.summary})}\n\n"
+            if cancel_event.is_set():
+                yield f"data: {json.dumps({'event': 'scan_cancelled', 'summary': result.summary})}\n\n"
+                _current_scan = {"scan_id": scan_id, "status": "cancelled", **result.to_dict()}
+            else:
+                yield f"data: {json.dumps({'event': 'scan_completed', 'summary': result.summary})}\n\n"
+                _current_scan = {"scan_id": scan_id, "status": "completed", **result.to_dict()}
+
+            _scan_history.append(_current_scan)
+            while len(_scan_history) > 50:
+                _scan_history.pop(0)
 
         except Exception as e:
             yield f"data: {json.dumps({'event': 'scan_error', 'error': str(e)})}\n\n"

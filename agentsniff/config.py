@@ -139,6 +139,21 @@ AGENT_FRAMEWORK_SIGNATURES = {
         "headers": {"api_access_token"},
         "user_agents": ["chatwoot"],
     },
+    "eliza": {
+        "endpoints": ["/api/agents", "/message"],
+        "user_agents": ["eliza"],
+    },
+    "phidata": {
+        "endpoints": ["/v1/agent/run", "/v1/playground/chat"],
+        "user_agents": ["phidata"],
+    },
+    "semantic_kernel": {
+        "headers": {"semantic-kernel-version"},
+        "user_agents": ["Semantic-Kernel"],
+    },
+    "mastra": {
+        "endpoints": ["/api/mastra", "/api/agents"],
+    },
 }
 
 # ── Common agent-related ports ────────────────────────────────────────────

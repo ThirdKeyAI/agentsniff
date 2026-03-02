@@ -210,6 +210,7 @@ When running `agentsniff serve`:
 | Endpoint | Method | Description |
 |---|---|---|
 | `GET /` | — | Web dashboard |
+| `GET /docs` | — | Swagger / OpenAPI docs |
 | `GET /api/health` | — | Health check |
 | `POST /api/scan` | `?network=CIDR` | Start a scan |
 | `GET /api/scan/status` | — | Current scan status |
@@ -261,3 +262,7 @@ AgentSniff complements the ThirdKey trust infrastructure:
 ## License
 
 Apache License 2.0 — Jascha Wanger / ThirdKey AI
+
+## Disclaimer
+
+AgentSniff is intended for authorized network scanning and security assessment only. You must only scan networks and systems that you own or have explicit written permission to test. Unauthorized scanning of networks may violate applicable laws and regulations, including the Computer Fraud and Abuse Act (CFAA), the UK Computer Misuse Act, and similar legislation in other jurisdictions. The authors and contributors are not responsible for any misuse of this tool or any damages resulting from its use. By using AgentSniff, you agree to use it in compliance with all applicable laws and only against targets you are authorized to scan.

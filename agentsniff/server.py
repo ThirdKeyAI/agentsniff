@@ -218,7 +218,14 @@ async def scan_stream(
             "_cancel_event": cancel_event,
         }
 
-        yield f"data: {json.dumps({'event': 'scan_started', 'network': config.target_network})}\n\n"
+        # Resolve targets and detectors for progress info
+        from agentsniff.scanner import resolve_targets
+        from agentsniff.detectors import DetectorRegistry
+        loop = asyncio.get_event_loop()
+        targets = await loop.run_in_executor(None, resolve_targets, config)
+        detector_names = [d.name for d in DetectorRegistry.create_enabled(config)]
+
+        yield f"data: {json.dumps({'event': 'scan_started', 'network': config.target_network, 'host_count': len(targets), 'detectors': detector_names})}\n\n"
 
         try:
             result = await run_scan(config, cancel_event=cancel_event)

@@ -261,6 +261,7 @@
   <div class="controls">
     <input type="text" id="networkInput" placeholder="192.168.1.0/24" value="192.168.1.0/24">
     <button id="scanBtn" onclick="startScan()">⟐ Scan Network</button>
+    <button id="stopBtn" class="secondary" onclick="stopScan()" style="display:none;background:var(--red);color:#fff;border:none">■ Stop</button>
     <button class="secondary" onclick="exportJSON()">↓ Export</button>
   </div>
 </div>
@@ -309,6 +310,7 @@
 <script>
 let lastResult = null;
 let scanning = false;
+let activeEventSource = null;
 
 function log(msg) {
   const panel = document.getElementById('logPanel');
@@ -400,6 +402,28 @@ function toggleDetail(idx) {
   if (row) row.classList.toggle('open');
 }
 
+function resetScanUI() {
+  scanning = false;
+  activeEventSource = null;
+  const btn = document.getElementById('scanBtn');
+  btn.disabled = false;
+  btn.innerHTML = '⟐ Scan Network';
+  document.getElementById('stopBtn').style.display = 'none';
+}
+
+async function stopScan() {
+  log('Stopping scan...');
+  try {
+    await fetch('/api/scan/stop', { method: 'POST' });
+  } catch (e) {
+    log(`Stop request failed: ${e.message}`);
+  }
+  if (activeEventSource) {
+    activeEventSource.close();
+    activeEventSource = null;
+  }
+}
+
 async function startScan() {
   if (scanning) return;
   scanning = true;
@@ -407,6 +431,7 @@ async function startScan() {
   const btn = document.getElementById('scanBtn');
   btn.disabled = true;
   btn.innerHTML = '<span class="spinner"></span> Scanning...';
+  document.getElementById('stopBtn').style.display = '';
 
   const network = document.getElementById('networkInput').value || '192.168.1.0/24';
   log(`Starting scan of ${network}...`);
@@ -425,6 +450,7 @@ async function startScan() {
   try {
     // Try SSE streaming first
     const evtSource = new EventSource(`/api/scan/stream?network=${encodeURIComponent(network)}`);
+    activeEventSource = evtSource;
     const agents = [];
 
     evtSource.onmessage = (event) => {
@@ -441,22 +467,27 @@ async function startScan() {
         lastResult = { agents, summary: data.summary };
         updateStats(data.summary);
         log(`Scan complete: ${agents.length} agents found`);
-        scanning = false;
-        btn.disabled = false;
-        btn.innerHTML = '⟐ Scan Network';
+        resetScanUI();
+      }
+
+      if (data.event === 'scan_cancelled') {
+        evtSource.close();
+        lastResult = { agents, summary: data.summary };
+        if (data.summary) updateStats(data.summary);
+        log(`Scan cancelled — ${agents.length} agent(s) found before stop`);
+        resetScanUI();
       }
 
       if (data.event === 'scan_error') {
         evtSource.close();
         log(`Error: ${data.error}`);
-        scanning = false;
-        btn.disabled = false;
-        btn.innerHTML = '⟐ Scan Network';
+        resetScanUI();
       }
     };
 
     evtSource.onerror = async () => {
       evtSource.close();
+      activeEventSource = null;
       // Fallback to REST API
       log('SSE unavailable, using REST API...');
       try {
@@ -469,30 +500,24 @@ async function startScan() {
           const statusResp = await fetch('/api/scan/status');
           const status = await statusResp.json();
 
-          if (status.status === 'completed') {
+          if (status.status === 'completed' || status.status === 'cancelled') {
             clearInterval(poll);
             lastResult = status;
             updateStats(status.summary || {});
             renderAgents(status.agents || []);
-            log('Scan complete');
-            scanning = false;
-            btn.disabled = false;
-            btn.innerHTML = '⟐ Scan Network';
+            log(status.status === 'cancelled' ? 'Scan cancelled' : 'Scan complete');
+            resetScanUI();
           }
         }, 2000);
       } catch (e) {
         log(`Error: ${e.message}`);
-        scanning = false;
-        btn.disabled = false;
-        btn.innerHTML = '⟐ Scan Network';
+        resetScanUI();
       }
     };
 
   } catch (e) {
     log(`Error: ${e.message}`);
-    scanning = false;
-    btn.disabled = false;
-    btn.innerHTML = '⟐ Scan Network';
+    resetScanUI();
   }
 }
 

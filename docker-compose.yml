@@ -1,0 +1,34 @@
+services:
+  agentscan:
+    build: .
+    container_name: agentscan
+    ports:
+      - "9090:9090"
+    environment:
+      - AGENTSCAN_TARGET_NETWORK=192.168.1.0/24
+      - AGENTSCAN_API_ENABLED=true
+    # Network mode: host gives full network visibility for passive monitoring
+    # Use bridge mode for active scanning only
+    network_mode: host
+    cap_add:
+      - NET_RAW      # Required for passive DNS and TLS monitoring
+      - NET_ADMIN    # Required for network interface access
+    restart: unless-stopped
+    volumes:
+      # Optional: mount config file
+      - ./agentscan.yaml:/app/agentscan.yaml:ro
+      # Optional: persist scan results
+      - ./results:/app/results
+
+  # Alternative: bridge network mode (active scanning only, no passive monitoring)
+  # agentscan-bridge:
+  #   build: .
+  #   container_name: agentscan-bridge
+  #   ports:
+  #     - "9090:9090"
+  #   environment:
+  #     - AGENTSCAN_TARGET_NETWORK=192.168.1.0/24
+  #     - AGENTSCAN_ENABLE_DNS_MONITOR=false
+  #     - AGENTSCAN_ENABLE_TLS_FINGERPRINT=false
+  #     - AGENTSCAN_ENABLE_TRAFFIC_ANALYZER=false
+  #   restart: unless-stopped

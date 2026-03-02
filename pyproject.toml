@@ -1,0 +1,60 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "agentscan"
+version = "1.0.0"
+description = "AI Agent Network Scanner - Detect AI agents on your network"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.11"
+authors = [
+    {name = "ThirdKey AI"},
+]
+keywords = ["ai", "agent", "security", "scanner", "network", "mcp", "agentpin"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: System Administrators",
+    "Intended Audience :: Information Technology",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Security",
+    "Topic :: System :: Networking :: Monitoring",
+]
+dependencies = [
+    "aiohttp>=3.9",
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.27",
+    "pyyaml>=6.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    "ruff>=0.3",
+]
+
+[project.scripts]
+agentscan = "agentscan.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/ThirdKeyAI/agentscan"
+Documentation = "https://docs.symbiont.dev/agentscan"
+Repository = "https://github.com/ThirdKeyAI/agentscan"
+
+[tool.setuptools.packages.find]
+include = ["agentscan*"]
+
+[tool.setuptools.package-data]
+agentscan = ["dashboard/*.html"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"

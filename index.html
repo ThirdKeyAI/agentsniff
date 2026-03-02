@@ -1,0 +1,512 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AgentScan Dashboard</title>
+<style>
+  :root {
+    --bg: #0a0e14;
+    --surface: #111820;
+    --surface2: #1a2230;
+    --border: #243040;
+    --text: #c8d4e0;
+    --text-dim: #6a7a8a;
+    --accent: #00d4aa;
+    --accent-dim: #00a080;
+    --red: #f04060;
+    --yellow: #f0c040;
+    --blue: #40a0f0;
+    --purple: #a080f0;
+    --green: #40d080;
+    --radius: 8px;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'SF Mono', 'JetBrains Mono', 'Fira Code', monospace;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.5;
+    min-height: 100vh;
+  }
+
+  .header {
+    padding: 20px 32px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: var(--surface);
+  }
+
+  .header h1 {
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--accent);
+    letter-spacing: 1px;
+  }
+
+  .header .subtitle {
+    font-size: 11px;
+    color: var(--text-dim);
+    margin-top: 2px;
+  }
+
+  .controls {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+  }
+
+  input[type="text"] {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 8px 14px;
+    border-radius: var(--radius);
+    font-family: inherit;
+    font-size: 13px;
+    width: 220px;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+
+  input[type="text"]:focus { border-color: var(--accent); }
+
+  button {
+    background: var(--accent);
+    color: var(--bg);
+    border: none;
+    padding: 8px 20px;
+    border-radius: var(--radius);
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: opacity 0.2s;
+  }
+
+  button:hover { opacity: 0.85; }
+  button:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  button.secondary {
+    background: var(--surface2);
+    color: var(--text);
+    border: 1px solid var(--border);
+  }
+
+  .main { padding: 24px 32px; }
+
+  .stats-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 16px;
+    margin-bottom: 24px;
+  }
+
+  .stat-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 16px 20px;
+  }
+
+  .stat-card .label { font-size: 11px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 1px; }
+  .stat-card .value { font-size: 28px; font-weight: 700; margin-top: 4px; }
+  .stat-card .value.green { color: var(--green); }
+  .stat-card .value.yellow { color: var(--yellow); }
+  .stat-card .value.blue { color: var(--blue); }
+  .stat-card .value.red { color: var(--red); }
+
+  .agents-table {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+  }
+
+  .agents-table table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+
+  .agents-table th {
+    text-align: left;
+    padding: 12px 16px;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--text-dim);
+    background: var(--surface2);
+    border-bottom: 1px solid var(--border);
+  }
+
+  .agents-table td {
+    padding: 12px 16px;
+    font-size: 13px;
+    border-bottom: 1px solid var(--border);
+    vertical-align: top;
+  }
+
+  .agents-table tr:last-child td { border-bottom: none; }
+  .agents-table tr:hover td { background: rgba(0, 212, 170, 0.03); }
+
+  .badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  .badge.confirmed { background: rgba(64, 208, 128, 0.15); color: var(--green); }
+  .badge.high { background: rgba(240, 192, 64, 0.15); color: var(--yellow); }
+  .badge.medium { background: rgba(64, 160, 240, 0.15); color: var(--blue); }
+  .badge.low { background: rgba(106, 122, 138, 0.15); color: var(--text-dim); }
+
+  .badge.verified { background: rgba(64, 208, 128, 0.15); color: var(--green); }
+  .badge.detected { background: rgba(240, 192, 64, 0.15); color: var(--yellow); }
+  .badge.suspected { background: rgba(64, 160, 240, 0.15); color: var(--blue); }
+
+  .progress-bar {
+    width: 80px;
+    height: 6px;
+    background: var(--surface2);
+    border-radius: 3px;
+    overflow: hidden;
+    display: inline-block;
+    vertical-align: middle;
+    margin-right: 8px;
+  }
+
+  .progress-bar .fill {
+    height: 100%;
+    border-radius: 3px;
+    transition: width 0.3s;
+  }
+
+  .signal-list {
+    list-style: none;
+    margin-top: 8px;
+    font-size: 12px;
+  }
+
+  .signal-list li {
+    padding: 4px 0;
+    color: var(--text-dim);
+  }
+
+  .signal-list li::before {
+    content: "●";
+    margin-right: 6px;
+    color: var(--accent-dim);
+  }
+
+  .log-panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    margin-top: 24px;
+    max-height: 200px;
+    overflow-y: auto;
+    padding: 12px 16px;
+    font-size: 12px;
+    color: var(--text-dim);
+  }
+
+  .log-panel .log-entry { padding: 2px 0; }
+  .log-panel .log-entry .ts { color: var(--accent-dim); margin-right: 8px; }
+
+  .empty-state {
+    text-align: center;
+    padding: 60px 20px;
+    color: var(--text-dim);
+  }
+
+  .empty-state .icon { font-size: 48px; margin-bottom: 16px; }
+  .empty-state h3 { color: var(--text); margin-bottom: 8px; }
+
+  .spinner {
+    display: inline-block;
+    width: 16px;
+    height: 16px;
+    border: 2px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    margin-right: 8px;
+    vertical-align: middle;
+  }
+
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .expandable { cursor: pointer; }
+  .expandable:hover { color: var(--accent); }
+  .detail-row { display: none; }
+  .detail-row.open { display: table-row; }
+  .detail-content { padding: 16px; background: var(--surface2); }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div>
+    <h1>⊘ AGENTSCAN</h1>
+    <div class="subtitle">AI Agent Network Scanner</div>
+  </div>
+  <div class="controls">
+    <input type="text" id="networkInput" placeholder="192.168.1.0/24" value="192.168.1.0/24">
+    <button id="scanBtn" onclick="startScan()">⟐ Scan Network</button>
+    <button class="secondary" onclick="exportJSON()">↓ Export</button>
+  </div>
+</div>
+
+<div class="main">
+  <div class="stats-row">
+    <div class="stat-card">
+      <div class="label">Agents Found</div>
+      <div class="value green" id="statTotal">—</div>
+    </div>
+    <div class="stat-card">
+      <div class="label">Confirmed</div>
+      <div class="value green" id="statConfirmed">—</div>
+    </div>
+    <div class="stat-card">
+      <div class="label">High Confidence</div>
+      <div class="value yellow" id="statHigh">—</div>
+    </div>
+    <div class="stat-card">
+      <div class="label">Suspected</div>
+      <div class="value blue" id="statSuspected">—</div>
+    </div>
+    <div class="stat-card">
+      <div class="label">Scan Duration</div>
+      <div class="value" id="statDuration">—</div>
+    </div>
+    <div class="stat-card">
+      <div class="label">Detectors</div>
+      <div class="value" id="statDetectors">—</div>
+    </div>
+  </div>
+
+  <div class="agents-table" id="agentsTable">
+    <div class="empty-state" id="emptyState">
+      <div class="icon">⊘</div>
+      <h3>Ready to Scan</h3>
+      <p>Enter a network range and click Scan to detect AI agents</p>
+    </div>
+  </div>
+
+  <div class="log-panel" id="logPanel">
+    <div class="log-entry"><span class="ts">—</span> AgentScan ready</div>
+  </div>
+</div>
+
+<script>
+let lastResult = null;
+let scanning = false;
+
+function log(msg) {
+  const panel = document.getElementById('logPanel');
+  const ts = new Date().toLocaleTimeString();
+  const entry = document.createElement('div');
+  entry.className = 'log-entry';
+  entry.innerHTML = `<span class="ts">${ts}</span> ${msg}`;
+  panel.appendChild(entry);
+  panel.scrollTop = panel.scrollHeight;
+}
+
+function confColor(score) {
+  if (score >= 0.9) return '#40d080';
+  if (score >= 0.6) return '#f0c040';
+  if (score >= 0.3) return '#40a0f0';
+  return '#6a7a8a';
+}
+
+function updateStats(summary) {
+  const bc = summary.by_confidence || {};
+  document.getElementById('statTotal').textContent = summary.total_agents || 0;
+  document.getElementById('statConfirmed').textContent = bc.confirmed || 0;
+  document.getElementById('statHigh').textContent = bc.high || 0;
+  document.getElementById('statSuspected').textContent = (bc.medium || 0) + (bc.low || 0);
+  document.getElementById('statDuration').textContent =
+    summary.duration_seconds ? summary.duration_seconds.toFixed(1) + 's' : '—';
+  document.getElementById('statDetectors').textContent =
+    summary.detectors_run ? summary.detectors_run.length : '—';
+}
+
+function renderAgents(agents) {
+  const container = document.getElementById('agentsTable');
+
+  if (!agents || agents.length === 0) {
+    container.innerHTML = `<div class="empty-state">
+      <div class="icon">✓</div>
+      <h3>Scan Complete</h3>
+      <p>No AI agents detected on this network</p>
+    </div>`;
+    return;
+  }
+
+  let html = `<table>
+    <thead><tr>
+      <th>Host</th><th>Port</th><th>Type</th><th>Framework</th>
+      <th>Confidence</th><th>Signals</th><th>Status</th>
+    </tr></thead><tbody>`;
+
+  agents.forEach((agent, idx) => {
+    const score = agent.confidence_score || 0;
+    const level = agent.confidence_level || 'low';
+    const color = confColor(score);
+    const pct = Math.round(score * 100);
+
+    html += `<tr class="expandable" onclick="toggleDetail(${idx})">
+      <td><strong>${agent.ip_address || agent.host}</strong></td>
+      <td>${agent.port || '—'}</td>
+      <td>${agent.agent_type || 'unknown'}</td>
+      <td>${agent.framework || 'unknown'}</td>
+      <td>
+        <div class="progress-bar"><div class="fill" style="width:${pct}%;background:${color}"></div></div>
+        ${pct}% <span class="badge ${level}">${level}</span>
+      </td>
+      <td>${agent.signal_count || 0}</td>
+      <td><span class="badge ${agent.status}">${agent.status}</span></td>
+    </tr>
+    <tr class="detail-row" id="detail-${idx}">
+      <td colspan="7"><div class="detail-content">
+        <ul class="signal-list">
+          ${(agent.signals || []).slice(0, 8).map(s =>
+            `<li><strong>[${s.detector}]</strong> ${s.description}</li>`
+          ).join('')}
+          ${(agent.signals || []).length > 8 ? `<li>... and ${agent.signals.length - 8} more</li>` : ''}
+        </ul>
+        ${agent.agentpin_identity ? `<div style="margin-top:8px;color:var(--green)">
+          ⚿ AgentPin: ${agent.agentpin_identity.agent_id} (${agent.agentpin_identity.issuer})</div>` : ''}
+        ${agent.mcp_capabilities ? `<div style="margin-top:4px;color:var(--purple)">
+          ⚡ MCP Server: ${JSON.stringify(agent.mcp_capabilities.server_info || {})}</div>` : ''}
+      </div></td>
+    </tr>`;
+  });
+
+  html += '</tbody></table>';
+  container.innerHTML = html;
+}
+
+function toggleDetail(idx) {
+  const row = document.getElementById(`detail-${idx}`);
+  if (row) row.classList.toggle('open');
+}
+
+async function startScan() {
+  if (scanning) return;
+  scanning = true;
+
+  const btn = document.getElementById('scanBtn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> Scanning...';
+
+  const network = document.getElementById('networkInput').value || '192.168.1.0/24';
+  log(`Starting scan of ${network}...`);
+
+  // Reset stats
+  ['statTotal','statConfirmed','statHigh','statSuspected','statDuration'].forEach(
+    id => document.getElementById(id).textContent = '...'
+  );
+
+  document.getElementById('agentsTable').innerHTML = `<div class="empty-state">
+    <div class="spinner" style="width:32px;height:32px;border-width:3px"></div>
+    <h3 style="margin-top:16px">Scanning Network</h3>
+    <p>Running detection modules against ${network}</p>
+  </div>`;
+
+  try {
+    // Try SSE streaming first
+    const evtSource = new EventSource(`/api/scan/stream?network=${encodeURIComponent(network)}`);
+    const agents = [];
+
+    evtSource.onmessage = (event) => {
+      const data = JSON.parse(event.data);
+
+      if (data.event === 'agent_detected') {
+        agents.push(data.agent);
+        renderAgents(agents);
+        log(`Detected: ${data.agent.ip_address} (${data.agent.agent_type})`);
+      }
+
+      if (data.event === 'scan_completed') {
+        evtSource.close();
+        lastResult = { agents, summary: data.summary };
+        updateStats(data.summary);
+        log(`Scan complete: ${agents.length} agents found`);
+        scanning = false;
+        btn.disabled = false;
+        btn.innerHTML = '⟐ Scan Network';
+      }
+
+      if (data.event === 'scan_error') {
+        evtSource.close();
+        log(`Error: ${data.error}`);
+        scanning = false;
+        btn.disabled = false;
+        btn.innerHTML = '⟐ Scan Network';
+      }
+    };
+
+    evtSource.onerror = async () => {
+      evtSource.close();
+      // Fallback to REST API
+      log('SSE unavailable, using REST API...');
+      try {
+        const resp = await fetch(`/api/scan?network=${encodeURIComponent(network)}`, { method: 'POST' });
+        const data = await resp.json();
+        log(`Scan started: ${data.scan_id}`);
+
+        // Poll for results
+        const poll = setInterval(async () => {
+          const statusResp = await fetch('/api/scan/status');
+          const status = await statusResp.json();
+
+          if (status.status === 'completed') {
+            clearInterval(poll);
+            lastResult = status;
+            updateStats(status.summary || {});
+            renderAgents(status.agents || []);
+            log('Scan complete');
+            scanning = false;
+            btn.disabled = false;
+            btn.innerHTML = '⟐ Scan Network';
+          }
+        }, 2000);
+      } catch (e) {
+        log(`Error: ${e.message}`);
+        scanning = false;
+        btn.disabled = false;
+        btn.innerHTML = '⟐ Scan Network';
+      }
+    };
+
+  } catch (e) {
+    log(`Error: ${e.message}`);
+    scanning = false;
+    btn.disabled = false;
+    btn.innerHTML = '⟐ Scan Network';
+  }
+}
+
+function exportJSON() {
+  if (!lastResult) { log('No results to export'); return; }
+  const blob = new Blob([JSON.stringify(lastResult, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `agentscan-${new Date().toISOString().slice(0, 10)}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+  log('Results exported');
+}
+</script>
+</body>
+</html>

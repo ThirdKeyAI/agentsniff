@@ -101,6 +101,44 @@ AGENT_FRAMEWORK_SIGNATURES = {
     "n8n": {
         "endpoints": ["/webhook/", "/rest/workflows"],
     },
+    "pydantic_ai": {
+        "endpoints": ["/api/chat", "/schema.json"],
+        "user_agents": ["pydantic-ai", "pydantic-core"],
+        "headers": {"x-pydantic-ai-*"},
+    },
+    "smolagents": {
+        "endpoints": ["/run/agent", "/api/predict"],
+        "user_agents": ["smolagents", "huggingface-hub"],
+    },
+    "browser_use": {
+        "endpoints": ["/api/browser", "/ws/browser"],
+        "user_agents": ["browser-use"],
+    },
+    "openhands": {
+        "endpoints": ["/api/options", "/api/config", "/ws"],
+        "user_agents": ["openhands"],
+    },
+    "anythingllm": {
+        "endpoints": ["/api/system/status", "/api/v1/workspace"],
+        "headers": {"x-anythingllm-signature"},
+    },
+    "superagi": {
+        "endpoints": ["/api/agent/schedule", "/api/agent/status"],
+        "user_agents": ["superagi-agent"],
+    },
+    "llama_deploy": {
+        "endpoints": ["/control-plane/status", "/message-queue/status"],
+        "user_agents": ["llamaindex", "llama-deploy"],
+    },
+    "rasa": {
+        "endpoints": ["/webhooks/rest/webhook", "/status", "/conversations"],
+        "headers": {"x-rasa-version"},
+    },
+    "chatwoot": {
+        "endpoints": ["/api/v1/accounts/1/conversations"],
+        "headers": {"api_access_token"},
+        "user_agents": ["chatwoot"],
+    },
 }
 
 # ── Common agent-related ports ────────────────────────────────────────────

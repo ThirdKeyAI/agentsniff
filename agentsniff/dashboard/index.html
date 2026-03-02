@@ -594,6 +594,59 @@ let lastResult = null;
 let scanning = false;
 let activeEventSource = null;
 
+// Check for in-progress or completed scan on page load
+async function init() {
+  try {
+    const resp = await fetch('/api/scan/status');
+    const status = await resp.json();
+
+    if (status.status === 'running') {
+      log('Reconnecting to running scan...');
+      scanning = true;
+      const btn = document.getElementById('scanBtn');
+      btn.disabled = true;
+      btn.innerHTML = '<span class="spinner"></span> Scanning...';
+      document.getElementById('stopBtn').style.display = '';
+      document.getElementById('agentsTable').innerHTML = `<div class="empty-state">
+        <div class="spinner" style="width:32px;height:32px;border-width:3px"></div>
+        <h3 style="margin-top:16px">Scanning Network</h3>
+        <p>Scan in progress — waiting for results</p>
+      </div>`;
+
+      // Poll until done
+      const poll = setInterval(async () => {
+        const r = await fetch('/api/scan/status');
+        const s = await r.json();
+        if (s.status === 'completed' || s.status === 'cancelled' || s.status === 'failed') {
+          clearInterval(poll);
+          if (s.status === 'completed') {
+            lastResult = s;
+            updateStats(s.summary || {});
+            renderAgents(s.agents || []);
+            log('Scan complete: ' + (s.agents || []).length + ' agents found');
+          } else if (s.status === 'cancelled') {
+            lastResult = s;
+            if (s.summary) updateStats(s.summary);
+            renderAgents(s.agents || []);
+            log('Scan was cancelled');
+          } else {
+            log('Scan failed: ' + (s.error || 'unknown error'));
+          }
+          resetScanUI();
+        }
+      }, 2000);
+
+    } else if (status.status === 'completed') {
+      lastResult = status;
+      updateStats(status.summary || {});
+      renderAgents(status.agents || []);
+      log('Loaded previous scan results');
+    }
+  } catch (e) {
+    // Server not ready or no prior scan — that's fine
+  }
+}
+
 function log(msg) {
   const panel = document.getElementById('logPanel');
   const ts = new Date().toLocaleTimeString();
@@ -914,6 +967,9 @@ async function testAlert() {
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') closeSettings();
 });
+
+// Restore state on page load
+init();
 </script>
 </body>
 </html>

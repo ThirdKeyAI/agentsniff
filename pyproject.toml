@@ -7,7 +7,7 @@ name = "agentsniff"
 version = "1.0.0"
 description = "AI Agent Network Scanner - Detect AI agents on your network"
 readme = "README.md"
-license = {text = "Apache-2.0"}
+license = "Apache-2.0"
 requires-python = ">=3.11"
 authors = [
     {name = "Jascha Wanger / ThirdKey AI"},
@@ -17,7 +17,6 @@ classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: System Administrators",
     "Intended Audience :: Information Technology",
-    "License :: OSI Approved :: Apache Software License",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
@@ -42,9 +41,10 @@ dev = [
 agentsniff = "agentsniff.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/ThirdKeyAI/agentsniff"
-Documentation = "https://docs.symbiont.dev/agentsniff"
+Homepage = "https://agentsniff.org"
+Documentation = "https://github.com/ThirdKeyAI/agentsniff#readme"
 Repository = "https://github.com/ThirdKeyAI/agentsniff"
+Issues = "https://github.com/ThirdKeyAI/agentsniff/issues"
 
 [tool.setuptools.packages.find]
 include = ["agentsniff*"]

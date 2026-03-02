@@ -21,6 +21,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, StreamingResponse, JSONResponse
 
 from agentsniff.config import ScanConfig
+from agentsniff.notifier import should_alert, send_alerts
 from agentsniff.scanner import run_scan
 
 logger = logging.getLogger("agentsniff.api")
@@ -44,7 +45,15 @@ _scan_history: list[dict] = []
 _current_scan: dict | None = None
 _default_network = "192.168.1.0/24"
 _scan_lock = asyncio.Lock()
-_cancel_event: asyncio.Event | None = None
+_config: ScanConfig = ScanConfig()
+
+# Fields that can be modified via the settings API
+_ALERT_SETTINGS_FIELDS = [
+    "alert_enabled", "alert_min_agents", "alert_min_confidence", "alert_cooldown",
+    "webhook_url", "webhook_headers",
+    "smtp_host", "smtp_port", "smtp_user", "smtp_password", "smtp_use_tls",
+    "smtp_from", "smtp_to",
+]
 
 
 # ── Endpoints ─────────────────────────────────────────────────────────────
@@ -125,6 +134,12 @@ async def _run_scan_background(config: ScanConfig, scan_id: str, cancel_event: a
         # Keep last 50 scans
         while len(_scan_history) > 50:
             _scan_history.pop(0)
+
+        # Send alerts if configured
+        if status == "completed" and should_alert(result, _config):
+            outcomes = await send_alerts(result, _config)
+            for outcome in outcomes:
+                logger.info(f"Alert: {outcome}")
 
     except Exception as e:
         logger.error(f"Background scan failed: {e}")
@@ -220,6 +235,12 @@ async def scan_stream(
                 yield f"data: {json.dumps({'event': 'scan_completed', 'summary': result.summary})}\n\n"
                 _current_scan = {"scan_id": scan_id, "status": "completed", **result.to_dict()}
 
+                # Send alerts if configured
+                if should_alert(result, _config):
+                    outcomes = await send_alerts(result, _config)
+                    for outcome in outcomes:
+                        logger.info(f"Alert: {outcome}")
+
             _scan_history.append(_current_scan)
             while len(_scan_history) > 50:
                 _scan_history.pop(0)
@@ -232,6 +253,58 @@ async def scan_stream(
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
+
+
+# ── Settings ──────────────────────────────────────────────────────────────
+
+@app.get("/api/settings")
+async def get_settings():
+    """Return current alert settings (masks smtp_password)."""
+    settings = {}
+    for field in _ALERT_SETTINGS_FIELDS:
+        val = getattr(_config, field, None)
+        if field == "smtp_password":
+            # Never expose the actual password
+            settings[field] = "••••••••" if val else ""
+        else:
+            settings[field] = val
+    return settings
+
+
+@app.put("/api/settings")
+async def update_settings(body: dict):
+    """Update alert settings."""
+    updated = []
+    for field in _ALERT_SETTINGS_FIELDS:
+        if field in body:
+            val = body[field]
+            # Skip masked password placeholder
+            if field == "smtp_password" and val == "••••••••":
+                continue
+            setattr(_config, field, val)
+            updated.append(field)
+    return {"updated": updated, "count": len(updated)}
+
+
+@app.post("/api/settings/test")
+async def test_alert():
+    """Send a test alert with current settings."""
+    # Build a minimal fake result for testing
+    class _FakeResult:
+        scan_id = "test-alert"
+        target_network = _config.target_network
+        agents_detected = []
+        summary = {
+            "total_agents": 0,
+            "by_confidence": {},
+            "duration_seconds": 0.0,
+            "detectors_run": [],
+        }
+        errors = []
+
+    result = _FakeResult()
+    outcomes = await send_alerts(result, _config)
+    return {"outcomes": outcomes}
 
 
 # ── Dashboard ─────────────────────────────────────────────────────────────
@@ -257,8 +330,10 @@ _FALLBACK_DASHBOARD = """<!DOCTYPE html>
 # ── Server startup ────────────────────────────────────────────────────────
 
 def start_server(host: str = "0.0.0.0", port: int = 9090, default_network: str = "192.168.1.0/24"):
-    global _default_network
+    global _default_network, _config
     _default_network = default_network
+    _config = ScanConfig.from_env()
+    _config.target_network = default_network
 
     import uvicorn
     logger.info(f"Starting AgentSniff API server on {host}:{port}")

@@ -7,6 +7,15 @@ services:
     environment:
       - AGENTSNIFF_TARGET_NETWORK=192.168.1.0/24
       - AGENTSNIFF_API_ENABLED=true
+      # Alerting (uncomment to enable)
+      # - AGENTSNIFF_ALERT_ENABLED=true
+      # - AGENTSNIFF_WEBHOOK_URL=https://hooks.example.com/agentsniff
+      # - AGENTSNIFF_SMTP_HOST=smtp.example.com
+      # - AGENTSNIFF_SMTP_PORT=587
+      # - AGENTSNIFF_SMTP_USER=alerts@example.com
+      # - AGENTSNIFF_SMTP_PASSWORD=your-password
+      # - AGENTSNIFF_SMTP_FROM=agentsniff@example.com
+      # - AGENTSNIFF_SMTP_TO=admin@example.com,security@example.com
     # Network mode: host gives full network visibility for passive monitoring
     # Use bridge mode for active scanning only
     network_mode: host

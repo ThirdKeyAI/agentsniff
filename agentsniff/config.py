@@ -215,6 +215,25 @@ class ScanConfig:
     custom_agent_ports: dict[int, str] = field(default_factory=dict)
     custom_framework_signatures: dict[str, Any] = field(default_factory=dict)
 
+    # ── Alerting ──────────────────────────────────────────────────────
+    alert_enabled: bool = False
+    alert_min_agents: int = 1  # minimum agents to trigger alert
+    alert_min_confidence: str = "low"  # low, medium, high, confirmed
+    alert_cooldown: int = 0  # seconds between repeated alerts (0 = every scan)
+
+    # Webhook
+    webhook_url: str = ""
+    webhook_headers: dict[str, str] = field(default_factory=dict)
+
+    # SMTP email
+    smtp_host: str = ""
+    smtp_port: int = 587
+    smtp_user: str = ""
+    smtp_password: str = ""
+    smtp_use_tls: bool = True
+    smtp_from: str = ""
+    smtp_to: list[str] = field(default_factory=list)
+
     @property
     def all_llm_domains(self) -> list[str]:
         return LLM_API_DOMAINS + self.custom_llm_domains
@@ -263,7 +282,7 @@ class ScanConfig:
         return config
 
     def to_dict(self) -> dict:
-        return {k: v for k, v in self.__dict__.items()}
+        return {k: v for k, v in self.__dict__.items() if k != "smtp_password"}
 
 
 def default_config_yaml() -> str:
@@ -307,4 +326,28 @@ api_port: 9090
 custom_llm_domains: []
 custom_agent_ports: {}
 custom_framework_signatures: {}
+
+# ─────────────────────────────────────────────────────────
+# Alerting
+# ─────────────────────────────────────────────────────────
+# alert_enabled: false
+# alert_min_agents: 1          # minimum agents to trigger alert
+# alert_min_confidence: low    # low, medium, high, confirmed
+# alert_cooldown: 0            # seconds between repeated alerts (0 = every scan)
+
+# Webhook notifications
+# webhook_url: "https://hooks.example.com/agentsniff"
+# webhook_headers:
+#   Authorization: "Bearer YOUR_TOKEN"
+
+# Email notifications (SMTP)
+# smtp_host: "smtp.example.com"
+# smtp_port: 587
+# smtp_user: "alerts@example.com"
+# smtp_password: "your-password"
+# smtp_use_tls: true
+# smtp_from: "agentsniff@example.com"
+# smtp_to:
+#   - "admin@example.com"
+#   - "security@example.com"
 """

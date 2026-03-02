@@ -311,6 +311,10 @@
     gap: 12px;
   }
 
+  .field-row .toggle-row {
+    flex: 0 0 auto;
+  }
+
   .field-row label {
     flex: 0 0 120px;
     font-size: 12px;
@@ -341,13 +345,18 @@
     display: flex;
     align-items: center;
     gap: 8px;
+    flex: none;
   }
 
   .toggle {
     position: relative;
+    display: inline-block;
     width: 36px;
+    min-width: 36px;
+    max-width: 36px;
     height: 20px;
     cursor: pointer;
+    flex: 0 0 36px;
   }
 
   .toggle input { display: none; }

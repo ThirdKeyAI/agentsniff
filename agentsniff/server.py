@@ -261,13 +261,31 @@ async def scan_stream(
 
         yield f"data: {json.dumps({'event': 'scan_started', 'network': config.target_network, 'host_count': len(targets), 'detectors': detector_names})}\n\n"
 
-        try:
-            result = await run_scan(config, cancel_event=cancel_event)
+        # Use a queue to bridge the on_agent_update callback to the SSE generator
+        agent_queue: asyncio.Queue = asyncio.Queue()
 
-            # Send agents one at a time for progressive rendering
-            for agent in result.agents_detected:
-                yield f"data: {json.dumps({'event': 'agent_detected', 'agent': agent.to_dict()})}\n\n"
-                await asyncio.sleep(0.05)
+        async def _on_agent(agent):
+            await agent_queue.put(agent.to_dict())
+
+        try:
+            scan_task = asyncio.create_task(
+                run_scan(config, cancel_event=cancel_event, on_agent_update=_on_agent)
+            )
+
+            # Yield agent events as they arrive, until the scan task finishes
+            while not scan_task.done():
+                try:
+                    agent_dict = await asyncio.wait_for(agent_queue.get(), timeout=0.5)
+                    yield f"data: {json.dumps({'event': 'agent_detected', 'agent': agent_dict})}\n\n"
+                except asyncio.TimeoutError:
+                    continue
+
+            # Drain any remaining queued agents
+            while not agent_queue.empty():
+                agent_dict = agent_queue.get_nowait()
+                yield f"data: {json.dumps({'event': 'agent_detected', 'agent': agent_dict})}\n\n"
+
+            result = scan_task.result()
 
             if cancel_event.is_set():
                 yield f"data: {json.dumps({'event': 'scan_cancelled', 'summary': result.summary})}\n\n"

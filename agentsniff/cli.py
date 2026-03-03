@@ -208,6 +208,12 @@ def print_csv(result):
         )
 
 
+def print_sarif(result):
+    """Print scan results as SARIF 2.1.0 JSON."""
+    from agentsniff.sarif_export import scan_result_to_sarif
+    print(scan_result_to_sarif(result))
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="agentsniff",
@@ -245,7 +251,7 @@ Examples:
         help="Path to YAML configuration file",
     )
     scan_parser.add_argument(
-        "--format", "-f", choices=["table", "json", "csv"], default="table",
+        "--format", "-f", choices=["table", "json", "csv", "sarif"], default="table",
         help="Output format (default: table)",
     )
     scan_parser.add_argument(
@@ -443,6 +449,9 @@ def _output_result(result, config: ScanConfig):
         with open(config.output_file, "w") as f:
             if config.output_format == "json":
                 json.dump(result.to_dict(), f, indent=2, default=str)
+            elif config.output_format == "sarif":
+                from agentsniff.sarif_export import scan_result_to_sarif
+                f.write(scan_result_to_sarif(result))
             elif config.output_format == "csv":
                 # Redirect stdout temporarily
                 import io
@@ -465,6 +474,8 @@ def _output_result(result, config: ScanConfig):
             print_json(result)
         elif config.output_format == "csv":
             print_csv(result)
+        elif config.output_format == "sarif":
+            print_sarif(result)
         else:
             print_table(result)
 

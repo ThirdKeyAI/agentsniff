@@ -871,6 +871,7 @@ let scanning = false;
 let activeEventSource = null;
 let scanTimer = null;
 let scanStartTime = null;
+let liveScanState = null; // {network, hostCount, detectors, agents} when viewing history during a scan
 
 // Check for in-progress or completed scan on page load
 async function init() {
@@ -1083,6 +1084,7 @@ function toggleDetail(idx) {
 function resetScanUI() {
   scanning = false;
   activeEventSource = null;
+  liveScanState = null;
   if (scanTimer) { clearInterval(scanTimer); scanTimer = null; }
   scanStartTime = null;
   const btn = document.getElementById('scanBtn');
@@ -1133,6 +1135,7 @@ function estimateScanTime(hostCount, detectors) {
 }
 
 function showScanProgress(network, hostCount, detectors) {
+  liveScanState = { network, hostCount, detectors };
   const detectorCount = detectors ? detectors.length : '?';
   const hosts = hostCount || '?';
   const estimate = estimateScanTime(hostCount, detectors);
@@ -1147,6 +1150,17 @@ function showScanProgress(network, hostCount, detectors) {
     ${estimateHtml}
     ${detectors ? `<p style="margin-top:8px;font-size:11px;color:var(--text-dim)">${detectors.join(' · ')}</p>` : ''}
   </div>`;
+}
+
+function returnToLiveScan() {
+  if (!scanning || !liveScanState) return;
+  showScanProgress(liveScanState.network, liveScanState.hostCount, liveScanState.detectors);
+  // Re-render live agents if any have been detected
+  if (liveScanState.agents && liveScanState.agents.length > 0) {
+    renderAgents(liveScanState.agents);
+  }
+  startElapsedTimer();
+  log('Returned to live scan view');
 }
 
 async function stopScan() {
@@ -1215,6 +1229,7 @@ async function startScan() {
 
       if (data.event === 'agent_detected') {
         agents.push(data.agent);
+        if (liveScanState) liveScanState.agents = agents;
         renderAgents(agents);
         log(`Detected: ${data.agent.ip_address} (${data.agent.agent_type})`);
       }
@@ -1559,6 +1574,15 @@ async function loadHistoryScan(scanId) {
     lastResult = data;
     if (data.summary) updateStats(data.summary);
     renderAgents(data.agents || []);
+    // Show "back to live scan" banner if a scan is currently running
+    if (scanning) {
+      const container = document.getElementById('agentsTable');
+      const banner = document.createElement('div');
+      banner.style.cssText = 'padding:10px 16px;background:var(--surface2);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;font-size:12px;';
+      banner.innerHTML = `<span style="color:var(--yellow)">⟐ Viewing historical scan — a live scan is in progress</span>
+        <button onclick="returnToLiveScan()" style="padding:4px 12px;font-size:11px">Back to live scan</button>`;
+      container.insertBefore(banner, container.firstChild);
+    }
     log('Loaded historical scan: ' + (data.agents || []).length + ' agents');
   } catch (e) {
     log('Failed to load scan: ' + e.message);

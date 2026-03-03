@@ -1164,8 +1164,11 @@ function returnToLiveScan() {
 }
 
 async function stopScan() {
+  const stopBtn = document.getElementById('stopBtn');
+  stopBtn.disabled = true;
+  stopBtn.textContent = 'Stopping...';
   log('Stopping scan...');
-  // Close SSE connection first to stop receiving events
+  // Close SSE connection so we don't receive stale events
   if (activeEventSource) {
     activeEventSource.close();
     activeEventSource = null;
@@ -1175,9 +1178,28 @@ async function stopScan() {
     const data = await resp.json();
     if (resp.ok) {
       log('Stop requested: ' + (data.status || 'ok'));
+      // Poll for final results since we closed SSE
+      const poll = setInterval(async () => {
+        try {
+          const r = await fetch('/api/scan/status');
+          const s = await r.json();
+          if (s.status !== 'running') {
+            clearInterval(poll);
+            if (s.status === 'cancelled' || s.status === 'completed') {
+              lastResult = s;
+              if (s.summary) updateStats(s.summary);
+              renderAgents(s.agents || []);
+              log(`Scan stopped — ${(s.agents || []).length} agent(s) found`);
+            }
+            resetScanUI();
+          }
+        } catch (e) {
+          clearInterval(poll);
+          resetScanUI();
+        }
+      }, 500);
     } else {
       log('Stop: ' + (data.error || 'failed'));
-      // Even if server says no scan running, reset UI since we closed SSE
       resetScanUI();
     }
   } catch (e) {

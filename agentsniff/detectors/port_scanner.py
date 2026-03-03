@@ -35,9 +35,11 @@ SERVICE_BANNERS = [
     (b"+PONG", "redis"),
 ]
 
-# Agent-relevant services that warrant HIGH confidence
+# Agent-relevant services that warrant HIGH confidence.
+# Generic HTTP/HTML is excluded — any web server responds with HTTP.
 AGENT_SERVICES = {
-    "ollama", "grpc_or_http2", "http", "http_html",
+    "ollama", "grpc_or_http2", "qdrant", "weaviate", "milvus",
+    "redis", "redis_error",
 }
 
 # HTTP probe payloads for service identification on open ports

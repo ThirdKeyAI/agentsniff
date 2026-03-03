@@ -185,7 +185,7 @@ async def test_probe_metadata_markdown_with_keywords(detector):
     timeout = aiohttp.ClientTimeout(total=2.0)
     connector = aiohttp.TCPConnector(ssl=False, limit=10)
     async with aiohttp.ClientSession(timeout=timeout, connector=connector) as session:
-        body = "# Agent Documentation\nThis agent uses an LLM tool for API calls."
+        body = "# AI Agent Documentation\nThis agent uses an LLM with MCP tool_call integration."
         mock_resp = _mock_response(status=200, body=body)
         with patch.object(session, "get", return_value=mock_resp):
             signals = await detector._probe_metadata(
@@ -244,6 +244,8 @@ async def test_probe_openapi_swagger_ui_html(detector):
             )
     assert len(signals) == 1
     assert signals[0].signal_type == "agent_openapi_spec"
+    # Generic Swagger UI without AI keywords gets LOW confidence
+    assert signals[0].confidence == Confidence.LOW
 
 
 @pytest.mark.asyncio

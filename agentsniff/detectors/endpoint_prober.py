@@ -183,9 +183,8 @@ class EndpointProberDetector(BaseDetector):
                             )
                         )
 
-                    # Check if endpoint returned meaningful content
+                    # Check if endpoint returned framework-identifiable content
                     if resp.status < 300 and len(body) > 0:
-                        # Check for framework markers in body
                         body_lower = body[:4096].lower()
                         fw_lower = fw_name.lower().replace("_", "")
 
@@ -198,34 +197,32 @@ class EndpointProberDetector(BaseDetector):
                             )
                         )
 
-                        confidence = (
-                            Confidence.HIGH if body_match else Confidence.MEDIUM
-                        )
-
-                        signals.append(
-                            DetectionSignal(
-                                detector=DetectorType.ENDPOINT_PROBER,
-                                signal_type="framework_endpoint_match",
-                                description=(
-                                    f"{fw_name} endpoint active at {url} "
-                                    f"(status {resp.status}"
-                                    f"{', body match' if body_match else ''})"
-                                ),
-                                confidence=confidence,
-                                evidence={
-                                    "host": host,
-                                    "port": port,
-                                    "framework": fw_name,
-                                    "path": path,
-                                    "url": url,
-                                    "status_code": resp.status,
-                                    "content_length": len(body),
-                                    "body_match": body_match,
-                                    "content_sample": body[:500],
-                                    "matched_headers": matched_headers,
-                                },
+                        # Only emit a signal if the framework name appears
+                        # in the response body — a bare 200 OK is not evidence
+                        if body_match:
+                            signals.append(
+                                DetectionSignal(
+                                    detector=DetectorType.ENDPOINT_PROBER,
+                                    signal_type="framework_endpoint_match",
+                                    description=(
+                                        f"{fw_name} endpoint active at {url} "
+                                        f"(status {resp.status}, body match)"
+                                    ),
+                                    confidence=Confidence.HIGH,
+                                    evidence={
+                                        "host": host,
+                                        "port": port,
+                                        "framework": fw_name,
+                                        "path": path,
+                                        "url": url,
+                                        "status_code": resp.status,
+                                        "content_length": len(body),
+                                        "body_match": True,
+                                        "content_sample": body[:500],
+                                        "matched_headers": matched_headers,
+                                    },
+                                )
                             )
-                        )
 
             except (aiohttp.ClientError, asyncio.TimeoutError, OSError):
                 pass
@@ -257,36 +254,49 @@ class EndpointProberDetector(BaseDetector):
                     if not body or len(body) < 10:
                         return []
 
-                    # Validate content based on path type
+                    # Validate content — require actual agent-specific structure
                     is_valid = False
                     metadata_type = "unknown"
+                    confidence = Confidence.HIGH
 
                     if path.endswith(".json"):
                         try:
                             doc = json.loads(body)
                             if isinstance(doc, dict):
-                                is_valid = True
-                                if "agents" in doc or "agent" in doc:
+                                # /.well-known/agents.json must have "agents" array
+                                if "agents" in doc and isinstance(doc["agents"], list):
+                                    is_valid = True
                                     metadata_type = "agent_directory"
-                                elif "api" in doc or "schema_version" in doc:
+                                    confidence = Confidence.CONFIRMED
+                                # /.well-known/ai-plugin.json per OpenAI ChatGPT plugin spec
+                                elif (
+                                    "name_for_model" in doc
+                                    or "description_for_model" in doc
+                                    or (
+                                        "schema_version" in doc
+                                        and "name_for_human" in doc
+                                    )
+                                ):
+                                    is_valid = True
                                     metadata_type = "ai_plugin"
-                                else:
-                                    metadata_type = "json_document"
+                                    confidence = Confidence.CONFIRMED
                         except json.JSONDecodeError:
                             return []
                     elif path.endswith(".md"):
-                        # Markdown agent docs — check for agent-related content
+                        # Markdown agent docs — require strong AI-specific keywords
                         body_lower = body[:4096].lower()
-                        agent_keywords = [
-                            "agent", "capability", "tool", "skill",
-                            "llm", "model", "api",
+                        strong_keywords = [
+                            "llm", "large language model", "ai agent",
+                            "mcp", "model context protocol", "langchain",
+                            "autogen", "crewai", "tool_call", "function_call",
                         ]
                         keyword_hits = sum(
-                            1 for kw in agent_keywords if kw in body_lower
+                            1 for kw in strong_keywords if kw in body_lower
                         )
                         if keyword_hits >= 2:
                             is_valid = True
                             metadata_type = "agent_markdown"
+                            confidence = Confidence.HIGH
 
                     if is_valid:
                         signals.append(
@@ -297,7 +307,7 @@ class EndpointProberDetector(BaseDetector):
                                     f"Agent metadata document at {url} "
                                     f"(type: {metadata_type})"
                                 ),
-                                confidence=Confidence.CONFIRMED,
+                                confidence=confidence,
                                 evidence={
                                     "host": host,
                                     "port": port,
@@ -342,7 +352,16 @@ class EndpointProberDetector(BaseDetector):
                         return []
 
                     is_openapi = False
+                    is_agent_api = False
                     spec_info = {}
+
+                    # AI-related keywords in API spec title/description/paths
+                    _AI_SPEC_KEYWORDS = {
+                        "agent", "llm", "chat", "completion", "embedding",
+                        "langchain", "autogen", "crewai", "assistant",
+                        "tool_call", "function_call", "prompt", "inference",
+                        "mcp", "workflow", "rag",
+                    }
 
                     # JSON spec
                     if "json" in content_type or path.endswith(".json"):
@@ -351,20 +370,29 @@ class EndpointProberDetector(BaseDetector):
                             if isinstance(doc, dict):
                                 if "openapi" in doc or "swagger" in doc:
                                     is_openapi = True
+                                    title = doc.get("info", {}).get(
+                                        "title", "unknown"
+                                    )
+                                    description = doc.get("info", {}).get(
+                                        "description", ""
+                                    )
                                     spec_info = {
                                         "version": doc.get(
                                             "openapi", doc.get("swagger", "?")
                                         ),
-                                        "title": doc.get("info", {}).get(
-                                            "title", "unknown"
-                                        ),
-                                        "description": doc.get("info", {}).get(
-                                            "description", ""
-                                        )[:200],
+                                        "title": title,
+                                        "description": description[:200],
                                         "paths_count": len(
                                             doc.get("paths", {})
                                         ),
                                     }
+                                    # Check if the spec looks AI-agent-related
+                                    searchable = (
+                                        f"{title} {description} "
+                                        f"{' '.join(doc.get('paths', {}).keys())}"
+                                    ).lower()
+                                    if any(kw in searchable for kw in _AI_SPEC_KEYWORDS):
+                                        is_agent_api = True
                         except json.JSONDecodeError:
                             pass
 
@@ -379,8 +407,13 @@ class EndpointProberDetector(BaseDetector):
                         ):
                             is_openapi = True
                             spec_info = {"type": "docs_ui"}
+                            if any(kw in body_lower for kw in _AI_SPEC_KEYWORDS):
+                                is_agent_api = True
 
                     if is_openapi:
+                        # HIGH if spec content references AI/agent concepts,
+                        # LOW if it's just a generic API spec (Gitea, Pi-hole, etc.)
+                        confidence = Confidence.HIGH if is_agent_api else Confidence.LOW
                         signals.append(
                             DetectionSignal(
                                 detector=DetectorType.ENDPOINT_PROBER,
@@ -389,7 +422,7 @@ class EndpointProberDetector(BaseDetector):
                                     f"OpenAPI spec at {url} "
                                     f"(title: {spec_info.get('title', 'unknown')})"
                                 ),
-                                confidence=Confidence.HIGH,
+                                confidence=confidence,
                                 evidence={
                                     "host": host,
                                     "port": port,
@@ -397,6 +430,7 @@ class EndpointProberDetector(BaseDetector):
                                     "url": url,
                                     "spec_info": spec_info,
                                     "content_type": content_type,
+                                    "ai_related": is_agent_api,
                                 },
                             )
                         )

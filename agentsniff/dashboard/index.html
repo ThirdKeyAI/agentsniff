@@ -97,6 +97,30 @@
     border: 1px solid var(--border);
   }
 
+  .export-dropdown { position: relative; }
+  .export-menu {
+    display: none;
+    position: absolute;
+    top: 100%;
+    right: 0;
+    margin-top: 4px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    min-width: 100px;
+    z-index: 100;
+    overflow: hidden;
+  }
+  .export-menu.open { display: block; }
+  .export-item {
+    padding: 8px 16px;
+    cursor: pointer;
+    font-size: 13px;
+    color: var(--text);
+    transition: background 0.15s;
+  }
+  .export-item:hover { background: var(--surface); }
+
   .main { padding: 24px 32px; }
 
   .stats-row {
@@ -446,8 +470,13 @@
     <input type="text" id="networkInput" placeholder="192.168.1.0/24" value="192.168.1.0/24">
     <button id="scanBtn" onclick="startScan()">⟐ Scan Network</button>
     <button id="stopBtn" class="secondary" onclick="stopScan()" style="display:none;background:var(--red);color:#fff;border:none">■ Stop</button>
-    <button class="secondary" onclick="exportJSON()">↓ JSON</button>
-    <button class="secondary" onclick="exportCSV()">↓ CSV</button>
+    <div class="export-dropdown">
+      <button class="secondary" onclick="toggleExportMenu()">↓ Export</button>
+      <div class="export-menu" id="exportMenu">
+        <div class="export-item" onclick="exportJSON()">JSON</div>
+        <div class="export-item" onclick="exportCSV()">CSV</div>
+      </div>
+    </div>
     <button class="settings-btn" onclick="openSettings()" title="Settings">⚙</button>
   </div>
 </div>
@@ -769,14 +798,42 @@ function startElapsedTimer() {
   }, 1000);
 }
 
+function estimateScanTime(hostCount, detectors) {
+  if (!hostCount || !detectors) return null;
+  // Base time: passive monitors run in parallel (dns=60s, tls=30s, traffic=30s)
+  let baseSecs = 0;
+  if (detectors.includes('dns_monitor')) baseSecs = Math.max(baseSecs, 60);
+  if (detectors.includes('tls_fingerprint')) baseSecs = Math.max(baseSecs, 30);
+  if (detectors.includes('traffic_analyzer')) baseSecs = Math.max(baseSecs, 30);
+  // HTTP probers: hosts × ports × timeout, but concurrent (20 at a time)
+  let probeRequests = 0;
+  if (detectors.includes('agentpin_prober')) probeRequests += hostCount * 6;
+  if (detectors.includes('mcp_detector')) probeRequests += hostCount * 7;
+  if (detectors.includes('endpoint_prober')) probeRequests += hostCount * 4;
+  if (detectors.includes('tls_fingerprint')) probeRequests += hostCount * 5;
+  const concurrency = 20;
+  const timeoutSecs = 5;
+  const probeSecs = Math.ceil(probeRequests / concurrency) * timeoutSecs;
+  // Probers run in parallel with passive monitors, take the max
+  const totalSecs = Math.max(baseSecs, probeSecs);
+  if (totalSecs < 60) return `~${totalSecs}s`;
+  const mins = Math.ceil(totalSecs / 60);
+  return `~${mins} min`;
+}
+
 function showScanProgress(network, hostCount, detectors) {
   const detectorCount = detectors ? detectors.length : '?';
   const hosts = hostCount || '?';
+  const estimate = estimateScanTime(hostCount, detectors);
+  const estimateHtml = estimate
+    ? `<p style="margin-top:8px;font-size:12px;color:var(--text-dim)">Estimated time: ${estimate}</p>`
+    : '';
   document.getElementById('agentsTable').innerHTML = `<div class="empty-state">
     <div class="spinner" style="width:32px;height:32px;border-width:3px"></div>
     <h3 style="margin-top:16px">Scanning Network</h3>
     <p>Scanning ${hosts} hosts with ${detectorCount} detectors on ${network}</p>
     <p style="margin-top:12px;font-size:20px;font-weight:600;color:var(--accent)" id="scanElapsed">0s</p>
+    ${estimateHtml}
     ${detectors ? `<p style="margin-top:8px;font-size:11px;color:var(--text-dim)">${detectors.join(' · ')}</p>` : ''}
   </div>`;
 }
@@ -892,6 +949,16 @@ async function startScan() {
   }
 }
 
+function toggleExportMenu() {
+  document.getElementById('exportMenu').classList.toggle('open');
+}
+document.addEventListener('click', e => {
+  const dd = document.querySelector('.export-dropdown');
+  if (dd && !dd.contains(e.target)) {
+    document.getElementById('exportMenu').classList.remove('open');
+  }
+});
+
 function exportJSON() {
   if (!lastResult) { log('No results to export'); return; }
   const blob = new Blob([JSON.stringify(lastResult, null, 2)], { type: 'application/json' });
@@ -902,6 +969,7 @@ function exportJSON() {
   a.click();
   URL.revokeObjectURL(url);
   log('Results exported as JSON');
+  document.getElementById('exportMenu').classList.remove('open');
 }
 
 function exportCSV() {
@@ -927,6 +995,7 @@ function exportCSV() {
   a.click();
   URL.revokeObjectURL(url);
   log('Results exported as CSV');
+  document.getElementById('exportMenu').classList.remove('open');
 }
 
 // ── Settings modal ──────────────────────────────────────────────────

@@ -447,6 +447,72 @@
   .toast.success { border-color: var(--green); color: var(--green); }
   .toast.error { border-color: var(--red); color: var(--red); }
 
+  .history-panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    margin-top: 24px;
+    overflow: hidden;
+  }
+
+  .history-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 16px;
+    cursor: pointer;
+    user-select: none;
+    transition: background 0.15s;
+  }
+  .history-header:hover { background: var(--surface2); }
+
+  .history-header h3 {
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--text-dim);
+  }
+
+  .history-toggle {
+    font-size: 12px;
+    color: var(--text-dim);
+    transition: transform 0.2s;
+  }
+  .history-toggle.open { transform: rotate(180deg); }
+
+  .history-body { display: none; }
+  .history-body.open { display: block; }
+
+  .history-body table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+  .history-body th {
+    text-align: left;
+    padding: 8px 16px;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--text-dim);
+    background: var(--surface2);
+    border-bottom: 1px solid var(--border);
+  }
+  .history-body td {
+    padding: 8px 16px;
+    font-size: 12px;
+    border-bottom: 1px solid var(--border);
+    cursor: pointer;
+  }
+  .history-body tr:last-child td { border-bottom: none; }
+  .history-body tr:hover td { background: rgba(0, 212, 170, 0.03); }
+
+  .history-empty {
+    padding: 20px 16px;
+    text-align: center;
+    font-size: 12px;
+    color: var(--text-dim);
+  }
+
   .site-footer {
     text-align: center;
     padding: 16px 32px;
@@ -457,6 +523,67 @@
   }
   .site-footer a { color: var(--accent-dim); text-decoration: none; }
   .site-footer a:hover { color: var(--accent); text-decoration: underline; }
+
+  .detector-bar {
+    padding: 8px 32px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+
+  .detector-bar .label {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--text-dim);
+    margin-right: 4px;
+    flex-shrink: 0;
+  }
+
+  .detector-toggle {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+    user-select: none;
+  }
+
+  .detector-toggle input[type="checkbox"] {
+    appearance: none;
+    width: 14px;
+    height: 14px;
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    background: var(--surface2);
+    cursor: pointer;
+    position: relative;
+    flex-shrink: 0;
+  }
+
+  .detector-toggle input[type="checkbox"]:checked {
+    background: var(--accent-dim);
+    border-color: var(--accent);
+  }
+
+  .detector-toggle input[type="checkbox"]:checked::after {
+    content: "✓";
+    position: absolute;
+    top: -1px;
+    left: 2px;
+    font-size: 11px;
+    color: var(--bg);
+    font-weight: 700;
+  }
+
+  .detector-toggle span {
+    font-size: 12px;
+    color: var(--text-dim);
+  }
+
+  .detector-toggle:hover span { color: var(--text); }
 </style>
 </head>
 <body>
@@ -479,6 +606,17 @@
     </div>
     <button class="settings-btn" onclick="openSettings()" title="Settings">⚙</button>
   </div>
+</div>
+
+<div class="detector-bar">
+  <span class="label">Detectors</span>
+  <label class="detector-toggle"><input type="checkbox" id="det_dns_monitor" checked><span>DNS</span></label>
+  <label class="detector-toggle"><input type="checkbox" id="det_port_scanner" checked><span>Ports</span></label>
+  <label class="detector-toggle"><input type="checkbox" id="det_agentpin_prober" checked><span>AgentPin</span></label>
+  <label class="detector-toggle"><input type="checkbox" id="det_mcp_detector" checked><span>MCP</span></label>
+  <label class="detector-toggle"><input type="checkbox" id="det_endpoint_prober" checked><span>Endpoints</span></label>
+  <label class="detector-toggle"><input type="checkbox" id="det_tls_fingerprint" checked><span>TLS</span></label>
+  <label class="detector-toggle"><input type="checkbox" id="det_traffic_analyzer" checked><span>Traffic</span></label>
 </div>
 
 <div class="main">
@@ -514,6 +652,16 @@
       <div class="icon">⊘</div>
       <h3>Ready to Scan</h3>
       <p>Enter a network range and click Scan to detect AI agents</p>
+    </div>
+  </div>
+
+  <div class="history-panel" id="historyPanel">
+    <div class="history-header" onclick="toggleHistory()">
+      <h3>Scan History</h3>
+      <span class="history-toggle" id="historyToggle">▼</span>
+    </div>
+    <div class="history-body" id="historyBody">
+      <div class="history-empty" id="historyEmpty">No scan history yet</div>
     </div>
   </div>
 
@@ -602,6 +750,14 @@
         <div class="field-row">
           <label>To</label>
           <input type="text" id="setSmtpTo" placeholder="admin@example.com, security@example.com">
+        </div>
+      </div>
+      <div class="modal-section">
+        <h3>Database</h3>
+        <div class="field-row" style="justify-content:flex-start;gap:12px">
+          <label style="flex:0 0 120px">Scan History</label>
+          <button class="secondary" onclick="backupDB()" style="font-size:12px;padding:6px 14px">↓ Download Backup</button>
+          <button class="danger" onclick="confirmResetDB()" style="font-size:12px;padding:6px 14px">Reset Database</button>
         </div>
       </div>
     </div>
@@ -782,6 +938,10 @@ function resetScanUI() {
   btn.disabled = false;
   btn.innerHTML = '⟐ Scan Network';
   document.getElementById('stopBtn').style.display = 'none';
+  // Refresh history if panel is open
+  if (document.getElementById('historyBody').classList.contains('open')) {
+    loadHistory();
+  }
 }
 
 function startElapsedTimer() {
@@ -840,14 +1000,24 @@ function showScanProgress(network, hostCount, detectors) {
 
 async function stopScan() {
   log('Stopping scan...');
-  try {
-    await fetch('/api/scan/stop', { method: 'POST' });
-  } catch (e) {
-    log(`Stop request failed: ${e.message}`);
-  }
+  // Close SSE connection first to stop receiving events
   if (activeEventSource) {
     activeEventSource.close();
     activeEventSource = null;
+  }
+  try {
+    const resp = await fetch('/api/scan/stop', { method: 'POST' });
+    const data = await resp.json();
+    if (resp.ok) {
+      log('Stop requested: ' + (data.status || 'ok'));
+    } else {
+      log('Stop: ' + (data.error || 'failed'));
+      // Even if server says no scan running, reset UI since we closed SSE
+      resetScanUI();
+    }
+  } catch (e) {
+    log(`Stop request failed: ${e.message}`);
+    resetScanUI();
   }
 }
 
@@ -861,7 +1031,15 @@ async function startScan() {
   document.getElementById('stopBtn').style.display = '';
 
   const network = document.getElementById('networkInput').value || '192.168.1.0/24';
-  log(`Starting scan of ${network}...`);
+
+  // Collect enabled detectors
+  const allDetectors = ['dns_monitor','port_scanner','agentpin_prober','mcp_detector','endpoint_prober','tls_fingerprint','traffic_analyzer'];
+  const enabledDetectors = allDetectors.filter(d => document.getElementById('det_' + d).checked);
+  const detectorsParam = enabledDetectors.length < allDetectors.length
+    ? '&detectors=' + encodeURIComponent(enabledDetectors.join(','))
+    : '';
+
+  log(`Starting scan of ${network} with ${enabledDetectors.length} detectors...`);
 
   // Reset stats
   ['statTotal','statConfirmed','statHigh','statSuspected','statDuration'].forEach(
@@ -873,7 +1051,7 @@ async function startScan() {
 
   try {
     // Try SSE streaming first
-    const evtSource = new EventSource(`/api/scan/stream?network=${encodeURIComponent(network)}`);
+    const evtSource = new EventSource(`/api/scan/stream?network=${encodeURIComponent(network)}${detectorsParam}`);
     activeEventSource = evtSource;
     const agents = [];
 
@@ -919,7 +1097,7 @@ async function startScan() {
       // Fallback to REST API
       log('SSE unavailable, using REST API...');
       try {
-        const resp = await fetch(`/api/scan?network=${encodeURIComponent(network)}`, { method: 'POST' });
+        const resp = await fetch(`/api/scan?network=${encodeURIComponent(network)}${detectorsParam}`, { method: 'POST' });
         const data = await resp.json();
         log(`Scan started: ${data.scan_id}`);
 
@@ -1093,10 +1271,125 @@ async function testAlert() {
   }
 }
 
+// ── Database management ─────────────────────────────────────────────
+
+function backupDB() {
+  log('Downloading database backup...');
+  const a = document.createElement('a');
+  a.href = '/api/db/backup';
+  a.download = '';
+  a.click();
+  showToast('Backup download started', 'success');
+}
+
+function confirmResetDB() {
+  if (!confirm('Are you sure you want to delete ALL scan history? This cannot be undone.')) return;
+  if (!confirm('This will permanently erase all scans, agents, and signals from the database. Continue?')) return;
+  resetDB();
+}
+
+async function resetDB() {
+  try {
+    const resp = await fetch('/api/db/reset', { method: 'POST' });
+    const data = await resp.json();
+    if (resp.ok) {
+      showToast('Database reset successfully', 'success');
+      log('Database reset: all scan data deleted');
+      // Clear UI
+      document.getElementById('agentsTable').innerHTML = `<div class="empty-state">
+        <div class="icon">⊘</div><h3>Ready to Scan</h3>
+        <p>Enter a network range and click Scan to detect AI agents</p>
+      </div>`;
+      ['statTotal','statConfirmed','statHigh','statSuspected','statDuration','statDetectors'].forEach(
+        id => document.getElementById(id).textContent = '—'
+      );
+      lastResult = null;
+      if (document.getElementById('historyBody').classList.contains('open')) loadHistory();
+    } else {
+      showToast('Reset failed: ' + (data.error || 'unknown'), 'error');
+    }
+  } catch (e) {
+    showToast('Reset failed: ' + e.message, 'error');
+    log('Database reset error: ' + e.message);
+  }
+}
+
 // Close settings on Escape
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') closeSettings();
 });
+
+// ── Scan History ────────────────────────────────────────────────────
+
+function toggleHistory() {
+  const body = document.getElementById('historyBody');
+  const toggle = document.getElementById('historyToggle');
+  body.classList.toggle('open');
+  toggle.classList.toggle('open');
+  if (body.classList.contains('open')) loadHistory();
+}
+
+async function loadHistory() {
+  try {
+    const resp = await fetch('/api/scan/history?limit=20');
+    const data = await resp.json();
+    renderHistory(data.scans || []);
+  } catch (e) {
+    log('Failed to load history: ' + e.message);
+  }
+}
+
+function renderHistory(scans) {
+  const body = document.getElementById('historyBody');
+
+  if (!scans || scans.length === 0) {
+    body.innerHTML = '<div class="history-empty">No scan history yet</div>';
+    return;
+  }
+
+  let html = `<table>
+    <thead><tr>
+      <th>Time</th><th>Network</th><th>Agents</th><th>Status</th><th>Duration</th>
+    </tr></thead><tbody>`;
+
+  for (const scan of scans) {
+    const time = scan.started_at ? new Date(scan.started_at).toLocaleString() : '—';
+    const network = scan.target_network || '—';
+    const agents = scan.agent_count != null ? scan.agent_count : '—';
+    const status = scan.status || '—';
+    const summary = scan.summary || {};
+    const duration = summary.duration_seconds
+      ? summary.duration_seconds.toFixed(1) + 's'
+      : '—';
+    const statusClass = status === 'completed' ? 'verified' : (status === 'failed' ? 'low' : 'detected');
+
+    html += `<tr onclick="loadHistoryScan('${scan.scan_id}')">
+      <td>${time}</td>
+      <td>${network}</td>
+      <td>${agents}</td>
+      <td><span class="badge ${statusClass}">${status}</span></td>
+      <td>${duration}</td>
+    </tr>`;
+  }
+
+  html += '</tbody></table>';
+  body.innerHTML = html;
+}
+
+async function loadHistoryScan(scanId) {
+  try {
+    log('Loading scan ' + scanId.substring(0, 8) + '...');
+    const resp = await fetch('/api/scan/' + encodeURIComponent(scanId));
+    if (!resp.ok) { log('Scan not found'); return; }
+    const data = await resp.json();
+    lastResult = data;
+    if (data.summary) updateStats(data.summary);
+    renderAgents(data.agents || []);
+    log('Loaded historical scan: ' + (data.agents || []).length + ' agents');
+  } catch (e) {
+    log('Failed to load scan: ' + e.message);
+  }
+}
 
 // Restore state on page load
 init();

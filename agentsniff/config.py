@@ -254,7 +254,7 @@ class ScanConfig:
     port_scan_timeout: float = 2.0
     port_scan_concurrency: int = 100
     http_timeout: float = 5.0
-    http_concurrency: int = 20
+    http_concurrency: int = 100
     dns_monitor_duration: int = 60  # seconds for passive monitoring
     dns_interface: str = ""  # empty = auto-detect
     scan_interval: int = 0  # 0 = one-shot, >0 = continuous interval in seconds
@@ -270,6 +270,10 @@ class ScanConfig:
     api_host: str = "0.0.0.0"
     api_port: int = 9090
     api_cors_origins: list[str] = field(default_factory=lambda: ["*"])
+
+    # ── Storage ───────────────────────────────────────────────────────
+    db_path: str = ""          # empty = ~/.agentsniff/agentsniff.db
+    log_file: str = ""         # empty = no file logging
 
     # ── Custom signatures ────────────────────────────────────────────
     custom_llm_domains: list[str] = field(default_factory=list)
@@ -369,7 +373,7 @@ enable_traffic_analyzer: true
 port_scan_timeout: 2.0
 port_scan_concurrency: 100
 http_timeout: 5.0
-http_concurrency: 20
+http_concurrency: 100
 dns_monitor_duration: 60
 scan_interval: 0  # 0 = one-shot, >0 = continuous (seconds)
 
@@ -382,6 +386,10 @@ verbose: false
 api_enabled: false
 api_host: "0.0.0.0"
 api_port: 9090
+
+# Storage
+db_path: ""       # default: ~/.agentsniff/agentsniff.db
+log_file: ""      # empty = console only
 
 # Custom detection signatures
 custom_llm_domains: []

@@ -93,6 +93,8 @@ Scan Options:
   --continuous SECS    Repeat scan every N seconds
   --webhook-url URL    Webhook URL for alerts (auto-enables alerting)
   --smtp-to ADDR,ADDR  Email recipients for alerts (auto-enables alerting)
+  --db PATH            SQLite database path (default: ~/.agentsniff/agentsniff.db)
+  --log-file PATH      Log file path (default: no file logging)
   -v, --verbose        Debug logging
   -q, --quiet          Minimal output
 
@@ -100,6 +102,8 @@ Serve Options:
   --host ADDR          Bind address (default: 0.0.0.0)
   --port PORT          Bind port (default: 9090)
   --network CIDR       Default scan target
+  --db PATH            SQLite database path (default: ~/.agentsniff/agentsniff.db)
+  --log-file PATH      Log file path (default: no file logging)
 ```
 
 ## Detection Details
@@ -124,6 +128,40 @@ Computes JA3 hashes from TLS ClientHello messages to identify agent HTTP client 
 
 ### Traffic Analyzer
 Profiles network hosts by behavioral patterns characteristic of AI agents: bursty tool invocation sequences interspersed with LLM API calls (the observe-reason-act loop), streaming SSE connections, and diverse API target sets. Also analyzes `/proc/net/tcp` for established connections to known LLM API IP addresses.
+
+## Storage
+
+AgentSniff persists scan history to a local SQLite database. By default the database is at `~/.agentsniff/agentsniff.db` and is created automatically on first use.
+
+```bash
+# Use default database location
+agentsniff scan 192.168.1.0/24
+
+# Custom database path
+agentsniff scan 192.168.1.0/24 --db /var/lib/agentsniff/scans.db
+
+# Enable file logging alongside console output
+agentsniff scan 192.168.1.0/24 --log-file /var/log/agentsniff/scan.log
+
+# Both flags also work with the serve command
+agentsniff serve --db /var/lib/agentsniff/scans.db --log-file /var/log/agentsniff/server.log
+```
+
+Storage can also be configured in `agentsniff.yaml`:
+
+```yaml
+db_path: ""       # default: ~/.agentsniff/agentsniff.db
+log_file: ""      # empty = console only
+```
+
+Or via environment variables:
+
+```bash
+export AGENTSNIFF_DB_PATH="/var/lib/agentsniff/scans.db"
+export AGENTSNIFF_LOG_FILE="/var/log/agentsniff/scan.log"
+```
+
+The database stores full scan results including detected agents and signals. The web dashboard's Scan History panel loads from the database, so history persists across server restarts.
 
 ## Configuration
 
@@ -215,7 +253,8 @@ When running `agentsniff serve`:
 | `POST /api/scan` | `?network=CIDR` | Start a scan |
 | `GET /api/scan/status` | — | Current scan status |
 | `GET /api/scan/results` | — | Latest scan results |
-| `GET /api/scan/history` | — | Previous scan results |
+| `GET /api/scan/history` | `?limit=&offset=` | Previous scan results (from DB) |
+| `GET /api/scan/{scan_id}` | — | Get a specific historical scan |
 | `GET /api/agents` | — | All detected agents |
 | `GET /api/scan/stream` | SSE | Real-time scan streaming |
 | `GET /api/settings` | — | Get alert settings |

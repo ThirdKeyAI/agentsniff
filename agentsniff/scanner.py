@@ -11,6 +11,7 @@ import asyncio
 import ipaddress
 import logging
 import socket
+from collections.abc import Awaitable, Callable
 from datetime import datetime, timezone
 
 from agentsniff.config import ScanConfig
@@ -186,12 +187,17 @@ def _enrich_agent(agent: DetectedAgent, signal: DetectionSignal):
 async def run_scan(
     config: ScanConfig,
     cancel_event: asyncio.Event | None = None,
+    on_agent_update: Callable[[DetectedAgent], Awaitable[None]] | None = None,
 ) -> ScanResult:
     """
     Execute a complete network scan using all enabled detectors.
 
     If *cancel_event* is provided and becomes set, the scan will stop
     early and return partial results.
+
+    If *on_agent_update* is provided, it is called with each new or
+    updated DetectedAgent as detectors finish, enabling progressive
+    result streaming.
 
     Returns a ScanResult with correlated agent detections.
     """
@@ -236,13 +242,37 @@ async def run_scan(
         result.completed_at = datetime.now(timezone.utc)
         return result
 
-    # Run all detectors concurrently
+    # Run all detectors concurrently, streaming results as each finishes
     all_signals: list[DetectionSignal] = []
+    agents_by_host: dict[str, DetectedAgent] = {}
+    sent_agent_snapshots: dict[str, int] = {}  # host -> signal count when last sent
+
+    async def _correlate_and_notify(signals: list[DetectionSignal]):
+        """Incrementally correlate new signals and notify on new/changed agents."""
+        all_signals.extend(signals)
+        for signal in signals:
+            host = (
+                signal.evidence.get("host")
+                or signal.evidence.get("source_ip")
+                or "unknown"
+            )
+            if host == "unknown":
+                continue
+            if host not in agents_by_host:
+                agents_by_host[host] = DetectedAgent(host=host, ip_address=host)
+            agent = agents_by_host[host]
+            agent.add_signal(signal)
+            _enrich_agent(agent, signal)
+
+            if on_agent_update:
+                prev_count = sent_agent_snapshots.get(host, 0)
+                if len(agent.signals) > prev_count:
+                    sent_agent_snapshots[host] = len(agent.signals)
+                    await on_agent_update(agent)
 
     async def run_detector(detector):
         try:
-            signals = await detector.scan(targets)
-            return signals
+            return await detector.scan(targets)
         except asyncio.CancelledError:
             logger.info(f"Detector {detector.name} cancelled")
             return []
@@ -254,48 +284,80 @@ async def run_scan(
             })
             return []
 
-    tasks = [asyncio.create_task(run_detector(d)) for d in detectors]
+    tasks = {asyncio.create_task(run_detector(d)): d for d in detectors}
+    cancelled = False
 
     if cancel_event:
-        # Wait for either all detectors to finish or cancellation
         cancel_waiter = asyncio.create_task(cancel_event.wait())
-        detector_waiter = asyncio.gather(*tasks, return_exceptions=True)
+        pending = set(tasks.keys()) | {cancel_waiter}
 
-        done, _ = await asyncio.wait(
-            [cancel_waiter, detector_waiter],
-            return_when=asyncio.FIRST_COMPLETED,
-        )
+        while pending:
+            done, pending = await asyncio.wait(
+                pending, return_when=asyncio.FIRST_COMPLETED,
+            )
+            for t in done:
+                if t is cancel_waiter:
+                    cancelled = True
+                    logger.info("Scan cancelled — stopping detectors")
+                    for dt in list(pending):
+                        if dt is not cancel_waiter:
+                            dt.cancel()
+                    # Drain remaining tasks
+                    for dt in list(pending):
+                        if dt is not cancel_waiter:
+                            try:
+                                res = await dt
+                                if isinstance(res, list):
+                                    await _correlate_and_notify(res)
+                            except (asyncio.CancelledError, Exception):
+                                pass
+                    pending.clear()
+                    result.errors.append({"error": "Scan cancelled by user"})
+                    break
+                else:
+                    try:
+                        res = t.result()
+                        if isinstance(res, list):
+                            await _correlate_and_notify(res)
+                        elif isinstance(res, Exception):
+                            result.errors.append({"error": str(res)})
+                    except (asyncio.CancelledError, Exception) as e:
+                        result.errors.append({"error": str(e)})
 
-        if cancel_waiter in done:
-            logger.info("Scan cancelled — stopping detectors")
-            for t in tasks:
-                t.cancel()
-            # Collect whatever already finished
-            detector_results = []
-            for t in tasks:
-                try:
-                    detector_results.append(await t)
-                except (asyncio.CancelledError, Exception):
-                    detector_results.append([])
-            result.errors.append({"error": "Scan cancelled by user"})
-        else:
+            if cancelled:
+                break
+
+        if not cancelled:
             cancel_waiter.cancel()
-            detector_results = detector_waiter.result()
     else:
-        detector_results = await asyncio.gather(
-            *tasks, return_exceptions=True,
-        )
-
-    for res in detector_results:
-        if isinstance(res, list):
-            all_signals.extend(res)
-        elif isinstance(res, Exception):
-            result.errors.append({"error": str(res)})
+        pending = set(tasks.keys())
+        while pending:
+            done, pending = await asyncio.wait(
+                pending, return_when=asyncio.FIRST_COMPLETED,
+            )
+            for t in done:
+                try:
+                    res = t.result()
+                    if isinstance(res, list):
+                        await _correlate_and_notify(res)
+                    elif isinstance(res, Exception):
+                        result.errors.append({"error": str(res)})
+                except Exception as e:
+                    result.errors.append({"error": str(e)})
 
     logger.info(f"Collected {len(all_signals)} total signals")
 
-    # Correlate signals into agents
-    agents = correlate_signals(all_signals)
+    # Final correlation pass — set status and sort
+    agents = list(agents_by_host.values())
+    for agent in agents:
+        if agent.confidence_score >= 0.9:
+            agent.status = AgentStatus.VERIFIED
+        elif agent.confidence_score >= 0.5:
+            agent.status = AgentStatus.DETECTED
+        elif agent.confidence_score >= 0.2:
+            agent.status = AgentStatus.SUSPECTED
+
+    agents.sort(key=lambda a: a.confidence_score, reverse=True)
     result.agents_detected = agents
     result.completed_at = datetime.now(timezone.utc)
 

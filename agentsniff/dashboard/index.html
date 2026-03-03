@@ -736,6 +736,8 @@
     </div>
   </div>
 
+  <div id="scanProgressBar" style="display:none"></div>
+
   <div class="agents-table" id="agentsTable">
     <div class="empty-state" id="emptyState">
       <div class="icon">⊘</div>
@@ -1087,6 +1089,7 @@ function resetScanUI() {
   liveScanState = null;
   if (scanTimer) { clearInterval(scanTimer); scanTimer = null; }
   scanStartTime = null;
+  hideScanProgress();
   const btn = document.getElementById('scanBtn');
   btn.disabled = false;
   btn.innerHTML = '⟐ Scan Network';
@@ -1139,23 +1142,35 @@ function showScanProgress(network, hostCount, detectors) {
   const detectorCount = detectors ? detectors.length : '?';
   const hosts = hostCount || '?';
   const estimate = estimateScanTime(hostCount, detectors);
-  const estimateHtml = estimate
-    ? `<p style="margin-top:8px;font-size:12px;color:var(--text-dim)">Estimated time: ${estimate}</p>`
-    : '';
+  const estimateHtml = estimate ? ` · est. ${estimate}` : '';
+
+  // Compact progress bar shown above agents table
+  const bar = document.getElementById('scanProgressBar');
+  bar.style.display = '';
+  bar.innerHTML = `<div style="padding:12px 16px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);margin-bottom:12px;display:flex;align-items:center;gap:12px">
+    <div class="spinner" style="width:16px;height:16px;border-width:2px;flex-shrink:0"></div>
+    <span style="font-size:12px;color:var(--text)">Scanning <strong>${hosts}</strong> hosts on <strong>${network}</strong> with ${detectorCount} detectors</span>
+    <span style="font-size:14px;font-weight:600;color:var(--accent);margin-left:auto" id="scanElapsed">0s</span>
+    <span style="font-size:11px;color:var(--text-dim)">${estimateHtml}</span>
+  </div>`;
+
+  // Show empty state in agents table until first agent arrives
   document.getElementById('agentsTable').innerHTML = `<div class="empty-state">
     <div class="spinner" style="width:32px;height:32px;border-width:3px"></div>
     <h3 style="margin-top:16px">Scanning Network</h3>
-    <p>Scanning ${hosts} hosts with ${detectorCount} detectors on ${network}</p>
-    <p style="margin-top:12px;font-size:20px;font-weight:600;color:var(--accent)" id="scanElapsed">0s</p>
-    ${estimateHtml}
-    ${detectors ? `<p style="margin-top:8px;font-size:11px;color:var(--text-dim)">${detectors.join(' · ')}</p>` : ''}
+    <p>Waiting for detector results...</p>
   </div>`;
+}
+
+function hideScanProgress() {
+  const bar = document.getElementById('scanProgressBar');
+  bar.style.display = 'none';
+  bar.innerHTML = '';
 }
 
 function returnToLiveScan() {
   if (!scanning || !liveScanState) return;
   showScanProgress(liveScanState.network, liveScanState.hostCount, liveScanState.detectors);
-  // Re-render live agents if any have been detected
   if (liveScanState.agents && liveScanState.agents.length > 0) {
     renderAgents(liveScanState.agents);
   }

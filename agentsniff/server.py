@@ -32,7 +32,7 @@ logger = logging.getLogger("agentsniff.api")
 app = FastAPI(
     title="AgentSniff API",
     description="AI Agent Network Scanner - REST API",
-    version="1.0.0",
+    version="1.0.1",
 )
 
 app.add_middleware(
@@ -67,7 +67,7 @@ async def health():
     return {
         "status": "ok",
         "service": "agentsniff",
-        "version": "1.0.0",
+        "version": "1.0.1",
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
 

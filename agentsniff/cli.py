@@ -44,7 +44,7 @@ BANNER = f"""{Colors.CYAN}{Colors.BOLD}
  / ___ / /_/ /  __/ / / / /_ ___/ / / / / / __/ __/
 /_/  |_\\__, /\\___/_/ /_/\\__//____/_/ /_/_/_/ /_/
       /____/
-{Colors.RESET}{Colors.DIM}  AI Agent Network Scanner v1.0.0
+{Colors.RESET}{Colors.DIM}  AI Agent Network Scanner v1.0.1
   Detect AI agents on your network{Colors.RESET}
 """
 

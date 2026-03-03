@@ -28,6 +28,8 @@ dependencies = [
     "fastapi>=0.110",
     "uvicorn[standard]>=0.27",
     "pyyaml>=6.0",
+    "sarif-om>=1.0.4",
+    "jschema-to-python>=1.2.3",
 ]
 
 [project.optional-dependencies]

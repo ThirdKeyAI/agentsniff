@@ -307,6 +307,26 @@ async def scan_stream(
     )
 
 
+# ── SARIF export ──────────────────────────────────────────────────────────
+
+@app.get("/api/scan/sarif")
+async def export_sarif_current():
+    """Export the most recent completed scan as SARIF 2.1.0."""
+    if not _current_scan or _current_scan.get("status") != "completed":
+        return JSONResponse(status_code=404, content={"error": "No completed scan available"})
+
+    from agentsniff.sarif_export import scan_result_to_sarif_from_dict
+    sarif_json = scan_result_to_sarif_from_dict(_current_scan)
+    return Response(
+        content=sarif_json,
+        media_type="application/json",
+        headers={
+            "Content-Disposition": 'attachment; filename="agentsniff.sarif"',
+            "Content-Type": "application/sarif+json",
+        },
+    )
+
+
 # ── Historical scan lookup (must be after all /api/scan/* routes) ─────────
 
 @app.get("/api/scan/{scan_id}")

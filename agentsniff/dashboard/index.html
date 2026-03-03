@@ -690,6 +690,7 @@
       <div class="export-menu" id="exportMenu">
         <div class="export-item" onclick="exportJSON()">JSON</div>
         <div class="export-item" onclick="exportCSV()">CSV</div>
+        <div class="export-item" onclick="exportSARIF()">SARIF</div>
       </div>
     </div>
     <button class="settings-btn" onclick="openSettings()" title="Settings">⚙</button>
@@ -1324,6 +1325,29 @@ function exportCSV() {
   URL.revokeObjectURL(url);
   log('Results exported as CSV');
   document.getElementById('exportMenu').classList.remove('open');
+}
+
+function exportSARIF() {
+  if (!lastResult) { log('No results to export'); return; }
+  fetch('/api/scan/sarif')
+    .then(resp => {
+      if (!resp.ok) throw new Error('SARIF export failed: ' + resp.statusText);
+      return resp.blob();
+    })
+    .then(blob => {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `agentsniff-${new Date().toISOString().slice(0, 10)}.sarif`;
+      a.click();
+      URL.revokeObjectURL(url);
+      log('Results exported as SARIF 2.1.0');
+      document.getElementById('exportMenu').classList.remove('open');
+    })
+    .catch(err => {
+      log('SARIF export failed: ' + err.message);
+      document.getElementById('exportMenu').classList.remove('open');
+    });
 }
 
 // ── Settings modal ──────────────────────────────────────────────────

@@ -524,6 +524,94 @@
   .site-footer a { color: var(--accent-dim); text-decoration: none; }
   .site-footer a:hover { color: var(--accent); text-decoration: underline; }
 
+  .agent-tooltip {
+    display: none;
+    position: fixed;
+    z-index: 500;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 10px 14px;
+    font-size: 12px;
+    color: var(--text);
+    max-width: 420px;
+    pointer-events: none;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+    line-height: 1.6;
+  }
+
+  .agent-tooltip .tip-host {
+    font-weight: 600;
+    color: var(--accent);
+    margin-bottom: 6px;
+    font-size: 13px;
+  }
+
+  .agent-tooltip .tip-signal {
+    color: var(--text-dim);
+    padding: 1px 0;
+  }
+
+  .agent-tooltip .tip-signal strong {
+    color: var(--accent-dim);
+    font-weight: 600;
+  }
+
+  .det-info {
+    display: inline-block;
+    width: 14px;
+    height: 14px;
+    line-height: 14px;
+    text-align: center;
+    font-size: 10px;
+    font-weight: 700;
+    font-style: normal;
+    color: var(--text-dim);
+    border: 1px solid var(--border);
+    border-radius: 50%;
+    cursor: help;
+    position: relative;
+    vertical-align: middle;
+    margin-left: 4px;
+    flex-shrink: 0;
+  }
+
+  .det-info:hover { color: var(--accent); border-color: var(--accent); }
+
+  .det-info .det-desc {
+    display: none;
+    position: absolute;
+    bottom: calc(100% + 6px);
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 8px 12px;
+    font-size: 11px;
+    font-weight: 400;
+    color: var(--text);
+    white-space: normal;
+    width: 260px;
+    text-align: left;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.5);
+    z-index: 600;
+    pointer-events: none;
+    line-height: 1.5;
+  }
+
+  .det-info .det-desc::after {
+    content: "";
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    border: 5px solid transparent;
+    border-top-color: var(--border);
+  }
+
+  .det-info:hover .det-desc { display: block; }
+
   .detector-bar {
     padding: 8px 32px;
     background: var(--surface);
@@ -774,6 +862,7 @@
 </div>
 
 <div class="toast" id="toast"></div>
+<div class="agent-tooltip" id="agentTooltip"></div>
 
 <script>
 let lastResult = null;
@@ -892,7 +981,7 @@ function renderAgents(agents) {
     const color = confColor(score);
     const pct = Math.round(score * 100);
 
-    html += `<tr class="expandable" onclick="toggleDetail(${idx})">
+    html += `<tr class="expandable" onclick="toggleDetail(${idx})" data-agent-idx="${idx}">
       <td><strong>${agent.ip_address || agent.host}</strong></td>
       <td>${agent.port || '—'}</td>
       <td>${agent.agent_type || 'unknown'}</td>
@@ -908,7 +997,7 @@ function renderAgents(agents) {
       <td colspan="7"><div class="detail-content">
         <ul class="signal-list">
           ${(agent.signals || []).slice(0, 8).map(s =>
-            `<li><strong>[${s.detector}]</strong> ${s.description}</li>`
+            `<li><strong>[${s.detector}]</strong>${detInfoIcon(s.detector)} ${s.description}</li>`
           ).join('')}
           ${(agent.signals || []).length > 8 ? `<li>... and ${agent.signals.length - 8} more</li>` : ''}
         </ul>
@@ -922,6 +1011,67 @@ function renderAgents(agents) {
 
   html += '</tbody></table>';
   container.innerHTML = html;
+  _renderedAgents = agents;
+  wireTooltips();
+}
+
+let _renderedAgents = [];
+
+function wireTooltips() {
+  const tip = document.getElementById('agentTooltip');
+  const rows = document.querySelectorAll('tr[data-agent-idx]');
+  rows.forEach(row => {
+    row.addEventListener('mouseenter', (e) => {
+      const idx = parseInt(row.dataset.agentIdx);
+      const agent = _renderedAgents[idx];
+      if (!agent || !agent.signals || !agent.signals.length) return;
+      const host = agent.ip_address || agent.host;
+      const signals = agent.signals.slice(0, 6);
+      let html = `<div class="tip-host">${host}${agent.port ? ':' + agent.port : ''}</div>`;
+      html += signals.map(s =>
+        `<div class="tip-signal"><strong>[${s.detector}]</strong>${detInfoIcon(s.detector)} ${escHtml(s.description)}</div>`
+      ).join('');
+      if (agent.signals.length > 6) html += `<div class="tip-signal" style="color:var(--text-dim)">+ ${agent.signals.length - 6} more</div>`;
+      tip.innerHTML = html;
+      tip.style.display = 'block';
+      positionTooltip(e, tip);
+    });
+    row.addEventListener('mousemove', (e) => positionTooltip(e, tip));
+    row.addEventListener('mouseleave', () => { tip.style.display = 'none'; });
+  });
+}
+
+function positionTooltip(e, tip) {
+  const pad = 12;
+  let x = e.clientX + pad;
+  let y = e.clientY + pad;
+  const rect = tip.getBoundingClientRect();
+  if (x + rect.width > window.innerWidth - pad) x = e.clientX - rect.width - pad;
+  if (y + rect.height > window.innerHeight - pad) y = e.clientY - rect.height - pad;
+  tip.style.left = x + 'px';
+  tip.style.top = y + 'px';
+}
+
+function escHtml(s) {
+  const d = document.createElement('div');
+  d.textContent = s;
+  return d.innerHTML;
+}
+
+const DETECTOR_INFO = {
+  dns_monitor: 'Passive DNS monitoring — detects hosts querying known LLM API domains (OpenAI, Anthropic, Google, etc.)',
+  port_scanner: 'TCP port scanning — identifies open ports associated with agent frameworks, MCP servers, and LLM inference engines',
+  agentpin_prober: 'AgentPin discovery — probes for /.well-known/agent-identity.json cryptographic identity documents',
+  mcp_detector: 'MCP protocol detection — sends JSON-RPC initialize requests and enumerates tools, resources, and prompts',
+  endpoint_prober: 'HTTP endpoint probing — checks for agent framework signatures (LangChain, CrewAI, Dify, n8n, etc.)',
+  tls_fingerprint: 'TLS fingerprinting — computes JA3 hashes to identify agent HTTP client libraries by their TLS handshake',
+  traffic_analyzer: 'Traffic analysis — detects agent behavioral patterns like bursty tool calls, LLM API connections, and streaming SSE',
+};
+
+function detInfoIcon(detector) {
+  const desc = DETECTOR_INFO[detector];
+  if (!desc) return '';
+  return `<span class="det-info">i<span class="det-desc">${escHtml(desc)}</span></span>`;
 }
 
 function toggleDetail(idx) {

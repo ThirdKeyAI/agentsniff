@@ -161,6 +161,27 @@ def _enrich_agent(agent: DetectedAgent, signal: DetectionSignal):
     elif signal.signal_type == "agent_behavior_pattern":
         agent.agent_type = "behavioral_match"
 
+    # Port scanner service identification
+    if signal.signal_type == "agent_service_identified":
+        service = evidence.get("service", "")
+        if service and agent.agent_type == "unknown":
+            agent.agent_type = f"{service}_service"
+
+    # Framework endpoint detection
+    if signal.signal_type in ("framework_endpoint_match", "framework_header_match"):
+        if "framework" in evidence:
+            agent.framework = evidence["framework"]
+        if agent.agent_type in ("unknown", "behavioral_match"):
+            agent.agent_type = "framework_agent"
+
+    # Agent metadata documents
+    if signal.signal_type == "agent_metadata_found":
+        agent.agent_type = "metadata_declared"
+        metadata_type = evidence.get("metadata_type", "")
+        if metadata_type and not agent.metadata.get("metadata_type"):
+            agent.metadata["metadata_type"] = metadata_type
+            agent.metadata["metadata_url"] = evidence.get("url", "")
+
 
 async def run_scan(
     config: ScanConfig,

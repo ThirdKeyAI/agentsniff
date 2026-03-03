@@ -16,6 +16,7 @@ from pathlib import Path
 from agentsniff.config import ScanConfig, default_config_yaml
 from agentsniff.notifier import should_alert, send_alerts
 from agentsniff.scanner import run_scan
+from agentsniff.storage import ScanStore
 
 
 # ── Color codes for terminal output ──────────────────────────────────────
@@ -62,7 +63,7 @@ STATUS_ICONS = {
 }
 
 
-def setup_logging(verbose: bool = False, quiet: bool = False):
+def setup_logging(verbose: bool = False, quiet: bool = False, log_file: str = ""):
     level = logging.DEBUG if verbose else (logging.WARNING if quiet else logging.INFO)
     handler = logging.StreamHandler()
     handler.setFormatter(
@@ -75,6 +76,17 @@ def setup_logging(verbose: bool = False, quiet: bool = False):
     )
     logging.root.handlers = [handler]
     logging.root.setLevel(level)
+
+    if log_file:
+        file_handler = logging.FileHandler(log_file)
+        file_handler.setFormatter(
+            logging.Formatter(
+                "%(asctime)s %(levelname)-8s %(name)s %(message)s",
+                datefmt="%Y-%m-%d %H:%M:%S",
+            )
+        )
+        file_handler.setLevel(level)
+        logging.root.addHandler(file_handler)
 
 
 def print_table(result):
@@ -264,6 +276,14 @@ Examples:
         "--smtp-to", type=str, default="",
         help="Comma-separated email recipients for alerts (auto-enables alerting)",
     )
+    scan_parser.add_argument(
+        "--db", type=str, default="",
+        help="SQLite database path for persistent history (default: ~/.agentsniff/agentsniff.db)",
+    )
+    scan_parser.add_argument(
+        "--log-file", type=str, default="",
+        help="Log file path (default: no file logging)",
+    )
     scan_parser.add_argument("-v", "--verbose", action="store_true")
     scan_parser.add_argument("-q", "--quiet", action="store_true")
 
@@ -274,6 +294,14 @@ Examples:
     serve_parser.add_argument(
         "--network", default="192.168.1.0/24",
         help="Default scan target network",
+    )
+    serve_parser.add_argument(
+        "--db", type=str, default="",
+        help="SQLite database path for persistent history (default: ~/.agentsniff/agentsniff.db)",
+    )
+    serve_parser.add_argument(
+        "--log-file", type=str, default="",
+        help="Log file path (default: no file logging)",
     )
     serve_parser.add_argument("-v", "--verbose", action="store_true")
 
@@ -299,17 +327,18 @@ def main():
         sys.exit(0)
 
     if args.command == "serve":
-        setup_logging(verbose=args.verbose)
+        setup_logging(verbose=args.verbose, log_file=args.log_file)
         from agentsniff.server import start_server
         start_server(
             host=args.host,
             port=args.port,
             default_network=args.network,
+            db_path=args.db,
         )
         sys.exit(0)
 
     if args.command == "scan":
-        setup_logging(verbose=args.verbose, quiet=args.quiet)
+        setup_logging(verbose=args.verbose, quiet=args.quiet, log_file=args.log_file)
 
         if not args.quiet:
             print(BANNER)
@@ -329,6 +358,11 @@ def main():
         config.http_timeout = args.timeout
         config.port_scan_concurrency = args.concurrency
         config.scan_interval = args.continuous
+
+        if args.db:
+            config.db_path = args.db
+        if args.log_file:
+            config.log_file = args.log_file
 
         if args.hosts:
             config.target_hosts = [h.strip() for h in args.hosts.split(",")]
@@ -355,21 +389,25 @@ def main():
             for name in all_detector_names:
                 setattr(config, f"enable_{name}", name in enabled)
 
+        # Initialize storage
+        store = ScanStore(db_path=config.db_path or None)
+
         # Run scan
         if config.scan_interval > 0:
-            asyncio.run(_continuous_scan(config))
+            asyncio.run(_continuous_scan(config, store))
         else:
-            asyncio.run(_oneshot_scan(config))
+            asyncio.run(_oneshot_scan(config, store))
 
 
-async def _oneshot_scan(config: ScanConfig):
+async def _oneshot_scan(config: ScanConfig, store: ScanStore):
     """Run a single scan with optional alert dispatch."""
     result = await run_scan(config)
     _output_result(result, config)
+    store.save_scan(result)
     await _maybe_alert(result, config)
 
 
-async def _continuous_scan(config: ScanConfig):
+async def _continuous_scan(config: ScanConfig, store: ScanStore):
     """Run scans continuously at the configured interval."""
     scan_num = 0
     try:
@@ -380,6 +418,7 @@ async def _continuous_scan(config: ScanConfig):
 
             result = await run_scan(config)
             _output_result(result, config)
+            store.save_scan(result)
             await _maybe_alert(result, config)
 
             logger.info(f"Next scan in {config.scan_interval}s...")

@@ -11,18 +11,21 @@ FastAPI-based API server providing:
 from __future__ import annotations
 
 import asyncio
+import io
 import json
 import logging
+import tarfile
 from datetime import datetime, timezone
 from pathlib import Path
 
 from fastapi import FastAPI, BackgroundTasks, Query
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, StreamingResponse, JSONResponse
+from fastapi.responses import HTMLResponse, Response, StreamingResponse, JSONResponse
 
 from agentsniff.config import ScanConfig
 from agentsniff.notifier import should_alert, send_alerts
 from agentsniff.scanner import run_scan
+from agentsniff.storage import ScanStore
 
 logger = logging.getLogger("agentsniff.api")
 
@@ -46,6 +49,7 @@ _current_scan: dict | None = None
 _default_network = "192.168.1.0/24"
 _scan_lock = asyncio.Lock()
 _config: ScanConfig = ScanConfig()
+_store: ScanStore | None = None
 
 # Fields that can be modified via the settings API
 _ALERT_SETTINGS_FIELDS = [
@@ -131,9 +135,18 @@ async def _run_scan_background(config: ScanConfig, scan_id: str, cancel_event: a
         }
         _scan_history.append(_current_scan)
 
-        # Keep last 50 scans
+        # Keep last 50 scans in memory
         while len(_scan_history) > 50:
             _scan_history.pop(0)
+
+        # Persist to database
+        if _store:
+            try:
+                await asyncio.get_event_loop().run_in_executor(
+                    None, _store.save_scan, result, status
+                )
+            except Exception as db_err:
+                logger.warning(f"Failed to persist scan to DB: {db_err}")
 
         # Send alerts if configured
         if status == "completed" and should_alert(result, _config):
@@ -183,9 +196,19 @@ async def stop_scan():
 
 
 @app.get("/api/scan/history")
-async def scan_history():
+async def scan_history(
+    limit: int = Query(default=50, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
+):
+    if _store:
+        loop = asyncio.get_event_loop()
+        scans = await loop.run_in_executor(None, _store.list_scans, limit, offset)
+        total = await loop.run_in_executor(None, _store.get_scan_count)
+        return {"scans": scans, "count": len(scans), "total": total}
+    # Fallback to in-memory history
     cleaned = [{k: v for k, v in s.items() if not k.startswith("_")} for s in _scan_history]
-    return {"scans": cleaned, "count": len(cleaned)}
+    page = cleaned[offset:offset + limit]
+    return {"scans": page, "count": len(page), "total": len(cleaned)}
 
 
 @app.get("/api/agents")
@@ -199,6 +222,7 @@ async def list_agents():
 @app.get("/api/scan/stream")
 async def scan_stream(
     network: str = Query(default=None),
+    detectors: str = Query(default="", description="Comma-separated detector list"),
 ):
     """SSE endpoint for real-time scan progress."""
     global _current_scan
@@ -207,6 +231,16 @@ async def scan_stream(
         global _current_scan
         config = ScanConfig()
         config.target_network = network or _default_network
+
+        if detectors:
+            enabled = set(d.strip() for d in detectors.split(","))
+            all_names = [
+                "dns_monitor", "port_scanner", "agentpin_prober",
+                "mcp_detector", "endpoint_prober", "tls_fingerprint",
+                "traffic_analyzer",
+            ]
+            for name in all_names:
+                setattr(config, f"enable_{name}", name in enabled)
 
         cancel_event = asyncio.Event()
         scan_id = f"scan-{datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S')}"
@@ -237,10 +271,12 @@ async def scan_stream(
 
             if cancel_event.is_set():
                 yield f"data: {json.dumps({'event': 'scan_cancelled', 'summary': result.summary})}\n\n"
-                _current_scan = {"scan_id": scan_id, "status": "cancelled", **result.to_dict()}
+                status = "cancelled"
+                _current_scan = {"scan_id": scan_id, "status": status, **result.to_dict()}
             else:
                 yield f"data: {json.dumps({'event': 'scan_completed', 'summary': result.summary})}\n\n"
-                _current_scan = {"scan_id": scan_id, "status": "completed", **result.to_dict()}
+                status = "completed"
+                _current_scan = {"scan_id": scan_id, "status": status, **result.to_dict()}
 
                 # Send alerts if configured
                 if should_alert(result, _config):
@@ -252,6 +288,15 @@ async def scan_stream(
             while len(_scan_history) > 50:
                 _scan_history.pop(0)
 
+            # Persist to database
+            if _store:
+                try:
+                    await asyncio.get_event_loop().run_in_executor(
+                        None, _store.save_scan, result, status
+                    )
+                except Exception as db_err:
+                    logger.warning(f"Failed to persist scan to DB: {db_err}")
+
         except Exception as e:
             yield f"data: {json.dumps({'event': 'scan_error', 'error': str(e)})}\n\n"
 
@@ -260,6 +305,23 @@ async def scan_stream(
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
+
+
+# ── Historical scan lookup (must be after all /api/scan/* routes) ─────────
+
+@app.get("/api/scan/{scan_id}")
+async def get_scan(scan_id: str):
+    """Get a specific historical scan by ID."""
+    if _store:
+        loop = asyncio.get_event_loop()
+        scan = await loop.run_in_executor(None, _store.get_scan, scan_id)
+        if scan:
+            return scan
+    # Check in-memory history
+    for s in _scan_history:
+        if s.get("scan_id") == scan_id:
+            return {k: v for k, v in s.items() if not k.startswith("_")}
+    return JSONResponse(status_code=404, content={"error": "Scan not found"})
 
 
 # ── Settings ──────────────────────────────────────────────────────────────
@@ -314,6 +376,57 @@ async def test_alert():
     return {"outcomes": outcomes}
 
 
+# ── Database management ───────────────────────────────────────────────────
+
+@app.get("/api/db/backup")
+async def db_backup():
+    """Download a tar.gz backup of the SQLite database."""
+    if not _store:
+        return JSONResponse(status_code=503, content={"error": "No database configured"})
+
+    db_path = _store._db_path
+    if not db_path.exists():
+        return JSONResponse(status_code=404, content={"error": "Database file not found"})
+
+    def _create_backup():
+        buf = io.BytesIO()
+        with tarfile.open(fileobj=buf, mode="w:gz") as tar:
+            tar.add(str(db_path), arcname=db_path.name)
+        buf.seek(0)
+        return buf.read()
+
+    loop = asyncio.get_event_loop()
+    data = await loop.run_in_executor(None, _create_backup)
+    ts = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+    return Response(
+        content=data,
+        media_type="application/gzip",
+        headers={"Content-Disposition": f'attachment; filename="agentsniff-backup-{ts}.tar.gz"'},
+    )
+
+
+@app.post("/api/db/reset")
+async def db_reset():
+    """Drop all data from the database."""
+    global _scan_history, _current_scan
+    if not _store:
+        return JSONResponse(status_code=503, content={"error": "No database configured"})
+
+    def _reset():
+        _store._conn.executescript("""
+            DELETE FROM signals;
+            DELETE FROM agents;
+            DELETE FROM scans;
+        """)
+
+    loop = asyncio.get_event_loop()
+    await loop.run_in_executor(None, _reset)
+    _scan_history.clear()
+    _current_scan = None
+    logger.info("Database reset by user")
+    return {"status": "ok", "message": "All scan data deleted"}
+
+
 # ── Dashboard ─────────────────────────────────────────────────────────────
 
 @app.get("/", response_class=HTMLResponse)
@@ -336,11 +449,19 @@ _FALLBACK_DASHBOARD = """<!DOCTYPE html>
 
 # ── Server startup ────────────────────────────────────────────────────────
 
-def start_server(host: str = "0.0.0.0", port: int = 9090, default_network: str = "192.168.1.0/24"):
-    global _default_network, _config
+def start_server(
+    host: str = "0.0.0.0",
+    port: int = 9090,
+    default_network: str = "192.168.1.0/24",
+    db_path: str = "",
+):
+    global _default_network, _config, _store
     _default_network = default_network
     _config = ScanConfig.from_env()
     _config.target_network = default_network
+
+    _store = ScanStore(db_path=db_path or None)
+    logger.info(f"Database: {_store._db_path}")
 
     import uvicorn
     logger.info(f"Starting AgentSniff API server on {host}:{port}")

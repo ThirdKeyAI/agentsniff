@@ -18,6 +18,7 @@ from agentsniff.config import ScanConfig
 from agentsniff.detectors import DetectorRegistry
 from agentsniff.models import (
     AgentStatus,
+    Confidence,
     DetectedAgent,
     DetectionSignal,
     ScanResult,
@@ -94,9 +95,16 @@ def correlate_signals(signals: list[DetectionSignal]) -> list[DetectedAgent]:
         _enrich_agent(agent, signal)
 
     # Post-process: set final status and sort by confidence
+    # Require at least one HIGH/CONFIRMED signal for VERIFIED — accumulated
+    # weak signals alone (e.g. multiple open generic ports) should not
+    # push a host past DETECTED.
     agents = list(agents_by_host.values())
     for agent in agents:
-        if agent.confidence_score >= 0.9:
+        has_strong = any(
+            s.confidence in (Confidence.HIGH, Confidence.CONFIRMED)
+            for s in agent.signals
+        )
+        if agent.confidence_score >= 0.9 and has_strong:
             agent.status = AgentStatus.VERIFIED
         elif agent.confidence_score >= 0.5:
             agent.status = AgentStatus.DETECTED
@@ -348,9 +356,14 @@ async def run_scan(
     logger.info(f"Collected {len(all_signals)} total signals")
 
     # Final correlation pass — set status and sort
+    # Require at least one HIGH/CONFIRMED signal for VERIFIED.
     agents = list(agents_by_host.values())
     for agent in agents:
-        if agent.confidence_score >= 0.9:
+        has_strong = any(
+            s.confidence in (Confidence.HIGH, Confidence.CONFIRMED)
+            for s in agent.signals
+        )
+        if agent.confidence_score >= 0.9 and has_strong:
             agent.status = AgentStatus.VERIFIED
         elif agent.confidence_score >= 0.5:
             agent.status = AgentStatus.DETECTED

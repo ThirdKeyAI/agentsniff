@@ -95,7 +95,11 @@ class DetectedAgent:
     @property
     def display_confidence(self) -> Confidence:
         score = self.confidence_score
-        if score >= 0.9:
+        has_strong_signal = any(
+            s.confidence in (Confidence.HIGH, Confidence.CONFIRMED)
+            for s in self.signals
+        )
+        if score >= 0.9 and has_strong_signal:
             return Confidence.CONFIRMED
         elif score >= 0.6:
             return Confidence.HIGH

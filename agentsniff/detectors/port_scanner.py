@@ -42,6 +42,12 @@ AGENT_SERVICES = {
     "redis", "redis_error",
 }
 
+# Ports that are primarily/exclusively used by AI services.
+# Finding these open warrants MEDIUM confidence even without service ID.
+# Generic web ports (3000, 5000, 8000, 8080…) get only LOW — they are
+# used by thousands of non-AI applications (Pi-hole, Gitea, nginx, etc.).
+AI_SPECIFIC_PORTS = {11434, 1234, 6333, 6334, 8090, 19530}
+
 # HTTP probe payloads for service identification on open ports
 HTTP_SERVICE_PROBES = {
     11434: ("GET /api/tags HTTP/1.1\r\nHost: localhost\r\n\r\n", "ollama"),
@@ -173,11 +179,18 @@ class PortScannerDetector(BaseDetector):
                     "ollama", "lmstudio", "dify", "librechat",
                     "qdrant", "weaviate", "milvus", "streamlit",
                 )
-                confidence = Confidence.HIGH if is_agent_service else Confidence.MEDIUM
-                signal_type = (
-                    "agent_service_identified" if is_agent_service
-                    else "open_agent_port"
-                )
+
+                if is_agent_service:
+                    confidence = Confidence.HIGH
+                    signal_type = "agent_service_identified"
+                elif port in AI_SPECIFIC_PORTS:
+                    confidence = Confidence.MEDIUM
+                    signal_type = "open_agent_port"
+                else:
+                    # Generic web ports (3000, 5000, 8000, 8080…) — many
+                    # non-AI services use these, so only LOW confidence.
+                    confidence = Confidence.LOW
+                    signal_type = "open_agent_port"
 
                 banner_sample = (
                     banner[:200].decode("utf-8", errors="replace") if banner else ""

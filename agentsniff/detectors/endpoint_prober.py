@@ -355,12 +355,22 @@ class EndpointProberDetector(BaseDetector):
                     is_agent_api = False
                     spec_info = {}
 
-                    # AI-related keywords in API spec title/description/paths
+                    # AI-related keywords in API spec title/description/paths.
+                    # Intentionally strict — generic terms like "agent",
+                    # "chat", "workflow", "assistant" cause false positives
+                    # on Pi-hole, Gitea, n8n, and other non-AI services.
                     _AI_SPEC_KEYWORDS = {
-                        "agent", "llm", "chat", "completion", "embedding",
-                        "langchain", "autogen", "crewai", "assistant",
-                        "tool_call", "function_call", "prompt", "inference",
-                        "mcp", "workflow", "rag",
+                        "llm", "large language model",
+                        "completion", "/completions", "/v1/completions",
+                        "embedding", "/embeddings",
+                        "langchain", "autogen", "crewai",
+                        "tool_call", "function_call",
+                        "inference", "/v1/inference",
+                        "mcp", "model context protocol",
+                        "rag", "retrieval augmented",
+                        "openai", "anthropic", "huggingface",
+                        "ollama", "vllm", "llamacpp",
+                        "langserve", "langgraph",
                     }
 
                     # JSON spec

@@ -205,8 +205,8 @@ async def test_probe_openapi_json_spec(detector):
     async with aiohttp.ClientSession(timeout=timeout, connector=connector) as session:
         spec = {
             "openapi": "3.0.0",
-            "info": {"title": "Agent API", "version": "1.0"},
-            "paths": {"/chat": {}, "/status": {}},
+            "info": {"title": "LLM Inference API", "version": "1.0"},
+            "paths": {"/v1/completions": {}, "/v1/embeddings": {}},
         }
         mock_resp = _mock_response(
             status=200,
@@ -220,7 +220,7 @@ async def test_probe_openapi_json_spec(detector):
     assert len(signals) == 1
     assert signals[0].signal_type == "agent_openapi_spec"
     assert signals[0].confidence == Confidence.HIGH
-    assert signals[0].evidence["spec_info"]["title"] == "Agent API"
+    assert signals[0].evidence["spec_info"]["title"] == "LLM Inference API"
     assert signals[0].evidence["spec_info"]["paths_count"] == 2
 
 

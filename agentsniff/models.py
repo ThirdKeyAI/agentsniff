@@ -19,6 +19,7 @@ class DetectorType(str, Enum):
     ENDPOINT_PROBER = "endpoint_prober"
     TLS_FINGERPRINT = "tls_fingerprint"
     TRAFFIC_ANALYZER = "traffic_analyzer"
+    SSE_DETECTOR = "sse_detector"
 
 
 class Confidence(str, Enum):

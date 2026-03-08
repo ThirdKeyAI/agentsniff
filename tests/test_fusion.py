@@ -113,3 +113,51 @@ def test_non_port_scanner_low_signals_never_suppressed():
     ))
     apply_fusion_rules(agent)
     assert len(agent.signals) == 1
+
+
+def test_port_signal_kept_when_framework_header_in_banner():
+    """Port signal with framework header in banner self-corroborates."""
+    agent = DetectedAgent(host="10.0.0.1", ip_address="10.0.0.1")
+    agent.add_signal(_signal(
+        DetectorType.PORT_SCANNER, "open_agent_port", "10.0.0.1",
+        Confidence.LOW, port=8080, service="http",
+        banner_sample="HTTP/1.1 200 OK\r\nX-LangChain-Version: 0.1\r\n",
+    ))
+    apply_fusion_rules(agent)
+    assert len(agent.signals) == 1
+
+
+def test_port_signal_kept_when_framework_name_in_banner():
+    """Port signal with framework name in response body self-corroborates."""
+    agent = DetectedAgent(host="10.0.0.1", ip_address="10.0.0.1")
+    agent.add_signal(_signal(
+        DetectorType.PORT_SCANNER, "open_agent_port", "10.0.0.1",
+        Confidence.LOW, port=8080, service="http",
+        banner_sample='HTTP/1.1 200 OK\r\n\r\n{"framework":"crewai"}',
+    ))
+    apply_fusion_rules(agent)
+    assert len(agent.signals) == 1
+
+
+def test_port_signal_suppressed_with_generic_banner():
+    """Port signal with generic HTTP banner (no framework) is still suppressed."""
+    agent = DetectedAgent(host="10.0.0.1", ip_address="10.0.0.1")
+    agent.add_signal(_signal(
+        DetectorType.PORT_SCANNER, "open_agent_port", "10.0.0.1",
+        Confidence.LOW, port=8080, service="http",
+        banner_sample="HTTP/1.1 200 OK\r\nServer: nginx\r\n",
+    ))
+    apply_fusion_rules(agent)
+    assert len(agent.signals) == 0
+
+
+def test_banner_check_case_insensitive():
+    """Banner framework check should be case-insensitive."""
+    agent = DetectedAgent(host="10.0.0.1", ip_address="10.0.0.1")
+    agent.add_signal(_signal(
+        DetectorType.PORT_SCANNER, "open_agent_port", "10.0.0.1",
+        Confidence.LOW, port=8080, service="http",
+        banner_sample="HTTP/1.1 200 OK\r\nX-LANGCHAIN-VERSION: 0.1\r\n",
+    ))
+    apply_fusion_rules(agent)
+    assert len(agent.signals) == 1

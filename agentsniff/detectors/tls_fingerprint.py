@@ -130,6 +130,107 @@ def compute_ja3_from_client_hello(data: bytes) -> str | None:
         return None
 
 
+def compute_ja4_from_client_hello(data: bytes) -> str | None:
+    """
+    Compute a JA4 fingerprint from a TLS ClientHello.
+
+    JA4 is more stable than JA3 because:
+    - Cipher suites and extensions are sorted (order-independent)
+    - Truncated SHA-256 hashes reduce collision sensitivity
+    - Captures transport protocol and SNI presence
+
+    JA4 format: t[version][sni_flag][cipher_count][ext_count]_[sorted_cipher_hash12]_[sorted_ext_hash12]
+    """
+    try:
+        if len(data) < 5 or data[0] != 0x16:
+            return None
+
+        record_length = struct.unpack("!H", data[3:5])[0]
+        if len(data) < 5 + record_length:
+            return None
+
+        handshake_data = data[5:]
+        if handshake_data[0] != 0x01:  # ClientHello
+            return None
+
+        offset = 4  # Skip handshake type(1) + length(3)
+
+        # Client version
+        ch_version = struct.unpack("!H", handshake_data[offset:offset + 2])[0]
+        offset += 2 + 32  # Skip version + random
+
+        # Session ID
+        if offset >= len(handshake_data):
+            return None
+        session_id_len = handshake_data[offset]
+        offset += 1 + session_id_len
+
+        # Cipher suites
+        if offset + 2 > len(handshake_data):
+            return None
+        cipher_suites_len = struct.unpack("!H", handshake_data[offset:offset + 2])[0]
+        offset += 2
+        ciphers = []
+        for i in range(0, cipher_suites_len, 2):
+            if offset + i + 2 <= len(handshake_data):
+                cipher = struct.unpack("!H", handshake_data[offset + i:offset + i + 2])[0]
+                if (cipher & 0x0F0F) != 0x0A0A:  # Skip GREASE
+                    ciphers.append(cipher)
+        offset += cipher_suites_len
+
+        # Compression methods
+        if offset >= len(handshake_data):
+            return None
+        comp_len = handshake_data[offset]
+        offset += 1 + comp_len
+
+        # Extensions
+        extensions = []
+        has_sni = False
+
+        if offset + 2 <= len(handshake_data):
+            ext_total_len = struct.unpack("!H", handshake_data[offset:offset + 2])[0]
+            offset += 2
+            ext_end = offset + ext_total_len
+
+            while offset + 4 <= ext_end and offset + 4 <= len(handshake_data):
+                ext_type = struct.unpack("!H", handshake_data[offset:offset + 2])[0]
+                ext_len = struct.unpack("!H", handshake_data[offset + 2:offset + 4])[0]
+                offset += 4
+
+                if (ext_type & 0x0F0F) != 0x0A0A:  # Skip GREASE
+                    extensions.append(ext_type)
+                    if ext_type == 0:  # SNI
+                        has_sni = True
+
+                offset += ext_len
+
+        # Determine version string
+        version_map = {0x0304: "13", 0x0303: "12", 0x0302: "11", 0x0301: "10"}
+        version_str = version_map.get(ch_version, "00")
+
+        sni_flag = "d" if has_sni else "i"
+        cipher_count = f"{min(len(ciphers), 99):02d}"
+        ext_count = f"{min(len(extensions), 99):02d}"
+
+        # Sort and hash
+        sorted_ciphers = sorted(ciphers)
+        sorted_extensions = sorted(extensions)
+
+        cipher_hash = hashlib.sha256(
+            ",".join(str(c) for c in sorted_ciphers).encode()
+        ).hexdigest()[:12]
+
+        ext_hash = hashlib.sha256(
+            ",".join(str(e) for e in sorted_extensions).encode()
+        ).hexdigest()[:12]
+
+        return f"t{version_str}{sni_flag}{cipher_count}{ext_count}_{cipher_hash}_{ext_hash}"
+
+    except Exception:
+        return None
+
+
 @DetectorRegistry.register
 class TLSFingerprintDetector(BaseDetector):
     """
@@ -180,6 +281,7 @@ class TLSFingerprintDetector(BaseDetector):
         loop = asyncio.get_event_loop()
         end_time = loop.time() + duration
         seen_fingerprints: dict[str, set[str]] = {}  # ja3 -> set of source IPs
+        ja4_fingerprints: dict[str, str] = {}  # ja3 -> ja4 (co-indexed)
 
         try:
             while loop.time() < end_time:
@@ -217,6 +319,10 @@ class TLSFingerprintDetector(BaseDetector):
                             seen_fingerprints[ja3] = set()
                         seen_fingerprints[ja3].add(source_ip)
 
+                        ja4 = compute_ja4_from_client_hello(tls_data)
+                        if ja4:
+                            ja4_fingerprints[ja3] = ja4
+
                 except (asyncio.TimeoutError, BlockingIOError):
                     await asyncio.sleep(0.1)
                 except Exception:
@@ -226,9 +332,10 @@ class TLSFingerprintDetector(BaseDetector):
 
         # Match fingerprints against known agents
         for ja3, source_ips in seen_fingerprints.items():
+            ja4 = ja4_fingerprints.get(ja3)
             matched_agent = None
             for agent_name, info in KNOWN_AGENT_TLS_FINGERPRINTS.items():
-                if info["ja3"] == ja3:
+                if info["ja3"] == ja3 or info.get("ja4") == ja4:
                     matched_agent = (agent_name, info)
                     break
 
@@ -247,6 +354,7 @@ class TLSFingerprintDetector(BaseDetector):
                             evidence={
                                 "source_ip": ip,
                                 "ja3_hash": ja3,
+                                "ja4_hash": ja4,
                                 "matched_client": name,
                                 "description": info["description"],
                             },
@@ -264,6 +372,7 @@ class TLSFingerprintDetector(BaseDetector):
                             evidence={
                                 "source_ip": ip,
                                 "ja3_hash": ja3,
+                                "ja4_hash": ja4,
                                 "matched_client": None,
                             },
                         )

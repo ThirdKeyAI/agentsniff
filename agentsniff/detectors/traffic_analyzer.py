@@ -48,6 +48,7 @@ class HostProfile:
     tool_api_connections: int = 0
     streaming_connections: int = 0
     burst_patterns: int = 0
+    ora_loop_count: int = 0
     diverse_api_targets: set = field(default_factory=set)
     activity_timestamps: list[float] = field(default_factory=list)
 
@@ -76,6 +77,12 @@ class HostProfile:
         elif self.burst_patterns >= 1:
             score += 0.1
 
+        # ORA loop cadence detection
+        if self.ora_loop_count >= 2:
+            score += 0.15
+        elif self.ora_loop_count >= 1:
+            score += 0.1
+
         # Long-running sessions with periodic activity
         if len(self.activity_timestamps) >= 10:
             duration = self.activity_timestamps[-1] - self.activity_timestamps[0]
@@ -83,6 +90,51 @@ class HostProfile:
                 score += 0.1
 
         return min(score, 1.0)
+
+
+def detect_ora_loop(
+    timestamps: list[float],
+    is_llm: list[bool],
+    min_tool_gap: float = 0.5,
+    max_tool_gap: float = 10.0,
+) -> int:
+    """
+    Detect observe-reason-act loop cadence.
+
+    Pattern: LLM call → pause (0.5-10s) → burst of tool calls → LLM call
+    Returns count of detected ORA cycles.
+    """
+    if len(timestamps) < 3 or len(timestamps) != len(is_llm):
+        return 0
+
+    cycles = 0
+    i = 0
+    while i < len(timestamps):
+        if not is_llm[i]:
+            i += 1
+            continue
+
+        j = i + 1
+        if j >= len(timestamps):
+            break
+
+        gap = timestamps[j] - timestamps[i]
+        if gap < min_tool_gap or gap > max_tool_gap:
+            i = j
+            continue
+
+        tool_count = 0
+        while j < len(timestamps) and not is_llm[j]:
+            tool_count += 1
+            j += 1
+
+        if tool_count >= 1 and j < len(timestamps) and is_llm[j]:
+            cycles += 1
+            i = j
+        else:
+            i = j if j < len(timestamps) else i + 1
+
+    return cycles
 
 
 @DetectorRegistry.register
@@ -164,6 +216,7 @@ class TrafficAnalyzerDetector(BaseDetector):
         loop = asyncio.get_event_loop()
         end_time = loop.time() + duration
         packet_log: dict[str, list[float]] = defaultdict(list)  # src_ip -> timestamps
+        packet_is_llm: dict[str, list[bool]] = defaultdict(list)  # src_ip -> is_llm flags
 
         try:
             while loop.time() < end_time:
@@ -185,6 +238,7 @@ class TrafficAnalyzerDetector(BaseDetector):
 
                     now = time.time()
                     packet_log[src_ip].append(now)
+                    packet_is_llm[src_ip].append(dst_ip in self._llm_ips)
 
                     # Check if destination is an LLM API
                     if dst_ip in self._llm_ips or dst_port == 443:
@@ -205,6 +259,10 @@ class TrafficAnalyzerDetector(BaseDetector):
         # Analyze collected profiles
         for ip, profile in self._host_profiles.items():
             profile.burst_patterns = self._detect_bursts(packet_log.get(ip, []))
+            profile.ora_loop_count = detect_ora_loop(
+                packet_log.get(ip, []),
+                packet_is_llm.get(ip, []),
+            )
 
             score = profile.agent_behavior_score
             if score > 0.3:

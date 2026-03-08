@@ -16,6 +16,7 @@ from datetime import datetime, timezone
 
 from agentsniff.config import ScanConfig
 from agentsniff.detectors import DetectorRegistry
+from agentsniff.fusion import apply_fusion_rules
 from agentsniff.models import (
     AgentStatus,
     Confidence,
@@ -110,6 +111,11 @@ def correlate_signals(signals: list[DetectionSignal]) -> list[DetectedAgent]:
             agent.status = AgentStatus.DETECTED
         elif agent.confidence_score >= 0.2:
             agent.status = AgentStatus.SUSPECTED
+
+    # Apply cross-module fusion rules
+    for agent in agents:
+        apply_fusion_rules(agent)
+    agents = [a for a in agents if a.signals]
 
     agents.sort(key=lambda a: a.confidence_score, reverse=True)
     return agents
@@ -369,6 +375,11 @@ async def run_scan(
             agent.status = AgentStatus.DETECTED
         elif agent.confidence_score >= 0.2:
             agent.status = AgentStatus.SUSPECTED
+
+    # Apply cross-module fusion rules
+    for agent in agents:
+        apply_fusion_rules(agent)
+    agents = [a for a in agents if a.signals]
 
     agents.sort(key=lambda a: a.confidence_score, reverse=True)
     result.agents_detected = agents

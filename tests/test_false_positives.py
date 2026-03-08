@@ -139,7 +139,7 @@ def test_pihole_scenario_not_verified():
 
 
 def test_nginx_proxy_scenario_not_verified():
-    """Nginx reverse proxy with many open ports should NOT be VERIFIED."""
+    """Nginx reverse proxy with many open ports should NOT be VERIFIED (or even reported)."""
     signals = [
         _port_signal("10.0.0.1", 80, Confidence.LOW),
         _port_signal("10.0.0.1", 443, Confidence.LOW),
@@ -148,7 +148,5 @@ def test_nginx_proxy_scenario_not_verified():
         _port_signal("10.0.0.1", 8000, Confidence.LOW),
     ]
     agents = correlate_signals(signals)
-    assert len(agents) == 1
-    agent = agents[0]
-    assert agent.status != AgentStatus.VERIFIED
-    assert agent.display_confidence != Confidence.CONFIRMED
+    # After fusion: all LOW port signals without corroboration are removed
+    assert len(agents) == 0

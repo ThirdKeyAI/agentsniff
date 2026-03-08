@@ -391,7 +391,7 @@ def main():
             all_detector_names = [
                 "dns_monitor", "port_scanner", "agentpin_prober",
                 "mcp_detector", "endpoint_prober", "tls_fingerprint",
-                "traffic_analyzer",
+                "traffic_analyzer", "sse_detector",
             ]
             for name in all_detector_names:
                 setattr(config, f"enable_{name}", name in enabled)

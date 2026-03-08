@@ -14,6 +14,7 @@ def test_all_seven_detectors_registered():
         "endpoint_prober",
         "mcp_detector",
         "port_scanner",
+        "sse_detector",
         "tls_fingerprint",
         "traffic_analyzer",
     ]

@@ -51,3 +51,4 @@ def _import_detectors():
     import agentsniff.detectors.endpoint_prober  # noqa: F401
     import agentsniff.detectors.tls_fingerprint  # noqa: F401
     import agentsniff.detectors.traffic_analyzer  # noqa: F401
+    import agentsniff.detectors.sse_detector  # noqa: F401

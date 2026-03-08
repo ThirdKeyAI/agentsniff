@@ -253,6 +253,7 @@ class ScanConfig:
     enable_endpoint_prober: bool = True
     enable_tls_fingerprint: bool = True
     enable_traffic_analyzer: bool = True
+    enable_sse_detector: bool = True
 
     # ── Scan parameters ──────────────────────────────────────────────
     port_scan_ports: list[int] = field(default_factory=lambda: list(AGENT_PORTS.keys()))

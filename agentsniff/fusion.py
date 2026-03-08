@@ -9,6 +9,17 @@ from __future__ import annotations
 
 from agentsniff.models import Confidence, DetectedAgent, DetectorType
 
+# Detectors whose signals can corroborate LOW-confidence port-scanner hits.
+CORROBORATING_DETECTORS = {
+    DetectorType.DNS_MONITOR,
+    DetectorType.AGENTPIN_PROBER,
+    DetectorType.MCP_DETECTOR,
+    DetectorType.ENDPOINT_PROBER,
+    DetectorType.TLS_FINGERPRINT,
+    DetectorType.TRAFFIC_ANALYZER,
+    DetectorType.SSE_DETECTOR,
+}
+
 
 def apply_fusion_rules(agent: DetectedAgent) -> None:
     """
@@ -24,7 +35,7 @@ def apply_fusion_rules(agent: DetectedAgent) -> None:
         return
 
     has_corroboration = any(
-        s.detector != DetectorType.PORT_SCANNER
+        s.detector in CORROBORATING_DETECTORS
         for s in agent.signals
     )
 

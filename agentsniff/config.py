@@ -210,22 +210,27 @@ KNOWN_AGENT_TLS_FINGERPRINTS = {
     # These are example hashes — real deployments would build a live database
     "python_requests_3_11": {
         "ja3": "placeholder_ja3_hash",
+        "ja4": "placeholder_ja4_hash",
         "description": "Python requests library (common in LangChain, CrewAI)",
     },
     "python_httpx": {
         "ja3": "placeholder_ja3_httpx",
+        "ja4": "placeholder_ja4_hash",
         "description": "Python httpx (common in modern agent frameworks)",
     },
     "python_aiohttp": {
         "ja3": "placeholder_ja3_aiohttp",
+        "ja4": "placeholder_ja4_hash",
         "description": "Python aiohttp (async agent frameworks)",
     },
     "node_fetch": {
         "ja3": "placeholder_ja3_node",
+        "ja4": "placeholder_ja4_hash",
         "description": "Node.js fetch/undici (JS agent frameworks)",
     },
     "rust_reqwest": {
         "ja3": "placeholder_ja3_reqwest",
+        "ja4": "placeholder_ja4_hash",
         "description": "Rust reqwest (Symbiont, custom Rust agents)",
     },
 }

@@ -13,6 +13,7 @@ import logging
 import sys
 from pathlib import Path
 
+from agentsniff.baseline import NetworkBaseline
 from agentsniff.config import ScanConfig, default_config_yaml
 from agentsniff.notifier import should_alert, send_alerts
 from agentsniff.scanner import run_scan
@@ -416,6 +417,7 @@ async def _oneshot_scan(config: ScanConfig, store: ScanStore):
 async def _continuous_scan(config: ScanConfig, store: ScanStore):
     """Run scans continuously at the configured interval."""
     scan_num = 0
+    baseline = NetworkBaseline()
     try:
         while True:
             scan_num += 1
@@ -423,6 +425,24 @@ async def _continuous_scan(config: ScanConfig, store: ScanStore):
             logger.info(f"Starting scan #{scan_num}")
 
             result = await run_scan(config)
+
+            # Collect all signals and run baseline anomaly detection
+            all_signals = [
+                signal
+                for agent in result.agents_detected
+                for signal in agent.signals
+            ]
+            anomalies = baseline.update_and_detect(all_signals)
+            if anomalies:
+                logger.info(f"Baseline: {len(anomalies)} anomaly(ies) detected")
+                for anomaly in anomalies:
+                    host = anomaly.evidence.get("host", "unknown")
+                    # Add anomaly signal to the matching agent
+                    for agent in result.agents_detected:
+                        if agent.ip_address == host or agent.host == host:
+                            agent.add_signal(anomaly)
+                            break
+
             _output_result(result, config)
             store.save_scan(result)
             await _maybe_alert(result, config)

@@ -1,51 +1,58 @@
 """
-AgentSniff integrations — base classes and data types for external data sources.
+AgentSniff integrations — optional external tool integrations.
+
+DataSource: Provides normalized traffic/DNS/TLS records to detectors.
+Enricher: Post-processes DetectedAgent records with external tool data.
 """
 
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
+from dataclasses import dataclass
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from agentsniff.models import DetectedAgent, DetectionSignal as DetectionSignal
 
 
 @dataclass
 class TrafficRecord:
-    """Normalized network traffic record."""
-    timestamp: float = 0.0
-    src_ip: str = ""
-    dst_ip: str = ""
-    src_port: int = 0
-    dst_port: int = 0
-    protocol: str = "tcp"
-    duration: float = 0.0
-    bytes_sent: int = 0
-    bytes_recv: int = 0
+    """Normalized network connection record."""
+    timestamp: float
+    src_ip: str
+    dst_ip: str
+    src_port: int
+    dst_port: int
+    protocol: str
+    duration: float
+    bytes_sent: int
+    bytes_recv: int
 
 
 @dataclass
 class DnsRecord:
-    """Normalized DNS query/response record."""
-    timestamp: float = 0.0
-    query: str = ""
-    qtype: str = "A"
-    response_ips: list[str] = field(default_factory=list)
-    src_ip: str = ""
+    """Normalized DNS query record."""
+    timestamp: float
+    query: str
+    qtype: str
+    response_ips: list[str]
+    src_ip: str
 
 
 @dataclass
 class TlsRecord:
     """Normalized TLS handshake record."""
-    timestamp: float = 0.0
-    src_ip: str = ""
-    dst_ip: str = ""
-    server_name: str = ""
-    ja3_hash: str = ""
-    subject: str = ""
-    issuer: str = ""
+    timestamp: float
+    src_ip: str
+    dst_ip: str
+    server_name: str
+    ja3_hash: str
+    subject: str
+    issuer: str
 
 
 class DataSource(ABC):
-    """Abstract base class for external data sources."""
+    """Base class for external data sources (e.g., Zeek logs)."""
 
     name: str = "base"
 
@@ -59,4 +66,14 @@ class DataSource(ABC):
 
     @abstractmethod
     async def load_tls(self, targets: list[str], time_window: int = 300) -> list[TlsRecord]:
+        ...
+
+
+class Enricher(ABC):
+    """Base class for post-detection enrichers (e.g., nmap)."""
+
+    name: str = "base"
+
+    @abstractmethod
+    async def enrich(self, agents: list[DetectedAgent]) -> list[DetectedAgent]:
         ...

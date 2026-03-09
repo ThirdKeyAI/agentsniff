@@ -267,11 +267,11 @@ async def scan_stream(
         async def _on_agent(agent):
             await agent_queue.put(agent.to_dict())
 
-        try:
-            scan_task = asyncio.create_task(
-                run_scan(config, cancel_event=cancel_event, on_agent_update=_on_agent)
-            )
+        scan_task = asyncio.create_task(
+            run_scan(config, cancel_event=cancel_event, on_agent_update=_on_agent)
+        )
 
+        try:
             # Yield agent events as they arrive, until the scan task finishes
             while not scan_task.done():
                 try:
@@ -302,21 +302,39 @@ async def scan_stream(
                     for outcome in outcomes:
                         logger.info(f"Alert: {outcome}")
 
+        except (Exception, GeneratorExit):
+            # Client disconnected or error — cancel the scan if still running
+            if not cancel_event.is_set():
+                cancel_event.set()
+            if not scan_task.done():
+                try:
+                    await scan_task
+                except Exception:
+                    pass
+            if scan_task.done() and not scan_task.cancelled():
+                try:
+                    result = scan_task.result()
+                    status = "cancelled"
+                    _current_scan = {"scan_id": scan_id, "status": status, **result.to_dict()}
+                except Exception:
+                    pass
+
+        # Always save to history and DB, even on disconnect/cancel
+        if _current_scan.get("scan_id") == scan_id and _current_scan.get("status") in ("completed", "cancelled"):
             _scan_history.append(_current_scan)
             while len(_scan_history) > 50:
                 _scan_history.pop(0)
 
-            # Persist to database
             if _store:
                 try:
-                    await asyncio.get_event_loop().run_in_executor(
-                        None, _store.save_scan, result, status
-                    )
+                    loop = asyncio.get_event_loop()
+                    result_obj = scan_task.result() if scan_task.done() and not scan_task.cancelled() else None
+                    if result_obj:
+                        await loop.run_in_executor(
+                            None, _store.save_scan, result_obj, _current_scan.get("status", "cancelled")
+                        )
                 except Exception as db_err:
                     logger.warning(f"Failed to persist scan to DB: {db_err}")
-
-        except Exception as e:
-            yield f"data: {json.dumps({'event': 'scan_error', 'error': str(e)})}\n\n"
 
     return StreamingResponse(
         event_generator(),

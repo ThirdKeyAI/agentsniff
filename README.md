@@ -2,6 +2,8 @@
 
 **AI Agent Network Scanner** — Detect AI agents operating on your network through passive monitoring, active probing, protocol detection, and behavioral analysis.
 
+[Documentation](https://docs.agentsniff.org/) | [Website](https://agentsniff.org) | [GitHub](https://github.com/ThirdKeyAI/agentsniff)
+
 ## Overview
 
 AgentSniff identifies AI agents on enterprise networks using seven complementary detection modules:

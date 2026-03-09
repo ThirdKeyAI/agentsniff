@@ -100,12 +100,16 @@ class DNSMonitorDetector(BaseDetector):
     name = "dns_monitor"
     description = "Passive DNS monitoring for LLM API domain lookups"
 
-    def __init__(self, config: ScanConfig):
+    def __init__(self, config: ScanConfig, data_source=None):
         super().__init__(config)
         self._observed_queries: dict[str, list[dict]] = {}  # ip -> [{domain, timestamp}]
+        self.data_source = data_source
 
     async def scan(self, targets: list[str]) -> list[DetectionSignal]:
         signals = []
+
+        if self.data_source:
+            return await self._analyze_data_source(targets)
 
         # Try raw socket DNS monitoring first
         try:
@@ -227,6 +231,35 @@ class DNSMonitorDetector(BaseDetector):
                     },
                 )
             )
+
+        return signals
+
+    async def _analyze_data_source(self, targets: list[str]) -> list[DetectionSignal]:
+        """Analyze DNS queries from external data source (e.g., Zeek)."""
+        signals = []
+        records = await self.data_source.load_dns(targets, time_window=300)
+        if not records:
+            return signals
+
+        self.logger.info(f"Analyzing {len(records)} DNS records from data source")
+
+        for rec in records:
+            if self._is_llm_domain(rec.query):
+                self._record_query(rec.src_ip, rec.query)
+                signals.append(
+                    DetectionSignal(
+                        detector=DetectorType.DNS_MONITOR,
+                        signal_type="llm_api_dns_query",
+                        description=f"Host {rec.src_ip} queried LLM API domain: {rec.query}",
+                        confidence=Confidence.HIGH,
+                        evidence={
+                            "source_ip": rec.src_ip,
+                            "queried_domain": rec.query,
+                            "response_ips": rec.response_ips,
+                            "method": "zeek",
+                        },
+                    )
+                )
 
         return signals
 

@@ -672,6 +672,14 @@
   }
 
   .detector-toggle:hover span { color: var(--text); }
+  .detector-toggle input[type="checkbox"]:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+  .detector-toggle:has(input:disabled) span {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
 </style>
 </head>
 <body>
@@ -706,6 +714,7 @@
   <label class="detector-toggle"><input type="checkbox" id="det_endpoint_prober" checked><span>Endpoints</span></label>
   <label class="detector-toggle"><input type="checkbox" id="det_tls_fingerprint" checked><span>TLS</span></label>
   <label class="detector-toggle"><input type="checkbox" id="det_traffic_analyzer" checked><span>Traffic</span></label>
+  <label class="detector-toggle"><input type="checkbox" id="det_sse_detector" checked><span>SSE</span></label>
 </div>
 
 <div class="main">
@@ -1083,6 +1092,14 @@ function toggleDetail(idx) {
   if (row) row.classList.toggle('open');
 }
 
+function setDetectorTogglesDisabled(disabled) {
+  const allDetectors = ['dns_monitor','port_scanner','agentpin_prober','mcp_detector','endpoint_prober','tls_fingerprint','traffic_analyzer','sse_detector'];
+  allDetectors.forEach(d => {
+    const el = document.getElementById('det_' + d);
+    if (el) el.disabled = disabled;
+  });
+}
+
 function resetScanUI() {
   scanning = false;
   activeEventSource = null;
@@ -1094,6 +1111,7 @@ function resetScanUI() {
   btn.disabled = false;
   btn.innerHTML = '⟐ Scan Network';
   document.getElementById('stopBtn').style.display = 'none';
+  setDetectorTogglesDisabled(false);
   // Refresh history if panel is open
   if (document.getElementById('historyBody').classList.contains('open')) {
     loadHistory();
@@ -1169,13 +1187,21 @@ function hideScanProgress() {
 }
 
 function returnToLiveScan() {
-  if (!scanning || !liveScanState) return;
-  showScanProgress(liveScanState.network, liveScanState.hostCount, liveScanState.detectors);
-  if (liveScanState.agents && liveScanState.agents.length > 0) {
-    renderAgents(liveScanState.agents);
+  if (scanning && liveScanState) {
+    // Scan still running — restore live progress view
+    showScanProgress(liveScanState.network, liveScanState.hostCount, liveScanState.detectors);
+    if (liveScanState.agents && liveScanState.agents.length > 0) {
+      renderAgents(liveScanState.agents);
+    }
+    startElapsedTimer();
+    log('Returned to live scan view');
+  } else if (lastResult) {
+    // Scan finished while viewing history — restore completed results
+    hideScanProgress();
+    if (lastResult.summary) updateStats(lastResult.summary);
+    renderAgents(lastResult.agents || []);
+    log('Restored completed scan results');
   }
-  startElapsedTimer();
-  log('Returned to live scan view');
 }
 
 async function stopScan() {
@@ -1183,44 +1209,44 @@ async function stopScan() {
   stopBtn.disabled = true;
   stopBtn.textContent = 'Stopping...';
   log('Stopping scan...');
-  // Close SSE connection so we don't receive stale events
-  if (activeEventSource) {
-    activeEventSource.close();
-    activeEventSource = null;
-  }
   try {
+    // Send stop request BEFORE closing SSE so the server sets the cancel event
     const resp = await fetch('/api/scan/stop', { method: 'POST' });
     const data = await resp.json();
     if (resp.ok) {
       log('Stop requested: ' + (data.status || 'ok'));
-      // Poll for final results since we closed SSE
-      const poll = setInterval(async () => {
-        try {
-          const r = await fetch('/api/scan/status');
-          const s = await r.json();
-          if (s.status !== 'running') {
-            clearInterval(poll);
-            if (s.status === 'cancelled' || s.status === 'completed') {
-              lastResult = s;
-              if (s.summary) updateStats(s.summary);
-              renderAgents(s.agents || []);
-              log(`Scan stopped — ${(s.agents || []).length} agent(s) found`);
-            }
-            resetScanUI();
-          }
-        } catch (e) {
-          clearInterval(poll);
-          resetScanUI();
-        }
-      }, 500);
     } else {
       log('Stop: ' + (data.error || 'failed'));
-      resetScanUI();
     }
   } catch (e) {
     log(`Stop request failed: ${e.message}`);
-    resetScanUI();
   }
+  // Now close SSE — the scan_cancelled event should arrive first, but
+  // if it doesn't, poll for final results as a fallback.
+  if (activeEventSource) {
+    activeEventSource.close();
+    activeEventSource = null;
+  }
+  // Poll until the server reports non-running status
+  const poll = setInterval(async () => {
+    try {
+      const r = await fetch('/api/scan/status');
+      const s = await r.json();
+      if (s.status !== 'running') {
+        clearInterval(poll);
+        if (s.status === 'cancelled' || s.status === 'completed') {
+          lastResult = s;
+          if (s.summary) updateStats(s.summary);
+          renderAgents(s.agents || []);
+          log(`Scan stopped — ${(s.agents || []).length} agent(s) found`);
+        }
+        resetScanUI();
+      }
+    } catch (e) {
+      clearInterval(poll);
+      resetScanUI();
+    }
+  }, 500);
 }
 
 async function startScan() {
@@ -1234,12 +1260,15 @@ async function startScan() {
 
   const network = document.getElementById('networkInput').value || '192.168.1.0/24';
 
-  // Collect enabled detectors
-  const allDetectors = ['dns_monitor','port_scanner','agentpin_prober','mcp_detector','endpoint_prober','tls_fingerprint','traffic_analyzer'];
+  // Collect enabled detectors (before disabling checkboxes)
+  const allDetectors = ['dns_monitor','port_scanner','agentpin_prober','mcp_detector','endpoint_prober','tls_fingerprint','traffic_analyzer','sse_detector'];
   const enabledDetectors = allDetectors.filter(d => document.getElementById('det_' + d).checked);
   const detectorsParam = enabledDetectors.length < allDetectors.length
     ? '&detectors=' + encodeURIComponent(enabledDetectors.join(','))
     : '';
+
+  // Grey out detector checkboxes during scan
+  setDetectorTogglesDisabled(true);
 
   log(`Starting scan of ${network} with ${enabledDetectors.length} detectors...`);
 
@@ -1611,13 +1640,17 @@ async function loadHistoryScan(scanId) {
     lastResult = data;
     if (data.summary) updateStats(data.summary);
     renderAgents(data.agents || []);
-    // Show "back to live scan" banner if a scan is currently running
-    if (scanning) {
+    // Show "back" banner if viewing history while a scan is running or results exist
+    if (scanning || lastResult) {
       const container = document.getElementById('agentsTable');
       const banner = document.createElement('div');
       banner.style.cssText = 'padding:10px 16px;background:var(--surface2);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;font-size:12px;';
-      banner.innerHTML = `<span style="color:var(--yellow)">⟐ Viewing historical scan — a live scan is in progress</span>
-        <button onclick="returnToLiveScan()" style="padding:4px 12px;font-size:11px">Back to live scan</button>`;
+      const msg = scanning
+        ? 'Viewing historical scan — a live scan is in progress'
+        : 'Viewing historical scan';
+      const btnLabel = scanning ? 'Back to live scan' : 'Back to current results';
+      banner.innerHTML = `<span style="color:var(--yellow)">⟐ ${msg}</span>
+        <button onclick="returnToLiveScan()" style="padding:4px 12px;font-size:11px">${btnLabel}</button>`;
       container.insertBefore(banner, container.firstChild);
     }
     log('Loaded historical scan: ' + (data.agents || []).length + ' agents');

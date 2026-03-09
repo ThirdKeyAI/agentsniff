@@ -3,8 +3,8 @@
 AgentSniff includes a web dashboard for real-time scan monitoring, history browsing, and settings management.
 
 <p>
-  <a href="https://raw.githubusercontent.com/ThirdKeyAI/agentsniff/main/AgentSniff-Dashboard-Main.png"><img src="https://raw.githubusercontent.com/ThirdKeyAI/agentsniff/main/AgentSniff-Dashboard-Main.png" alt="AgentSniff Dashboard - Main" width="48%"></a>
-  <a href="https://raw.githubusercontent.com/ThirdKeyAI/agentsniff/main/AgentSniff-Dashboard-Settings.png"><img src="https://raw.githubusercontent.com/ThirdKeyAI/agentsniff/main/AgentSniff-Dashboard-Settings.png" alt="AgentSniff Dashboard - Settings" width="48%"></a>
+  <a href="https://raw.githubusercontent.com/ThirdKeyAI/agentsniff/main/AgentSniff-Dashboard-Main.png" target="_blank"><img src="https://raw.githubusercontent.com/ThirdKeyAI/agentsniff/main/AgentSniff-Dashboard-Main.png" alt="AgentSniff Dashboard - Main" width="48%"></a>
+  <a href="https://raw.githubusercontent.com/ThirdKeyAI/agentsniff/main/AgentSniff-Dashboard-Settings.png" target="_blank"><img src="https://raw.githubusercontent.com/ThirdKeyAI/agentsniff/main/AgentSniff-Dashboard-Settings.png" alt="AgentSniff Dashboard - Settings" width="48%"></a>
 </p>
 
 ## Starting the Dashboard

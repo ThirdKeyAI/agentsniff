@@ -60,12 +60,86 @@ LLM_API_DOMAINS = [
     "127.0.0.1:1234",
     # vLLM (common default)
     "localhost:8000",
+    # Cerebras
+    "api.cerebras.ai",
+    # OpenRouter
+    "openrouter.ai",
+    # SambaNova
+    "api.sambanova.ai",
+    # Lepton
+    "api.lepton.ai",
+    # AI21
+    "api.ai21.com",
+    # Reka
+    "api.reka.ai",
+    # Voyage (embeddings)
+    "api.voyageai.com",
+    # Jina (embeddings / reranking)
+    "api.jina.ai",
+    # DeepInfra
+    "api.deepinfra.com",
+    # Novita
+    "api.novita.ai",
+    # SiliconFlow
+    "api.siliconflow.cn",
+    # Alibaba / DashScope
+    "dashscope.aliyuncs.com",
+    "dashscope-intl.aliyuncs.com",
+    "api.alibabacloud.com",
+    "aichat.alibabacloud.com",
+    # Moonshot / Kimi
+    "api.moonshot.cn",
+    # Zhipu / GLM / Z.ai
+    "open.bigmodel.cn",
+    # MiniMax
+    "api.minimax.chat",
+    # Baidu / ERNIE / Qianfan
+    "aip.baidubce.com",
+    "qianfan.baidubce.com",
+    # ByteDance / Doubao
+    "ark.cn-beijing.volces.com",
+    "maas-api.ml-platform-cn-beijing.volces.com",
+    # StepFun
+    "api.stepfun.com",
+    # Baichuan
+    "api.baichuan-ai.com",
+    # 01.ai / Yi
+    "api.lingyiwanwu.com",
+    # Tencent / Hunyuan
+    "hunyuan.tencentcloudapi.com",
+    # iFlytek / Spark
+    "spark-api-open.xf-yun.com",
+    # SenseTime
+    "api.sensenova.cn",
+    # ModelScope
+    "api.modelscope.cn",
+    # Nebius
+    "api.studio.nebius.ai",
+    # Lambda
+    "api.lambda.ai",
+    # Snowflake Cortex
+    "api.snowflake.com",
+    # GitHub Models
+    "models.inference.ai.azure.com",
+    # Vercel AI Gateway
+    "gateway.ai.vercel.app",
+    # Portkey
+    "api.portkey.ai",
+    # LiteLLM (local proxy)
+    "localhost:4000",
+    "127.0.0.1:4000",
 ]
 
 LLM_API_DOMAIN_SUFFIXES = [
     ".openai.azure.com",
     ".aiplatform.googleapis.com",
     ".bedrock-runtime.amazonaws.com",
+    ".models.ai.azure.com",
+    ".sagemaker-runtime.amazonaws.com",
+    ".ml.cloud.ibm.com",
+    ".cognitiveservices.azure.com",
+    ".inference.ai.azure.com",
+    ".volces.com",
 ]
 
 # ── Known agent framework signatures ─────────────────────────────────────
@@ -162,6 +236,141 @@ AGENT_FRAMEWORK_SIGNATURES = {
             "/.well-known/ai-plugin.json",
         ],
     },
+    # ── IDE / Editor agents ──────────────────────────────────────────
+    "roocode": {
+        "user_agents": ["roocode", "roo-code"],
+    },
+    "cline": {
+        "user_agents": ["cline"],
+    },
+    "cursor": {
+        "user_agents": ["cursor"],
+    },
+    "aider": {
+        "user_agents": ["aider"],
+    },
+    "continue_dev": {
+        "user_agents": ["continue-dev", "continue"],
+        "endpoints": ["/ide/chat"],
+    },
+    "claude_code": {
+        "user_agents": ["claude-code", "claude-cli"],
+    },
+    "codex_cli": {
+        "user_agents": ["codex-cli", "openai-codex"],
+    },
+    "gemini_cli": {
+        "user_agents": ["gemini-cli"],
+    },
+    "copilot": {
+        "user_agents": ["github-copilot", "copilot"],
+        "headers": {"x-github-copilot-*"},
+    },
+    "windsurf": {
+        "user_agents": ["windsurf", "codeium"],
+    },
+    "qwen_code": {
+        "user_agents": ["qwen-code"],
+    },
+    "kimi_code": {
+        "user_agents": ["kimi-code"],
+    },
+    "trae": {
+        "user_agents": ["trae"],
+    },
+    # ── Agent frameworks (additional) ────────────────────────────────
+    "langgraph": {
+        "endpoints": ["/runs", "/threads", "/assistants"],
+        "user_agents": ["langgraph"],
+    },
+    "ag2": {
+        "endpoints": ["/api/agents", "/api/runs"],
+        "user_agents": ["ag2"],
+    },
+    "haystack": {
+        "endpoints": ["/pipeline/run"],
+        "user_agents": ["haystack"],
+    },
+    "composio": {
+        "endpoints": ["/api/v1/actions", "/api/v1/triggers"],
+        "user_agents": ["composio"],
+    },
+    "rivet": {
+        "endpoints": ["/api/graph/run"],
+        "user_agents": ["rivet"],
+    },
+    "letta": {
+        "endpoints": ["/api/agents", "/api/memory"],
+        "user_agents": ["letta", "memgpt"],
+    },
+    "taskweaver": {
+        "endpoints": ["/api/task", "/api/session"],
+        "user_agents": ["taskweaver"],
+    },
+    "agno": {
+        "endpoints": ["/v1/run", "/v1/playground"],
+        "user_agents": ["agno"],
+    },
+    "bee_agent": {
+        "endpoints": ["/api/run"],
+        "user_agents": ["bee-agent-framework"],
+    },
+    "camel_ai": {
+        "endpoints": ["/api/chat", "/api/role"],
+        "user_agents": ["camel-ai"],
+    },
+    "julep": {
+        "endpoints": ["/api/sessions", "/api/agents"],
+        "user_agents": ["julep"],
+    },
+    "openclaw": {
+        "endpoints": ["/api/agents", "/api/tasks"],
+        "user_agents": ["openclaw"],
+    },
+    # ── Observability / proxy ────────────────────────────────────────
+    "langfuse": {
+        "endpoints": ["/api/public/traces", "/api/public/generations"],
+        "headers": {"x-langfuse-*"},
+    },
+    "langsmith": {
+        "endpoints": ["/api/v1/runs", "/api/v1/datasets"],
+        "headers": {"x-langsmith-*"},
+    },
+    "braintrust": {
+        "endpoints": ["/api/project", "/api/experiment"],
+        "user_agents": ["braintrust"],
+    },
+    "helicone": {
+        "headers": {"helicone-auth", "helicone-*"},
+    },
+    "portkey": {
+        "endpoints": ["/v1/chat/completions", "/v1/prompts"],
+        "headers": {"x-portkey-*"},
+    },
+    "litellm": {
+        "endpoints": ["/chat/completions", "/key/generate"],
+        "user_agents": ["litellm"],
+    },
+    # ── Local inference servers ──────────────────────────────────────
+    "llama_cpp": {
+        "endpoints": ["/completion", "/v1/chat/completions"],
+        "user_agents": ["llama.cpp"],
+    },
+    "tabbyml": {
+        "endpoints": ["/v1/completions", "/v1/health"],
+        "user_agents": ["tabby"],
+    },
+    "jan": {
+        "endpoints": ["/v1/chat/completions", "/v1/models"],
+        "user_agents": ["jan"],
+    },
+    "text_generation_webui": {
+        "endpoints": ["/api/v1/generate", "/api/v1/chat"],
+    },
+    "koboldcpp": {
+        "endpoints": ["/api/v1/generate", "/api/extra/generate/stream"],
+        "user_agents": ["koboldcpp"],
+    },
 }
 
 # ── Common agent-related ports ────────────────────────────────────────────
@@ -187,6 +396,22 @@ AGENT_PORTS = {
     3100: "dify",
     3080: "librechat",
     8501: "streamlit",
+    # LiteLLM proxy
+    4000: "litellm",
+    # LangGraph Studio
+    2024: "langgraph_studio",
+    # Letta / MemGPT
+    8283: "letta",
+    # Continue.dev
+    65432: "continue_dev",
+    # text-generation-webui
+    7860: "text_gen_webui",
+    # KoboldCpp
+    5001: "koboldcpp",
+    # Jan
+    1337: "jan",
+    # code-server (IDE agent)
+    8443: "code_server",
 }
 
 # ── MCP protocol identifiers ─────────────────────────────────────────────

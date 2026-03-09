@@ -155,11 +155,12 @@ class TrafficAnalyzerDetector(BaseDetector):
     name = "traffic_analyzer"
     description = "Behavioral traffic pattern analysis for agent detection"
 
-    def __init__(self, config: ScanConfig):
+    def __init__(self, config: ScanConfig, data_source=None):
         super().__init__(config)
         self._host_profiles: dict[str, HostProfile] = {}
         # Resolve LLM API IPs for matching
         self._llm_ips: set[str] = set()
+        self.data_source = data_source
 
     async def setup(self):
         """Pre-resolve LLM API domain IPs."""
@@ -185,17 +186,78 @@ class TrafficAnalyzerDetector(BaseDetector):
     async def scan(self, targets: list[str]) -> list[DetectionSignal]:
         signals = []
 
-        # Try passive traffic capture
-        try:
-            signals = await self._passive_traffic_analysis()
-        except PermissionError:
-            self.logger.warning("No raw socket permission, falling back to /proc analysis")
-        except Exception as e:
-            self.logger.warning(f"Passive capture failed: {e}")
+        if self.data_source:
+            signals = await self._analyze_data_source(targets)
+        else:
+            try:
+                signals = await self._passive_traffic_analysis()
+            except PermissionError:
+                self.logger.warning("No raw socket permission, falling back to /proc analysis")
+            except Exception as e:
+                self.logger.warning(f"Passive capture failed: {e}")
 
-        # Always also check /proc/net for established connections
         proc_signals = await self._analyze_proc_net(targets)
         signals.extend(proc_signals)
+        return signals
+
+    async def _analyze_data_source(self, targets: list[str]) -> list[DetectionSignal]:
+        """Analyze traffic records from an external data source (e.g., Zeek)."""
+        signals = []
+        records = await self.data_source.load_traffic(targets)
+
+        packet_log: dict[str, list[float]] = defaultdict(list)
+        packet_is_llm: dict[str, list[bool]] = defaultdict(list)
+
+        for rec in records:
+            src_ip = rec.src_ip
+            is_llm = rec.dst_ip in self._llm_ips
+
+            packet_log[src_ip].append(rec.timestamp)
+            packet_is_llm[src_ip].append(is_llm)
+
+            if is_llm or rec.dst_port == 443:
+                profile = self._get_profile(src_ip)
+                profile.activity_timestamps.append(rec.timestamp)
+
+                if is_llm:
+                    profile.llm_api_connections += 1
+                profile.diverse_api_targets.add(rec.dst_ip)
+
+        for ip, profile in self._host_profiles.items():
+            profile.burst_patterns = self._detect_bursts(packet_log.get(ip, []))
+            profile.ora_loop_count = detect_ora_loop(
+                packet_log.get(ip, []),
+                packet_is_llm.get(ip, []),
+            )
+
+            score = profile.agent_behavior_score
+            if score > 0.3:
+                confidence = Confidence.LOW
+                if score > 0.7:
+                    confidence = Confidence.HIGH
+                elif score > 0.5:
+                    confidence = Confidence.MEDIUM
+
+                signals.append(
+                    DetectionSignal(
+                        detector=DetectorType.TRAFFIC_ANALYZER,
+                        signal_type="agent_behavior_pattern",
+                        description=(
+                            f"Host {ip} exhibits agent-like behavior "
+                            f"(score: {score:.2f})"
+                        ),
+                        confidence=confidence,
+                        evidence={
+                            "host": ip,
+                            "behavior_score": score,
+                            "llm_connections": profile.llm_api_connections,
+                            "diverse_targets": len(profile.diverse_api_targets),
+                            "streaming_connections": profile.streaming_connections,
+                            "burst_patterns": profile.burst_patterns,
+                            "data_source": "zeek",
+                        },
+                    )
+                )
 
         return signals
 

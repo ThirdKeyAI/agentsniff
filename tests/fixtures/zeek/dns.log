@@ -1,0 +1,3 @@
+{"ts":1709900000.0,"uid":"D1","id.orig_h":"10.0.0.5","id.orig_p":53,"id.resp_h":"8.8.8.8","id.resp_p":53,"query":"api.openai.com","qtype_name":"A","answers":["104.18.7.23"]}
+{"ts":1709900001.0,"uid":"D2","id.orig_h":"10.0.0.5","id.orig_p":53,"id.resp_h":"8.8.8.8","id.resp_p":53,"query":"api.anthropic.com","qtype_name":"A","answers":["104.18.8.24"]}
+{"ts":1709900002.0,"uid":"D3","id.orig_h":"10.0.0.10","id.orig_p":53,"id.resp_h":"8.8.8.8","id.resp_p":53,"query":"example.com","qtype_name":"A","answers":["93.184.216.34"]}

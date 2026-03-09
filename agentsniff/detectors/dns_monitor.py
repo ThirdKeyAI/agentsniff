@@ -208,12 +208,15 @@ class DNSMonitorDetector(BaseDetector):
         self.logger.info("Resolving known LLM API domains for cross-reference...")
         for domain in self.config.all_llm_domains[:20]:  # Top 20 most common
             try:
-                result = await asyncio.get_event_loop().run_in_executor(
-                    None, lambda d=domain: socket.getaddrinfo(d, 443, socket.AF_INET)
+                result = await asyncio.wait_for(
+                    asyncio.get_event_loop().run_in_executor(
+                        None, lambda d=domain: socket.getaddrinfo(d, 443, socket.AF_INET)
+                    ),
+                    timeout=3.0,
                 )
                 for entry in result:
                     llm_ips.add(entry[4][0])
-            except (socket.gaierror, OSError):
+            except (socket.gaierror, OSError, asyncio.TimeoutError):
                 continue
 
         if llm_ips:

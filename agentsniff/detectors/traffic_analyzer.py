@@ -172,13 +172,16 @@ class TrafficAnalyzerDetector(BaseDetector):
             # Strip port if present
             host = domain.split(":")[0]
             try:
-                result = await loop.run_in_executor(
-                    None,
-                    lambda h=host: socket.getaddrinfo(h, 443, socket.AF_INET),
+                result = await asyncio.wait_for(
+                    loop.run_in_executor(
+                        None,
+                        lambda h=host: socket.getaddrinfo(h, 443, socket.AF_INET),
+                    ),
+                    timeout=3.0,
                 )
                 for entry in result:
                     self._llm_ips.add(entry[4][0])
-            except (socket.gaierror, OSError):
+            except (socket.gaierror, OSError, asyncio.TimeoutError):
                 continue
 
         self.logger.info(f"Resolved {len(self._llm_ips)} LLM API IP addresses")

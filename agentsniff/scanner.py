@@ -302,7 +302,9 @@ async def run_scan(
 
     async def run_detector(detector):
         try:
-            return await detector.scan(targets)
+            signals = await detector.scan(targets)
+            logger.info(f"Detector {detector.name} finished ({len(signals)} signals)")
+            return signals
         except asyncio.CancelledError:
             logger.info(f"Detector {detector.name} cancelled")
             return []
@@ -355,6 +357,15 @@ async def run_scan(
                         result.errors.append({"error": str(e)})
 
             if cancelled:
+                break
+
+            # All detector tasks done — only cancel_waiter remains
+            if pending == {cancel_waiter}:
+                cancel_waiter.cancel()
+                try:
+                    await cancel_waiter
+                except asyncio.CancelledError:
+                    pass
                 break
 
         if not cancelled:

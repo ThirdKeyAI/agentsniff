@@ -1,0 +1,203 @@
+<!--
+  AgentSniff Wazuh Rules
+  ══════════════════════════════════════════════════════════════
+  Drop these rules into /var/ossec/etc/rules/agentsniff_rules.xml
+  and configure a log collector for the AgentSniff log file.
+
+  Wazuh agent ossec.conf snippet:
+  ─────────────────────────────────────────────────────────────
+  <localfile>
+    <log_format>syslog</log_format>
+    <location>/var/log/agentsniff/scan.log</location>
+  </localfile>
+  ─────────────────────────────────────────────────────────────
+
+  For JSON output (recommended for richer alerts), pipe scans to a
+  JSON log and use json decoder:
+  ─────────────────────────────────────────────────────────────
+  <localfile>
+    <log_format>json</log_format>
+    <location>/var/log/agentsniff/results.json</location>
+  </localfile>
+  ─────────────────────────────────────────────────────────────
+
+  Rule ID range: 100200–100299 (custom rules)
+-->
+
+<group name="agentsniff,">
+
+  <!-- ── Base rule: any AgentSniff log line ─────────────────────── -->
+  <rule id="100200" level="0">
+    <decoded_as>agentsniff</decoded_as>
+    <description>AgentSniff log event.</description>
+  </rule>
+
+  <!-- Also match by program name in syslog format -->
+  <rule id="100201" level="0">
+    <program_name>agentsniff</program_name>
+    <description>AgentSniff log event (syslog).</description>
+  </rule>
+
+  <!-- ── Scan lifecycle ─────────────────────────────────────────── -->
+  <rule id="100210" level="3">
+    <if_group>agentsniff</if_group>
+    <match>Scan complete:</match>
+    <description>AgentSniff scan completed.</description>
+  </rule>
+
+  <rule id="100211" level="5">
+    <if_group>agentsniff</if_group>
+    <match>No valid targets resolved</match>
+    <description>AgentSniff scan failed — no valid targets.</description>
+  </rule>
+
+  <rule id="100212" level="4">
+    <if_group>agentsniff</if_group>
+    <match>No detectors enabled</match>
+    <description>AgentSniff scan failed — no detectors enabled.</description>
+  </rule>
+
+  <rule id="100213" level="3">
+    <if_group>agentsniff</if_group>
+    <match>Detector|setup failed</match>
+    <description>AgentSniff detector setup failed.</description>
+  </rule>
+
+  <!-- ── Agent detection (syslog format) ────────────────────────── -->
+  <rule id="100220" level="7">
+    <if_group>agentsniff</if_group>
+    <match>agents detected</match>
+    <description>AgentSniff detected AI agents on the network.</description>
+  </rule>
+
+  <!-- ── Anomaly detection (continuous mode) ────────────────────── -->
+  <rule id="100221" level="8">
+    <if_group>agentsniff</if_group>
+    <match>anomaly|anomalies</match>
+    <description>AgentSniff baseline anomaly detected — new or changed agents.</description>
+  </rule>
+
+  <!-- ── Alert notifications ────────────────────────────────────── -->
+  <rule id="100230" level="3">
+    <if_group>agentsniff</if_group>
+    <match>Webhook alert sent</match>
+    <description>AgentSniff webhook alert dispatched.</description>
+  </rule>
+
+  <rule id="100231" level="5">
+    <if_group>agentsniff</if_group>
+    <match>Webhook returned|Webhook alert failed</match>
+    <description>AgentSniff webhook alert delivery failed.</description>
+  </rule>
+
+  <rule id="100232" level="3">
+    <if_group>agentsniff</if_group>
+    <match>Email alert sent</match>
+    <description>AgentSniff email alert dispatched.</description>
+  </rule>
+
+  <rule id="100233" level="5">
+    <if_group>agentsniff</if_group>
+    <match>Email alert failed</match>
+    <description>AgentSniff email alert delivery failed.</description>
+  </rule>
+
+  <!-- ═══════════════════════════════════════════════════════════
+       JSON-based rules (for --format json output)
+       Use with <log_format>json</log_format>
+       ═══════════════════════════════════════════════════════════ -->
+
+  <!-- ── Any agent detected in JSON results ─────────────────────── -->
+  <rule id="100240" level="7">
+    <if_group>agentsniff</if_group>
+    <field name="summary.total_agents">\d+</field>
+    <description>AgentSniff scan found $(summary.total_agents) agent(s).</description>
+  </rule>
+
+  <!-- ── Confirmed agent (AgentPin or MCP verified) ─────────────── -->
+  <rule id="100250" level="10">
+    <if_sid>100240</if_sid>
+    <field name="agents.confidence_level">confirmed</field>
+    <description>AgentSniff CONFIRMED agent: $(agents.framework) at $(agents.ip_address):$(agents.port).</description>
+    <options>alert_by_email</options>
+  </rule>
+
+  <!-- ── High confidence agent ──────────────────────────────────── -->
+  <rule id="100251" level="9">
+    <if_sid>100240</if_sid>
+    <field name="agents.confidence_level">high</field>
+    <description>AgentSniff HIGH confidence agent: $(agents.framework) at $(agents.ip_address):$(agents.port).</description>
+  </rule>
+
+  <!-- ── Medium confidence agent ────────────────────────────────── -->
+  <rule id="100252" level="7">
+    <if_sid>100240</if_sid>
+    <field name="agents.confidence_level">medium</field>
+    <description>AgentSniff MEDIUM confidence agent: $(agents.framework) at $(agents.ip_address):$(agents.port).</description>
+  </rule>
+
+  <!-- ── Low confidence agent ───────────────────────────────────── -->
+  <rule id="100253" level="5">
+    <if_sid>100240</if_sid>
+    <field name="agents.confidence_level">low</field>
+    <description>AgentSniff LOW confidence agent: $(agents.framework) at $(agents.ip_address):$(agents.port).</description>
+  </rule>
+
+  <!-- ── Specific detector signals ──────────────────────────────── -->
+
+  <!-- MCP server confirmed -->
+  <rule id="100260" level="10">
+    <if_sid>100240</if_sid>
+    <field name="agents.signals.detector">mcp_detector</field>
+    <description>AgentSniff found MCP server at $(agents.ip_address):$(agents.port).</description>
+  </rule>
+
+  <!-- AgentPin identity verified -->
+  <rule id="100261" level="10">
+    <if_sid>100240</if_sid>
+    <field name="agents.signals.detector">agentpin_prober</field>
+    <description>AgentSniff verified AgentPin identity at $(agents.ip_address).</description>
+  </rule>
+
+  <!-- DNS query to LLM API -->
+  <rule id="100262" level="7">
+    <if_sid>100240</if_sid>
+    <field name="agents.signals.detector">dns_monitor</field>
+    <description>AgentSniff detected LLM API DNS queries from $(agents.ip_address).</description>
+  </rule>
+
+  <!-- Known agent framework endpoint -->
+  <rule id="100263" level="8">
+    <if_sid>100240</if_sid>
+    <field name="agents.signals.detector">endpoint_prober</field>
+    <description>AgentSniff found agent framework endpoint at $(agents.ip_address):$(agents.port).</description>
+  </rule>
+
+  <!-- Traffic pattern matches agent behavior -->
+  <rule id="100264" level="7">
+    <if_sid>100240</if_sid>
+    <field name="agents.signals.detector">traffic_analyzer</field>
+    <description>AgentSniff detected agent traffic patterns from $(agents.ip_address).</description>
+  </rule>
+
+  <!-- nmap enrichment excluded a false positive -->
+  <rule id="100265" level="3">
+    <if_sid>100240</if_sid>
+    <field name="agents.status">info</field>
+    <description>AgentSniff nmap enrichment excluded non-agent service at $(agents.ip_address):$(agents.port).</description>
+  </rule>
+
+  <!-- ── Multiple agents on same scan (correlation) ─────────────── -->
+  <rule id="100270" level="12" frequency="5" timeframe="60">
+    <if_matched_sid>100250</if_matched_sid>
+    <description>AgentSniff detected 5+ confirmed agents in 60 seconds — possible agent cluster.</description>
+    <options>alert_by_email</options>
+  </rule>
+
+  <rule id="100271" level="11" frequency="10" timeframe="300">
+    <if_matched_sid>100251</if_matched_sid>
+    <description>AgentSniff detected 10+ high-confidence agents in 5 minutes — large agent presence.</description>
+    <options>alert_by_email</options>
+  </rule>
+
+</group>

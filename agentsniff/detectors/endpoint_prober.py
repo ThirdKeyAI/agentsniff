@@ -74,9 +74,34 @@ class EndpointProberDetector(BaseDetector):
             f"({len(signatures)} frameworks, ~{total_probes} probes)..."
         )
 
-        timeout = aiohttp.ClientTimeout(total=self.config.http_timeout)
+        timeout = aiohttp.ClientTimeout(
+            total=self.config.http_timeout,
+            connect=min(self.config.http_timeout, 2.0),
+            sock_connect=min(self.config.http_timeout, 2.0),
+        )
         connector = aiohttp.TCPConnector(
             ssl=False, limit=self.config.http_concurrency
+        )
+
+        # Pre-filter: quick TCP connect to skip closed ports
+        open_ports: dict[str, set[int]] = {}
+        port_check_tasks = []
+        for host in targets:
+            for port in HTTP_PROBE_PORTS:
+                port_check_tasks.append(self._check_port(host, port))
+        port_results = await asyncio.gather(*port_check_tasks, return_exceptions=True)
+        idx = 0
+        for host in targets:
+            for port in HTTP_PROBE_PORTS:
+                result = port_results[idx]
+                if result is True:
+                    open_ports.setdefault(host, set()).add(port)
+                idx += 1
+
+        reachable_count = sum(len(ports) for ports in open_ports.values())
+        self.logger.info(
+            f"Found {reachable_count} open port(s) across {len(open_ports)} host(s), "
+            f"skipping {len(targets) * len(HTTP_PROBE_PORTS) - reachable_count} closed"
         )
 
         async with aiohttp.ClientSession(
@@ -84,7 +109,7 @@ class EndpointProberDetector(BaseDetector):
         ) as session:
             tasks = []
             for host in targets:
-                for port in HTTP_PROBE_PORTS:
+                for port in open_ports.get(host, set()):
                     # Framework-specific endpoint probing
                     for fw_name, fw_sig in signatures.items():
                         for path in fw_sig.get("endpoints", []):
@@ -130,6 +155,19 @@ class EndpointProberDetector(BaseDetector):
             f"Identified {fw_count} framework/agent endpoints"
         )
         return signals
+
+    @staticmethod
+    async def _check_port(host: str, port: int) -> bool:
+        """Quick TCP connect to check if port is open."""
+        try:
+            _, writer = await asyncio.wait_for(
+                asyncio.open_connection(host, port), timeout=1.5
+            )
+            writer.close()
+            await writer.wait_closed()
+            return True
+        except (OSError, asyncio.TimeoutError):
+            return False
 
     async def _probe_framework_endpoint(
         self,

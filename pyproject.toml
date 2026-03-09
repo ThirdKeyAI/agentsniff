@@ -33,6 +33,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+nmap = ["python-nmap>=0.7"]
 dev = [
     "pytest>=8.0",
     "pytest-asyncio>=0.23",

@@ -20,6 +20,8 @@ class DetectorType(str, Enum):
     TLS_FINGERPRINT = "tls_fingerprint"
     TRAFFIC_ANALYZER = "traffic_analyzer"
     SSE_DETECTOR = "sse_detector"
+    NMAP_ENRICHER = "nmap_enricher"
+    ZEEK = "zeek"
 
 
 class Confidence(str, Enum):
@@ -33,6 +35,7 @@ class AgentStatus(str, Enum):
     DETECTED = "detected"
     SUSPECTED = "suspected"
     VERIFIED = "verified"
+    INFO = "info"
     UNKNOWN = "unknown"
 
 

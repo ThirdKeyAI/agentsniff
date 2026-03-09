@@ -305,6 +305,15 @@ class ScanConfig:
     smtp_from: str = ""
     smtp_to: list[str] = field(default_factory=list)
 
+    # ── Integrations (optional, off by default) ──────────────────────
+    zeek_enabled: bool = False
+    zeek_log_path: str = ""         # path to Zeek JSON log directory
+    zeek_time_window: int = 300     # seconds of logs to read
+
+    nmap_enabled: bool = False
+    nmap_scan_args: str = "-sV"     # nmap arguments
+    nmap_timeout: int = 120         # seconds before nmap times out
+
     @property
     def all_llm_domains(self) -> list[str]:
         return LLM_API_DOMAINS + self.custom_llm_domains

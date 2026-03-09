@@ -18,6 +18,11 @@ AgentSniff identifies AI agents on enterprise networks using seven complementary
 
 \* Falls back to non-root alternatives automatically.
 
+<p>
+  <a href="AgentSniff-Dashboard-Main.png"><img src="AgentSniff-Dashboard-Main.png" alt="AgentSniff Dashboard - Main" width="48%"></a>
+  <a href="AgentSniff-Dashboard-Settings.png"><img src="AgentSniff-Dashboard-Settings.png" alt="AgentSniff Dashboard - Settings" width="48%"></a>
+</p>
+
 ## Quick Start
 
 ### Standalone

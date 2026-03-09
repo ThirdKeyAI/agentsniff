@@ -12,10 +12,10 @@
 ├──────────┴───────────┬───────────┴───────────────┤
 │              Signal Correlator                   │
 │     Groups signals by host, calculates scores    │
-├─────┬─────┬─────┬─────┬─────┬─────┬─────┬───────┤
-│ DNS │Port │Agent│ MCP │ EP  │ TLS │Traf.│  SSE  │
-│ Mon │Scan │Pin  │ Det │Probe│ FP  │Anlz │  Det  │
-├─────┴─────┴─────┴─────┴─────┴─────┴─────┴───────┤
+├─────┬─────┬─────┬─────┬─────┬─────┬─────┬────────┤
+│ DNS │Port │Agent│ MCP │ EP  │ TLS │Traf.│  SSE   │
+│ Mon │Scan │Pin  │ Det │Probe│ FP  │Anlz │  Det   │
+├─────┴─────┴─────┴─────┴─────┴─────┴─────┴────────┤
 │         Integrations (optional)                  │
 │      Zeek DataSource │ nmap Enricher             │
 ├──────────────────────┴───────────────────────────┤

@@ -240,6 +240,22 @@ async def run_scan(
         return result
 
     result.detectors_run = [d.name for d in detectors]
+
+    # Inject Zeek data source into compatible detectors if enabled
+    if config.zeek_enabled and config.zeek_log_path:
+        try:
+            from agentsniff.integrations.zeek import ZeekDataSource
+            zeek = ZeekDataSource(
+                log_path=config.zeek_log_path,
+                time_window=config.zeek_time_window,
+            )
+            for det in detectors:
+                if hasattr(det, 'data_source'):
+                    det.data_source = zeek
+            logger.info(f"Zeek data source enabled: {config.zeek_log_path}")
+        except Exception as e:
+            logger.warning(f"Failed to initialize Zeek data source: {e}")
+
     logger.info(f"Running {len(detectors)} detectors: {', '.join(result.detectors_run)}")
 
     # Setup phase
@@ -382,6 +398,22 @@ async def run_scan(
     agents = [a for a in agents if a.signals]
 
     agents.sort(key=lambda a: a.confidence_score, reverse=True)
+
+    # Run nmap enrichment if enabled
+    if config.nmap_enabled and agents:
+        try:
+            from agentsniff.integrations.nmap import NmapEnricher
+            enricher = NmapEnricher(
+                scan_args=config.nmap_scan_args,
+                timeout=config.nmap_timeout,
+            )
+            agents = await enricher.enrich(agents)
+            logger.info("nmap enrichment complete")
+        except ImportError:
+            logger.warning("nmap enrichment enabled but python-nmap not installed")
+        except Exception as e:
+            logger.warning(f"nmap enrichment failed: {e}")
+
     result.agents_detected = agents
     result.completed_at = datetime.now(timezone.utc)
 

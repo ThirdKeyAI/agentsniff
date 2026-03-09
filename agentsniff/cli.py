@@ -291,6 +291,18 @@ Examples:
         "--log-file", type=str, default="",
         help="Log file path (default: no file logging)",
     )
+    scan_parser.add_argument(
+        "--zeek-logs", metavar="PATH",
+        help="Path to Zeek JSON log directory (enables Zeek integration)",
+    )
+    scan_parser.add_argument(
+        "--nmap", action="store_true", default=False,
+        help="Enable nmap enrichment of detected agents (requires nmap)",
+    )
+    scan_parser.add_argument(
+        "--nmap-args", metavar="ARGS", default="-sV",
+        help="Arguments to pass to nmap (default: -sV)",
+    )
     scan_parser.add_argument("-v", "--verbose", action="store_true")
     scan_parser.add_argument("-q", "--quiet", action="store_true")
 
@@ -384,6 +396,14 @@ def main():
         if args.smtp_to:
             config.smtp_to = [e.strip() for e in args.smtp_to.split(",")]
             config.alert_enabled = True
+
+        if hasattr(args, 'zeek_logs') and args.zeek_logs:
+            config.zeek_enabled = True
+            config.zeek_log_path = args.zeek_logs
+        if hasattr(args, 'nmap') and args.nmap:
+            config.nmap_enabled = True
+        if hasattr(args, 'nmap_args') and args.nmap_args != "-sV":
+            config.nmap_scan_args = args.nmap_args
 
         # Selective detector enabling
         if args.detectors:

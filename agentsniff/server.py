@@ -120,10 +120,22 @@ async def start_scan(
     return {"scan_id": scan_id, "status": "started", "network": config.target_network}
 
 
-async def _run_scan_background(config: ScanConfig, scan_id: str, cancel_event: asyncio.Event):
+async def _run_scan_background(
+    config: ScanConfig,
+    scan_id: str,
+    cancel_event: asyncio.Event,
+    agent_queue: asyncio.Queue | None = None,
+):
     global _current_scan
     try:
-        result = await run_scan(config, cancel_event=cancel_event)
+        async def _on_agent(agent):
+            if agent_queue is not None:
+                await agent_queue.put(agent.to_dict())
+
+        result = await run_scan(
+            config, cancel_event=cancel_event,
+            on_agent_update=_on_agent if agent_queue else None,
+        )
         result_dict = result.to_dict()
         result_dict["scan_id"] = scan_id
 
@@ -187,8 +199,9 @@ async def stop_scan():
     cancel_event = _current_scan.get("_cancel_event")
     if cancel_event:
         cancel_event.set()
+        _current_scan["status"] = "cancelled"
         logger.info(f"Scan {_current_scan['scan_id']} stop requested")
-        return {"status": "stopping", "scan_id": _current_scan["scan_id"]}
+        return {"status": "cancelled", "scan_id": _current_scan["scan_id"]}
     return JSONResponse(
         status_code=500,
         content={"error": "Scan has no cancel handle"},
@@ -267,74 +280,34 @@ async def scan_stream(
         async def _on_agent(agent):
             await agent_queue.put(agent.to_dict())
 
+        # Run scan as a background task so it completes and saves to history
+        # even if the SSE client disconnects
         scan_task = asyncio.create_task(
-            run_scan(config, cancel_event=cancel_event, on_agent_update=_on_agent)
+            _run_scan_background(config, scan_id, cancel_event, agent_queue=agent_queue)
         )
 
-        try:
-            # Yield agent events as they arrive, until the scan task finishes
-            while not scan_task.done():
-                try:
-                    agent_dict = await asyncio.wait_for(agent_queue.get(), timeout=0.5)
-                    yield f"data: {json.dumps({'event': 'agent_detected', 'agent': agent_dict})}\n\n"
-                except asyncio.TimeoutError:
-                    continue
-
-            # Drain any remaining queued agents
-            while not agent_queue.empty():
-                agent_dict = agent_queue.get_nowait()
+        # Stream agent events as they arrive, until the scan task finishes
+        while not scan_task.done():
+            try:
+                agent_dict = await asyncio.wait_for(agent_queue.get(), timeout=0.5)
                 yield f"data: {json.dumps({'event': 'agent_detected', 'agent': agent_dict})}\n\n"
+            except asyncio.TimeoutError:
+                continue
 
-            result = scan_task.result()
+        # Drain any remaining queued agents
+        while not agent_queue.empty():
+            agent_dict = agent_queue.get_nowait()
+            yield f"data: {json.dumps({'event': 'agent_detected', 'agent': agent_dict})}\n\n"
 
-            if cancel_event.is_set():
-                yield f"data: {json.dumps({'event': 'scan_cancelled', 'summary': result.summary})}\n\n"
-                status = "cancelled"
-                _current_scan = {"scan_id": scan_id, "status": status, **result.to_dict()}
-            else:
-                yield f"data: {json.dumps({'event': 'scan_completed', 'summary': result.summary})}\n\n"
-                status = "completed"
-                _current_scan = {"scan_id": scan_id, "status": status, **result.to_dict()}
-
-                # Send alerts if configured
-                if should_alert(result, _config):
-                    outcomes = await send_alerts(result, _config)
-                    for outcome in outcomes:
-                        logger.info(f"Alert: {outcome}")
-
-        except (Exception, GeneratorExit):
-            # Client disconnected or error — cancel the scan if still running
-            if not cancel_event.is_set():
-                cancel_event.set()
-            if not scan_task.done():
-                try:
-                    await scan_task
-                except Exception:
-                    pass
-            if scan_task.done() and not scan_task.cancelled():
-                try:
-                    result = scan_task.result()
-                    status = "cancelled"
-                    _current_scan = {"scan_id": scan_id, "status": status, **result.to_dict()}
-                except Exception:
-                    pass
-
-        # Always save to history and DB, even on disconnect/cancel
-        if _current_scan.get("scan_id") == scan_id and _current_scan.get("status") in ("completed", "cancelled"):
-            _scan_history.append(_current_scan)
-            while len(_scan_history) > 50:
-                _scan_history.pop(0)
-
-            if _store:
-                try:
-                    loop = asyncio.get_event_loop()
-                    result_obj = scan_task.result() if scan_task.done() and not scan_task.cancelled() else None
-                    if result_obj:
-                        await loop.run_in_executor(
-                            None, _store.save_scan, result_obj, _current_scan.get("status", "cancelled")
-                        )
-                except Exception as db_err:
-                    logger.warning(f"Failed to persist scan to DB: {db_err}")
+        # Emit final event based on scan result
+        if _current_scan.get("status") == "cancelled":
+            summary = _current_scan.get("summary", {})
+            yield f"data: {json.dumps({'event': 'scan_cancelled', 'summary': summary})}\n\n"
+        elif _current_scan.get("status") == "completed":
+            summary = _current_scan.get("summary", {})
+            yield f"data: {json.dumps({'event': 'scan_completed', 'summary': summary})}\n\n"
+        elif _current_scan.get("status") == "failed":
+            yield f"data: {json.dumps({'event': 'scan_error', 'error': _current_scan.get('error', 'unknown')})}\n\n"
 
     return StreamingResponse(
         event_generator(),

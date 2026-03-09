@@ -958,6 +958,21 @@ function confColor(score) {
   return '#6a7a8a';
 }
 
+function updateLiveStats(agents) {
+  const bc = { confirmed: 0, high: 0, medium: 0, low: 0 };
+  agents.forEach(a => {
+    const lvl = (a.confidence_level || '').toLowerCase();
+    if (lvl === 'confirmed') bc.confirmed++;
+    else if (lvl === 'high') bc.high++;
+    else if (lvl === 'medium') bc.medium++;
+    else if (lvl === 'low') bc.low++;
+  });
+  document.getElementById('statTotal').textContent = agents.length;
+  document.getElementById('statConfirmed').textContent = bc.confirmed;
+  document.getElementById('statHigh').textContent = bc.high;
+  document.getElementById('statSuspected').textContent = bc.medium + bc.low;
+}
+
 function updateStats(summary) {
   const bc = summary.by_confidence || {};
   document.getElementById('statTotal').textContent = summary.total_agents || 0;
@@ -1232,7 +1247,8 @@ async function stopScan() {
     try {
       const r = await fetch('/api/scan/status');
       const s = await r.json();
-      if (s.status !== 'running') {
+      // Wait for background task to finish and populate results (agents key present)
+      if (s.status !== 'running' && s.agents !== undefined) {
         clearInterval(poll);
         if (s.status === 'cancelled' || s.status === 'completed') {
           lastResult = s;
@@ -1291,12 +1307,18 @@ async function startScan() {
 
       if (data.event === 'scan_started') {
         showScanProgress(data.network, data.host_count, data.detectors);
+        document.getElementById('statDetectors').textContent = data.detectors ? data.detectors.length : '—';
+        document.getElementById('statTotal').textContent = 0;
+        document.getElementById('statConfirmed').textContent = 0;
+        document.getElementById('statHigh').textContent = 0;
+        document.getElementById('statSuspected').textContent = 0;
       }
 
       if (data.event === 'agent_detected') {
         agents.push(data.agent);
         if (liveScanState) liveScanState.agents = agents;
         renderAgents(agents);
+        updateLiveStats(agents);
         log(`Detected: ${data.agent.ip_address} (${data.agent.agent_type})`);
       }
 

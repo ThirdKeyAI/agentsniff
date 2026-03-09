@@ -1,0 +1,29 @@
+# Plans / internal docs
+docs/plans/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Virtual environments
+.venv/
+venv/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# AgentSniff local data
+*.db
+*.db-shm
+*.db-wal

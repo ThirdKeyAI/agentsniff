@@ -1,0 +1,46 @@
+[project]
+site_name = "AgentSniff Documentation"
+site_url = "https://docs.agentsniff.org/"
+site_description = "AI Agent Network Scanner - Detect AI agents on your network"
+nav = [
+  {"Home" = "index.md"},
+  {"Getting Started" = "getting-started.md"},
+  {"Detectors" = "detectors.md"},
+  {"CLI Reference" = "cli-reference.md"},
+  {"Dashboard" = "dashboard.md"},
+  {"Configuration" = "configuration.md"},
+  {"Alerting" = "alerting.md"},
+  {"Integrations" = "integrations.md"},
+  {"API Reference" = "api-reference.md"},
+  {"Architecture" = "architecture.md"},
+  {"Wazuh Integration" = "wazuh.md"},
+  {"agentsniff.org" = "https://agentsniff.org"},
+]
+
+[project.repository]
+url = "https://github.com/ThirdKeyAI/agentsniff"
+
+[[project.theme.palette]]
+scheme = "default"
+toggle.icon = "lucide/sun"
+toggle.name = "Switch to dark mode"
+
+[[project.theme.palette]]
+scheme = "slate"
+toggle.icon = "lucide/moon"
+toggle.name = "Switch to light mode"
+
+[[project.extra.social]]
+icon = "fontawesome/brands/github"
+link = "https://github.com/ThirdKeyAI/agentsniff"
+name = "AgentSniff on GitHub"
+
+[[project.extra.social]]
+icon = "fontawesome/solid/globe"
+link = "https://agentsniff.org"
+name = "agentsniff.org"
+
+[[project.extra.social]]
+icon = "fontawesome/solid/shield-halved"
+link = "https://thirdkey.ai"
+name = "ThirdKey"

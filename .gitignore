@@ -1,6 +1,9 @@
 # Plans / internal docs
 docs/plans/
 
+# Zensical build output
+site/
+
 # Python
 __pycache__/
 *.py[cod]

@@ -2,6 +2,8 @@
 site_name = "AgentSniff Documentation"
 site_url = "https://docs.agentsniff.org/"
 site_description = "AI Agent Network Scanner - Detect AI agents on your network"
+repo_url = "https://github.com/ThirdKeyAI/agentsniff"
+repo_name = "ThirdKeyAI/agentsniff"
 nav = [
   {"Home" = "index.md"},
   {"Getting Started" = "getting-started.md"},
@@ -16,9 +18,6 @@ nav = [
   {"Wazuh Integration" = "wazuh.md"},
   {"agentsniff.org" = "https://agentsniff.org"},
 ]
-
-[project.repository]
-url = "https://github.com/ThirdKeyAI/agentsniff"
 
 [[project.theme.palette]]
 scheme = "default"

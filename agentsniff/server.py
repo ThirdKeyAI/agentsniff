@@ -64,11 +64,18 @@ _ALERT_SETTINGS_FIELDS = [
 
 @app.get("/api/health")
 async def health():
+    from agentsniff.signatures import get_signature_data
+    sigs = get_signature_data()
     return {
         "status": "ok",
         "service": "agentsniff",
         "version": "1.0.1",
         "timestamp": datetime.now(timezone.utc).isoformat(),
+        "signatures": {
+            "status": sigs.verification_status,
+            "all_verified": sigs.all_verified,
+            "has_invalid": sigs.has_invalid_signatures,
+        },
     }
 
 

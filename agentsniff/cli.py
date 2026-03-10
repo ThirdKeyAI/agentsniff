@@ -15,6 +15,7 @@ from pathlib import Path
 
 from agentsniff.baseline import NetworkBaseline
 from agentsniff.config import ScanConfig, default_config_yaml
+from agentsniff.signatures import get_signature_data, VERIFIED, INVALID, UNVERIFIED
 from agentsniff.notifier import should_alert, send_alerts
 from agentsniff.scanner import run_scan
 from agentsniff.storage import ScanStore
@@ -62,6 +63,37 @@ STATUS_ICONS = {
     "suspected": "◎",
     "unknown": "○",
 }
+
+
+def _print_signature_status():
+    """Print signature verification status summary."""
+    sigs = get_signature_data()
+    status = sigs.verification_status
+
+    invalid = [k for k, v in status.items() if v == INVALID]
+    verified = [k for k, v in status.items() if v == VERIFIED]
+    unverified = [k for k, v in status.items() if v == UNVERIFIED]
+
+    if invalid:
+        print(
+            f"  {Colors.BG_RED}{Colors.WHITE} WARNING {Colors.RESET} "
+            f"{Colors.RED}Invalid signatures: {', '.join(invalid)}{Colors.RESET}"
+        )
+        print(
+            f"  {Colors.RED}Detection signatures may have been tampered with!{Colors.RESET}"
+        )
+        print(
+            f"  {Colors.DIM}Run 'agentsniff update-signatures' to restore.{Colors.RESET}"
+        )
+        print()
+    elif verified:
+        count = len(verified)
+        total = len(status)
+        print(
+            f"  {Colors.GREEN}Signatures verified ({count}/{total}){Colors.RESET}"
+        )
+        print()
+    # Unverified (no .sig files) — silent, not an error
 
 
 def setup_logging(verbose: bool = False, quiet: bool = False, log_file: str = ""):
@@ -327,6 +359,20 @@ Examples:
     # ── init-config command ──────────────────────────────────────────
     subparsers.add_parser("init-config", help="Generate default configuration file")
 
+    # ── update-signatures command ─────────────────────────────────────
+    update_parser = subparsers.add_parser(
+        "update-signatures",
+        help="Update detection signatures from GitHub",
+    )
+    update_parser.add_argument(
+        "--verify", action="store_true", default=True,
+        help="Verify SchemaPin signatures after update (default: true)",
+    )
+    update_parser.add_argument(
+        "--no-verify", action="store_true", default=False,
+        help="Skip signature verification",
+    )
+
     return parser
 
 
@@ -345,6 +391,12 @@ def main():
         print(f"Generated default config: {config_path}")
         sys.exit(0)
 
+    if args.command == "update-signatures":
+        from agentsniff.signatures.updater import update_signatures
+        verify = not args.no_verify
+        success = update_signatures(verify=verify)
+        sys.exit(0 if success else 1)
+
     if args.command == "serve":
         setup_logging(verbose=args.verbose, log_file=args.log_file)
         from agentsniff.server import start_server
@@ -361,6 +413,7 @@ def main():
 
         if not args.quiet:
             print(BANNER)
+            _print_signature_status()
 
         # Build config
         if args.config:

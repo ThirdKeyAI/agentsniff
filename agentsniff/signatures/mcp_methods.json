@@ -1,0 +1,14 @@
+[
+  "initialize",
+  "initialized",
+  "tools/list",
+  "tools/call",
+  "resources/list",
+  "resources/read",
+  "resources/subscribe",
+  "prompts/list",
+  "prompts/get",
+  "logging/setLevel",
+  "completion/complete",
+  "ping"
+]

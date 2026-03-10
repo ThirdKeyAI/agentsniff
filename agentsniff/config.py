@@ -1,5 +1,9 @@
 """
 AgentSniff - Configuration management.
+
+Detection signatures are loaded from JSON files in agentsniff/signatures/.
+These files can be independently updated and optionally verified with
+SchemaPin signatures for tamper detection.
 """
 
 from __future__ import annotations
@@ -11,482 +15,18 @@ from typing import Any
 
 import yaml
 
+from agentsniff.signatures import get_signature_data
 
-# ── Known LLM API domains ────────────────────────────────────────────────
-LLM_API_DOMAINS = [
-    # OpenAI
-    "api.openai.com",
-    "oaidalleapiprodscus.blob.core.windows.net",
-    # Anthropic
-    "api.anthropic.com",
-    # Google
-    "generativelanguage.googleapis.com",
-    "aiplatform.googleapis.com",
-    "us-central1-aiplatform.googleapis.com",
-    # Mistral
-    "api.mistral.ai",
-    # Groq
-    "api.groq.com",
-    # Together
-    "api.together.xyz",
-    # Cohere
-    "api.cohere.ai",
-    "api.cohere.com",
-    # Replicate
-    "api.replicate.com",
-    # Perplexity
-    "api.perplexity.ai",
-    # Fireworks
-    "api.fireworks.ai",
-    # Anyscale / Endpoints
-    "api.endpoints.anyscale.com",
-    # DeepSeek
-    "api.deepseek.com",
-    # xAI
-    "api.x.ai",
-    # AWS Bedrock
-    "bedrock-runtime.us-east-1.amazonaws.com",
-    "bedrock-runtime.us-west-2.amazonaws.com",
-    "bedrock-runtime.eu-west-1.amazonaws.com",
-    # Azure OpenAI (pattern)
-    # *.openai.azure.com — handled as suffix match
-    # Hugging Face
-    "api-inference.huggingface.co",
-    # Ollama (local)
-    "localhost:11434",
-    "127.0.0.1:11434",
-    # LM Studio (local)
-    "localhost:1234",
-    "127.0.0.1:1234",
-    # vLLM (common default)
-    "localhost:8000",
-    # Cerebras
-    "api.cerebras.ai",
-    # OpenRouter
-    "openrouter.ai",
-    # SambaNova
-    "api.sambanova.ai",
-    # Lepton
-    "api.lepton.ai",
-    # AI21
-    "api.ai21.com",
-    # Reka
-    "api.reka.ai",
-    # Voyage (embeddings)
-    "api.voyageai.com",
-    # Jina (embeddings / reranking)
-    "api.jina.ai",
-    # DeepInfra
-    "api.deepinfra.com",
-    # Novita
-    "api.novita.ai",
-    # SiliconFlow
-    "api.siliconflow.cn",
-    # Alibaba / DashScope
-    "dashscope.aliyuncs.com",
-    "dashscope-intl.aliyuncs.com",
-    "api.alibabacloud.com",
-    "aichat.alibabacloud.com",
-    # Moonshot / Kimi
-    "api.moonshot.cn",
-    # Zhipu / GLM / Z.ai
-    "open.bigmodel.cn",
-    # MiniMax
-    "api.minimax.chat",
-    # Baidu / ERNIE / Qianfan
-    "aip.baidubce.com",
-    "qianfan.baidubce.com",
-    # ByteDance / Doubao
-    "ark.cn-beijing.volces.com",
-    "maas-api.ml-platform-cn-beijing.volces.com",
-    # StepFun
-    "api.stepfun.com",
-    # Baichuan
-    "api.baichuan-ai.com",
-    # 01.ai / Yi
-    "api.lingyiwanwu.com",
-    # Tencent / Hunyuan
-    "hunyuan.tencentcloudapi.com",
-    # iFlytek / Spark
-    "spark-api-open.xf-yun.com",
-    # SenseTime
-    "api.sensenova.cn",
-    # ModelScope
-    "api.modelscope.cn",
-    # Nebius
-    "api.studio.nebius.ai",
-    # Lambda
-    "api.lambda.ai",
-    # Snowflake Cortex
-    "api.snowflake.com",
-    # GitHub Models
-    "models.inference.ai.azure.com",
-    # Vercel AI Gateway
-    "gateway.ai.vercel.app",
-    # Portkey
-    "api.portkey.ai",
-    # LiteLLM (local proxy)
-    "localhost:4000",
-    "127.0.0.1:4000",
-]
+# ── Load signature data from JSON files ──────────────────────────────────
+_sigs = get_signature_data()
 
-# ── Agent infrastructure domains ─────────────────────────────────────────
-# Not LLM API providers, but domains that indicate AI agent activity
-# (skill registries, agent observability, tool connectivity, etc.)
-AGENT_INFRA_DOMAINS = [
-    # OpenClaw ecosystem
-    "clawhub.ai",
-    "clawhub.com",
-    "onlycrabs.ai",
-    "api.moltyverse.email",
-    "moltyverse.app",
-    # MCP registries
-    "smithery.ai",
-    "glama.ai",
-    # Agent observability
-    "api.langfuse.com",
-    "api.smith.langchain.com",
-    "api.helicone.ai",
-    # Tool connectivity
-    "api.composio.dev",
-    "app.composio.dev",
-]
-
-LLM_API_DOMAIN_SUFFIXES = [
-    ".openai.azure.com",
-    ".aiplatform.googleapis.com",
-    ".bedrock-runtime.amazonaws.com",
-    ".models.ai.azure.com",
-    ".sagemaker-runtime.amazonaws.com",
-    ".ml.cloud.ibm.com",
-    ".cognitiveservices.azure.com",
-    ".inference.ai.azure.com",
-    ".volces.com",
-]
-
-# ── Known agent framework signatures ─────────────────────────────────────
-AGENT_FRAMEWORK_SIGNATURES = {
-    "langchain": {
-        "endpoints": ["/docs", "/openapi.json"],
-        "headers": {"x-langchain-*"},
-        "user_agents": ["langchain", "langserve"],
-    },
-    "crewai": {
-        "endpoints": ["/crew/status", "/crew/kickoff"],
-        "user_agents": ["crewai"],
-    },
-    "autogen": {
-        "endpoints": ["/api/messages"],
-        "user_agents": ["autogen"],
-    },
-    "symbiont": {
-        "endpoints": ["/health", "/api/v1/agents", "/mcp"],
-        "headers": {"x-symbiont-*", "x-agent-id"},
-        "user_agents": ["symbiont"],
-        "well_known": ["/.well-known/agent-identity.json"],
-    },
-    "openai_assistants": {
-        "user_agents": ["openai-python", "openai-node"],
-    },
-    "dify": {
-        "endpoints": ["/api/v1/chat-messages", "/api/v1/workflows"],
-    },
-    "flowise": {
-        "endpoints": ["/api/v1/prediction", "/api/v1/chatflows"],
-    },
-    "n8n": {
-        "endpoints": ["/webhook/", "/rest/workflows"],
-    },
-    "pydantic_ai": {
-        "endpoints": ["/api/chat", "/schema.json"],
-        "user_agents": ["pydantic-ai", "pydantic-core"],
-        "headers": {"x-pydantic-ai-*"},
-    },
-    "smolagents": {
-        "endpoints": ["/run/agent", "/api/predict"],
-        "user_agents": ["smolagents", "huggingface-hub"],
-    },
-    "browser_use": {
-        "endpoints": ["/api/browser", "/ws/browser"],
-        "user_agents": ["browser-use"],
-    },
-    "openhands": {
-        "endpoints": ["/api/options", "/api/config", "/ws"],
-        "user_agents": ["openhands"],
-    },
-    "anythingllm": {
-        "endpoints": ["/api/system/status", "/api/v1/workspace"],
-        "headers": {"x-anythingllm-signature"},
-    },
-    "superagi": {
-        "endpoints": ["/api/agent/schedule", "/api/agent/status"],
-        "user_agents": ["superagi-agent"],
-    },
-    "llama_deploy": {
-        "endpoints": ["/control-plane/status", "/message-queue/status"],
-        "user_agents": ["llamaindex", "llama-deploy"],
-    },
-    "rasa": {
-        "endpoints": ["/webhooks/rest/webhook", "/status", "/conversations"],
-        "headers": {"x-rasa-version"},
-    },
-    "chatwoot": {
-        "endpoints": ["/api/v1/accounts/1/conversations"],
-        "headers": {"api_access_token"},
-        "user_agents": ["chatwoot"],
-    },
-    "eliza": {
-        "endpoints": ["/api/agents", "/message"],
-        "user_agents": ["eliza"],
-    },
-    "phidata": {
-        "endpoints": ["/v1/agent/run", "/v1/playground/chat"],
-        "user_agents": ["phidata"],
-    },
-    "semantic_kernel": {
-        "headers": {"semantic-kernel-version"},
-        "user_agents": ["Semantic-Kernel"],
-    },
-    "mastra": {
-        "endpoints": ["/api/mastra", "/api/agents"],
-    },
-    "agent_metadata_standards": {
-        "endpoints": [
-            "/AGENTS.md",
-            "/SKILL.md",
-            "/.well-known/agents.json",
-            "/.well-known/ai-plugin.json",
-        ],
-    },
-    # ── IDE / Editor agents ──────────────────────────────────────────
-    "roocode": {
-        "user_agents": ["roocode", "roo-code"],
-    },
-    "cline": {
-        "user_agents": ["cline"],
-    },
-    "cursor": {
-        "user_agents": ["cursor"],
-    },
-    "aider": {
-        "user_agents": ["aider"],
-    },
-    "continue_dev": {
-        "user_agents": ["continue-dev", "continue"],
-        "endpoints": ["/ide/chat"],
-    },
-    "claude_code": {
-        "user_agents": ["claude-code", "claude-cli"],
-    },
-    "codex_cli": {
-        "user_agents": ["codex-cli", "openai-codex"],
-    },
-    "gemini_cli": {
-        "user_agents": ["gemini-cli"],
-    },
-    "copilot": {
-        "user_agents": ["github-copilot", "copilot"],
-        "headers": {"x-github-copilot-*"},
-    },
-    "windsurf": {
-        "user_agents": ["windsurf", "codeium"],
-    },
-    "qwen_code": {
-        "user_agents": ["qwen-code"],
-    },
-    "kimi_code": {
-        "user_agents": ["kimi-code"],
-    },
-    "trae": {
-        "user_agents": ["trae"],
-    },
-    # ── Agent frameworks (additional) ────────────────────────────────
-    "langgraph": {
-        "endpoints": ["/runs", "/threads", "/assistants"],
-        "user_agents": ["langgraph"],
-    },
-    "ag2": {
-        "endpoints": ["/api/agents", "/api/runs"],
-        "user_agents": ["ag2"],
-    },
-    "haystack": {
-        "endpoints": ["/pipeline/run"],
-        "user_agents": ["haystack"],
-    },
-    "composio": {
-        "endpoints": ["/api/v1/actions", "/api/v1/triggers"],
-        "user_agents": ["composio"],
-    },
-    "rivet": {
-        "endpoints": ["/api/graph/run"],
-        "user_agents": ["rivet"],
-    },
-    "letta": {
-        "endpoints": ["/api/agents", "/api/memory"],
-        "user_agents": ["letta", "memgpt"],
-    },
-    "taskweaver": {
-        "endpoints": ["/api/task", "/api/session"],
-        "user_agents": ["taskweaver"],
-    },
-    "agno": {
-        "endpoints": ["/v1/run", "/v1/playground"],
-        "user_agents": ["agno"],
-    },
-    "bee_agent": {
-        "endpoints": ["/api/run"],
-        "user_agents": ["bee-agent-framework"],
-    },
-    "camel_ai": {
-        "endpoints": ["/api/chat", "/api/role"],
-        "user_agents": ["camel-ai"],
-    },
-    "julep": {
-        "endpoints": ["/api/sessions", "/api/agents"],
-        "user_agents": ["julep"],
-    },
-    "openclaw": {
-        # OpenClaw (formerly Clawdbot/Moltbot) - AI agent framework
-        "endpoints": [
-            "/api/agents",
-            "/api/skills",
-            "/.well-known/clawhub.json",
-        ],
-        "headers": {"x-openclaw-*"},
-        "user_agents": ["openclaw", "clawdbot", "moltbot", "clawhub"],
-    },
-    # ── Observability / proxy ────────────────────────────────────────
-    "langfuse": {
-        "endpoints": ["/api/public/traces", "/api/public/generations"],
-        "headers": {"x-langfuse-*"},
-    },
-    "langsmith": {
-        "endpoints": ["/api/v1/runs", "/api/v1/datasets"],
-        "headers": {"x-langsmith-*"},
-    },
-    "braintrust": {
-        "endpoints": ["/api/project", "/api/experiment"],
-        "user_agents": ["braintrust"],
-    },
-    "helicone": {
-        "headers": {"helicone-auth", "helicone-*"},
-    },
-    "portkey": {
-        "endpoints": ["/v1/chat/completions", "/v1/prompts"],
-        "headers": {"x-portkey-*"},
-    },
-    "litellm": {
-        "endpoints": ["/chat/completions", "/key/generate"],
-        "user_agents": ["litellm"],
-    },
-    # ── Local inference servers ──────────────────────────────────────
-    "llama_cpp": {
-        "endpoints": ["/completion", "/v1/chat/completions"],
-        "user_agents": ["llama.cpp"],
-    },
-    "tabbyml": {
-        "endpoints": ["/v1/completions", "/v1/health"],
-        "user_agents": ["tabby"],
-    },
-    "jan": {
-        "endpoints": ["/v1/chat/completions", "/v1/models"],
-        "user_agents": ["jan"],
-    },
-    "text_generation_webui": {
-        "endpoints": ["/api/v1/generate", "/api/v1/chat"],
-    },
-    "koboldcpp": {
-        "endpoints": ["/api/v1/generate", "/api/extra/generate/stream"],
-        "user_agents": ["koboldcpp"],
-    },
-}
-
-# ── Common agent-related ports ────────────────────────────────────────────
-AGENT_PORTS = {
-    # MCP servers
-    3000: "mcp_default",
-    3001: "mcp_alt",
-    8080: "mcp_or_proxy",
-    # Agent frameworks
-    8000: "fastapi_or_vllm",
-    8001: "agent_api",
-    8888: "jupyter_or_agent",
-    5000: "flask_agent",
-    # LLM inference
-    11434: "ollama",
-    1234: "lmstudio",
-    # Vector DBs (agents often co-located)
-    6333: "qdrant",
-    6334: "qdrant_grpc",
-    8090: "weaviate",
-    19530: "milvus",
-    # Agent platforms
-    3100: "dify",
-    3080: "librechat",
-    8501: "streamlit",
-    # LiteLLM proxy
-    4000: "litellm",
-    # LangGraph Studio
-    2024: "langgraph_studio",
-    # Letta / MemGPT
-    8283: "letta",
-    # Continue.dev
-    65432: "continue_dev",
-    # text-generation-webui
-    7860: "text_gen_webui",
-    # KoboldCpp
-    5001: "koboldcpp",
-    # Jan
-    1337: "jan",
-    # code-server (IDE agent)
-    8443: "code_server",
-}
-
-# ── MCP protocol identifiers ─────────────────────────────────────────────
-MCP_JSONRPC_METHODS = [
-    "initialize",
-    "initialized",
-    "tools/list",
-    "tools/call",
-    "resources/list",
-    "resources/read",
-    "resources/subscribe",
-    "prompts/list",
-    "prompts/get",
-    "logging/setLevel",
-    "completion/complete",
-    "ping",
-]
-
-# ── TLS JA3/JA4 fingerprints for known agent HTTP clients ────────────────
-KNOWN_AGENT_TLS_FINGERPRINTS = {
-    # These are example hashes — real deployments would build a live database
-    "python_requests_3_11": {
-        "ja3": "placeholder_ja3_hash",
-        "ja4": "placeholder_ja4_hash",
-        "description": "Python requests library (common in LangChain, CrewAI)",
-    },
-    "python_httpx": {
-        "ja3": "placeholder_ja3_httpx",
-        "ja4": "placeholder_ja4_hash",
-        "description": "Python httpx (common in modern agent frameworks)",
-    },
-    "python_aiohttp": {
-        "ja3": "placeholder_ja3_aiohttp",
-        "ja4": "placeholder_ja4_hash",
-        "description": "Python aiohttp (async agent frameworks)",
-    },
-    "node_fetch": {
-        "ja3": "placeholder_ja3_node",
-        "ja4": "placeholder_ja4_hash",
-        "description": "Node.js fetch/undici (JS agent frameworks)",
-    },
-    "rust_reqwest": {
-        "ja3": "placeholder_ja3_reqwest",
-        "ja4": "placeholder_ja4_hash",
-        "description": "Rust reqwest (Symbiont, custom Rust agents)",
-    },
-}
+LLM_API_DOMAINS: list[str] = _sigs.llm_domains
+AGENT_INFRA_DOMAINS: list[str] = _sigs.agent_infra_domains
+LLM_API_DOMAIN_SUFFIXES: list[str] = _sigs.domain_suffixes
+AGENT_FRAMEWORK_SIGNATURES: dict[str, Any] = _sigs.frameworks
+AGENT_PORTS: dict[int, str] = _sigs.ports
+MCP_JSONRPC_METHODS: list[str] = _sigs.mcp_methods
+KNOWN_AGENT_TLS_FINGERPRINTS: dict[str, Any] = _sigs.tls_fingerprints
 
 
 @dataclass
@@ -536,6 +76,7 @@ class ScanConfig:
 
     # ── Custom signatures ────────────────────────────────────────────
     custom_llm_domains: list[str] = field(default_factory=list)
+    custom_agent_infra_domains: list[str] = field(default_factory=list)
     custom_agent_ports: dict[int, str] = field(default_factory=dict)
     custom_framework_signatures: dict[str, Any] = field(default_factory=dict)
 
@@ -573,13 +114,23 @@ class ScanConfig:
 
     @property
     def all_agent_infra_domains(self) -> list[str]:
-        return AGENT_INFRA_DOMAINS
+        return AGENT_INFRA_DOMAINS + self.custom_agent_infra_domains
 
     @property
     def all_agent_ports(self) -> dict[int, str]:
         ports = dict(AGENT_PORTS)
         ports.update(self.custom_agent_ports)
         return ports
+
+    @property
+    def signature_verification(self) -> dict[str, str]:
+        """Get signature verification status for all data files."""
+        return _sigs.verification_status
+
+    @property
+    def signatures_valid(self) -> bool:
+        """True if no signatures have failed verification."""
+        return not _sigs.has_invalid_signatures
 
     @classmethod
     def from_yaml(cls, path: str | Path) -> ScanConfig:
@@ -663,8 +214,9 @@ api_port: 9090
 db_path: ""       # default: ~/.agentsniff/agentsniff.db
 log_file: ""      # empty = console only
 
-# Custom detection signatures
+# Custom detection signatures (merged with built-in)
 custom_llm_domains: []
+custom_agent_infra_domains: []
 custom_agent_ports: {}
 custom_framework_signatures: {}
 

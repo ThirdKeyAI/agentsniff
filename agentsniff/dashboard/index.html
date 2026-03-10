@@ -1340,11 +1340,16 @@ async function startScan() {
       }
 
       if (data.event === 'agent_detected') {
-        agents.push(data.agent);
+        const idx = agents.findIndex(a => a.ip_address === data.agent.ip_address);
+        if (idx >= 0) {
+          agents[idx] = data.agent;
+        } else {
+          agents.push(data.agent);
+          log(`Detected: ${data.agent.ip_address} (${data.agent.agent_type})`);
+        }
         if (liveScanState) liveScanState.agents = agents;
         renderAgents(agents);
         updateLiveStats(agents);
-        log(`Detected: ${data.agent.ip_address} (${data.agent.agent_type})`);
       }
 
       if (data.event === 'scan_completed') {

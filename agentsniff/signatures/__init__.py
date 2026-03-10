@@ -52,7 +52,7 @@ def _verify_signature(data: Any, sig_filename: str) -> str:
             sig_data = json.load(f)
 
         signature_b64 = sig_data.get("signature", "")
-        public_key_pem = sig_data.get("public_key_pem", "")
+        public_key_pem = sig_data.get("public_key_pem", "") or sig_data.get("public_key", "")
 
         if not signature_b64 or not public_key_pem:
             return UNVERIFIED

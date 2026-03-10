@@ -9,7 +9,8 @@
     ],
     "user_agents": [
       "langchain",
-      "langserve"
+      "langserve",
+      "DefaultLangchainUserAgent"
     ]
   },
   "crewai": {
@@ -26,7 +27,9 @@
       "/api/messages"
     ],
     "user_agents": [
-      "autogen"
+      "autogen",
+      "pyautogen",
+      "ag2"
     ]
   },
   "symbiont": {
@@ -49,7 +52,38 @@
   "openai_assistants": {
     "user_agents": [
       "openai-python",
-      "openai-node"
+      "openai-node",
+      "OpenAI/Python",
+      "OpenAI/Node"
+    ],
+    "headers": [
+      "OpenAI-Beta",
+      "x-stainless-lang",
+      "x-stainless-package-version",
+      "x-stainless-os",
+      "x-stainless-arch",
+      "x-stainless-runtime",
+      "x-stainless-runtime-version"
+    ]
+  },
+  "anthropic_sdk": {
+    "user_agents": [
+      "Anthropic/Python",
+      "Anthropic/Node"
+    ],
+    "headers": [
+      "anthropic-version",
+      "anthropic-beta",
+      "x-stainless-lang",
+      "x-stainless-package-version",
+      "x-stainless-os",
+      "x-stainless-arch",
+      "x-stainless-runtime"
+    ]
+  },
+  "google_genai_sdk": {
+    "user_agents": [
+      "google-genai-sdk"
     ]
   },
   "dify": {
@@ -197,25 +231,38 @@
     "endpoints": [
       "/AGENTS.md",
       "/SKILL.md",
+      "/SOUL.md",
+      "/MEMORY.md",
       "/.well-known/agents.json",
-      "/.well-known/ai-plugin.json"
+      "/.well-known/ai-plugin.json",
+      "/.well-known/clawhub.json"
     ]
   },
   "roocode": {
     "user_agents": [
       "roocode",
       "roo-code"
-    ]
+    ],
+    "mcp_client_name": "roo-code"
   },
   "cline": {
     "user_agents": [
       "cline"
-    ]
+    ],
+    "mcp_client_name": "cline"
   },
   "cursor": {
     "user_agents": [
       "cursor"
-    ]
+    ],
+    "headers": [
+      "x-cursor-client-version",
+      "x-cursor-client-type",
+      "x-cursor-client-os",
+      "x-cursor-checksum",
+      "x-ghost-mode"
+    ],
+    "mcp_client_name": "cursor"
   },
   "aider": {
     "user_agents": [
@@ -229,13 +276,22 @@
     ],
     "endpoints": [
       "/ide/chat"
-    ]
+    ],
+    "mcp_client_name": "continue"
   },
   "claude_code": {
     "user_agents": [
       "claude-code",
-      "claude-cli"
-    ]
+      "claude-cli",
+      "claude-code/"
+    ],
+    "headers": [
+      "anthropic-beta"
+    ],
+    "mcp_client_name": "claude-code"
+  },
+  "claude_desktop": {
+    "mcp_client_name": "Claude Desktop"
   },
   "codex_cli": {
     "user_agents": [
@@ -245,23 +301,30 @@
   },
   "gemini_cli": {
     "user_agents": [
-      "gemini-cli"
+      "gemini-cli",
+      "google-genai-sdk"
     ]
   },
   "copilot": {
     "user_agents": [
       "github-copilot",
-      "copilot"
+      "copilot",
+      "GithubCopilot",
+      "GitHubCopilotChat"
     ],
     "headers": [
-      "x-github-copilot-*"
+      "x-github-copilot-*",
+      "Editor-Version",
+      "Editor-Plugin-Version",
+      "Copilot-Integration-Id"
     ]
   },
   "windsurf": {
     "user_agents": [
       "windsurf",
       "codeium"
-    ]
+    ],
+    "mcp_client_name": "windsurf"
   },
   "qwen_code": {
     "user_agents": [
@@ -276,6 +339,14 @@
   "trae": {
     "user_agents": [
       "trae"
+    ]
+  },
+  "opencode": {
+    "mcp_client_name": "opencode"
+  },
+  "blackboxai": {
+    "user_agents": [
+      "blackboxai"
     ]
   },
   "langgraph": {
@@ -311,7 +382,8 @@
       "/api/v1/triggers"
     ],
     "user_agents": [
-      "composio"
+      "composio",
+      "composio-core"
     ]
   },
   "rivet": {
@@ -392,6 +464,29 @@
       "clawhub"
     ]
   },
+  "strands_agents": {
+    "user_agents": [
+      "strands-agents"
+    ]
+  },
+  "google_adk": {
+    "user_agents": [
+      "google-adk"
+    ]
+  },
+  "vercel_ai_sdk": {
+    "user_agents": [
+      "ai"
+    ],
+    "headers": [
+      "x-vercel-ai-*"
+    ]
+  },
+  "e2b": {
+    "user_agents": [
+      "e2b"
+    ]
+  },
   "langfuse": {
     "endpoints": [
       "/api/public/traces",
@@ -415,6 +510,11 @@
       "/api/project",
       "/api/experiment"
     ],
+    "headers": [
+      "x-bt-parent",
+      "x-bt-use-cache",
+      "x-bt-endpoint-name"
+    ],
     "user_agents": [
       "braintrust"
     ]
@@ -422,7 +522,14 @@
   "helicone": {
     "headers": [
       "helicone-*",
-      "helicone-auth"
+      "helicone-auth",
+      "Helicone-Auth",
+      "Helicone-Property-*",
+      "Helicone-Session-Id",
+      "Helicone-Cache-Enabled",
+      "Helicone-User-Id",
+      "Helicone-Prompt-Id",
+      "Helicone-Target-Url"
     ]
   },
   "portkey": {
@@ -431,7 +538,21 @@
       "/v1/prompts"
     ],
     "headers": [
-      "x-portkey-*"
+      "x-portkey-*",
+      "x-portkey-api-key",
+      "x-portkey-provider",
+      "x-portkey-virtual-key",
+      "x-portkey-config",
+      "x-portkey-trace-id",
+      "x-portkey-metadata"
+    ]
+  },
+  "agentops": {
+    "headers": [
+      "x-agentops-*"
+    ],
+    "user_agents": [
+      "agentops"
     ]
   },
   "litellm": {
@@ -441,6 +562,13 @@
     ],
     "user_agents": [
       "litellm"
+    ]
+  },
+  "mcp_inspector": {
+    "mcp_client_name": "mcp-inspector",
+    "user_agents": [
+      "mcp-inspector",
+      "inspector-client"
     ]
   },
   "llama_cpp": {

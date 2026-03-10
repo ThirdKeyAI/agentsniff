@@ -108,7 +108,8 @@ def test_agent_framework_signatures_used():
         has_endpoints = bool(sig.get("endpoints"))
         has_headers = bool(sig.get("headers"))
         has_user_agents = bool(sig.get("user_agents"))
-        assert has_endpoints or has_headers or has_user_agents, (
+        has_mcp_client = bool(sig.get("mcp_client_name"))
+        assert has_endpoints or has_headers or has_user_agents or has_mcp_client, (
             f"Framework {fw_name} has no detection methods"
         )
 

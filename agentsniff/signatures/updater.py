@@ -11,15 +11,12 @@ import json
 import logging
 import urllib.request
 import urllib.error
-from pathlib import Path
-
 from agentsniff.signatures import (
     SIGNATURES_DIR,
     VERIFIED,
     INVALID,
     UNVERIFIED,
     SCHEMAPIN_UNAVAILABLE,
-    _verify_signature,
     reload_signatures,
 )
 
@@ -120,7 +117,7 @@ def update_signatures(verify: bool = True) -> bool:
             for name in unverified:
                 print(f"    {name}: unsigned (no .sig file)")
         if unavailable:
-            print(f"\n    SchemaPin not installed — install with: pip install schemapin")
+            print("\n    SchemaPin not installed — install with: pip install schemapin")
         if invalid:
             print(f"\n  WARNING: {len(invalid)} signatures FAILED verification:")
             for name in invalid:

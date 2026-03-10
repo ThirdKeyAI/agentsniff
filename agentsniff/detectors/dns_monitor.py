@@ -13,7 +13,7 @@ import socket
 import struct
 from datetime import datetime, timezone
 
-from agentsniff.config import AGENT_INFRA_DOMAINS, LLM_API_DOMAIN_SUFFIXES, ScanConfig
+from agentsniff.config import LLM_API_DOMAIN_SUFFIXES, ScanConfig
 from agentsniff.detectors.base import BaseDetector, DetectorRegistry
 from agentsniff.models import Confidence, DetectionSignal, DetectorType
 

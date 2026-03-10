@@ -7,5 +7,12 @@
   ".ml.cloud.ibm.com",
   ".cognitiveservices.azure.com",
   ".inference.ai.azure.com",
-  ".volces.com"
+  ".volces.com",
+  ".run.tools",
+  ".e2b.dev",
+  ".modal.run",
+  ".fly.dev",
+  ".replit.dev",
+  ".repl.co",
+  ".gcpp.cursor.sh"
 ]

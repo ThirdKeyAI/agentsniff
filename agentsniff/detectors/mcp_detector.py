@@ -19,7 +19,7 @@ from agentsniff.models import Confidence, DetectionSignal, DetectorType
 logger = logging.getLogger("agentsniff.mcp_detector")
 
 # Common MCP server paths
-MCP_PATHS = ["/mcp", "/sse", "/mcp/sse", "/jsonrpc", "/rpc", "/api/mcp", "/v1/mcp"]
+MCP_PATHS = ["/mcp", "/sse", "/events", "/mcp/sse", "/message", "/jsonrpc", "/rpc", "/api/mcp", "/v1/mcp"]
 
 # Common MCP ports
 MCP_PORTS = [3000, 3001, 8080, 8000, 8001, 5000, 9000]
@@ -119,13 +119,23 @@ class MCPDetector(BaseDetector):
         }
 
         try:
+            # Use streamable HTTP transport headers (MCP 2025-03-26+)
+            headers = {
+                "Content-Type": "application/json",
+                "Accept": "application/json, text/event-stream",
+                "MCP-Protocol-Version": "2025-03-26",
+            }
             async with session.post(
                 url,
                 json=init_request,
-                headers={"Content-Type": "application/json"},
+                headers=headers,
             ) as resp:
                 if resp.status not in (200, 201):
                     return []
+
+                # Check for MCP-Protocol-Version in response headers
+                resp_mcp_version = resp.headers.get("MCP-Protocol-Version")
+                resp_session_id = resp.headers.get("Mcp-Session-Id")
 
                 body = await resp.text()
                 try:
@@ -133,7 +143,25 @@ class MCPDetector(BaseDetector):
                 except json.JSONDecodeError:
                     return []
 
-                return self._analyze_jsonrpc_response(data, host, port, path, url)
+                signals = self._analyze_jsonrpc_response(data, host, port, path, url)
+
+                # MCP-Protocol-Version header is a definitive MCP indicator
+                if resp_mcp_version and not signals:
+                    signals.append(DetectionSignal(
+                        detector=DetectorType.MCP_DETECTOR,
+                        signal_type="mcp_protocol_header",
+                        description=f"MCP-Protocol-Version header: {resp_mcp_version}",
+                        confidence=Confidence.CONFIRMED,
+                        evidence={
+                            "host": host,
+                            "port": port,
+                            "path": path,
+                            "protocol_version": resp_mcp_version,
+                            "session_id": resp_session_id,
+                        },
+                    ))
+
+                return signals
 
         except (aiohttp.ClientError, asyncio.TimeoutError, OSError):
             return []

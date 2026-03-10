@@ -15,7 +15,7 @@ from pathlib import Path
 
 from agentsniff.baseline import NetworkBaseline
 from agentsniff.config import ScanConfig, default_config_yaml
-from agentsniff.signatures import get_signature_data, VERIFIED, INVALID, UNVERIFIED
+from agentsniff.signatures import get_signature_data, VERIFIED, INVALID
 from agentsniff.notifier import should_alert, send_alerts
 from agentsniff.scanner import run_scan
 from agentsniff.storage import ScanStore
@@ -72,7 +72,6 @@ def _print_signature_status():
 
     invalid = [k for k, v in status.items() if v == INVALID]
     verified = [k for k, v in status.items() if v == VERIFIED]
-    unverified = [k for k, v in status.items() if v == UNVERIFIED]
 
     if invalid:
         print(

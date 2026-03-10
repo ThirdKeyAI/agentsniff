@@ -29,9 +29,11 @@ AGENT_METADATA_PATHS = [
     "/.well-known/agents.json",
     "/.well-known/ai-plugin.json",
     "/.well-known/clawhub.json",
+    "/.well-known/agent-identity.json",
     "/AGENTS.md",
     "/SKILL.md",
     "/SOUL.md",
+    "/MEMORY.md",
 ]
 
 # Paths that indicate OpenAPI/Swagger specs (common in agent API frameworks)

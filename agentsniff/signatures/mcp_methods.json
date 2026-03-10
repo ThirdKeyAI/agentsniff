@@ -10,5 +10,6 @@
   "prompts/get",
   "logging/setLevel",
   "completion/complete",
+  "sampling/createMessage",
   "ping"
 ]

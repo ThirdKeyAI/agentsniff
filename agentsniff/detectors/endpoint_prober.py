@@ -28,8 +28,10 @@ HTTP_PROBE_PORTS = [80, 443, 3000, 3001, 3080, 3100, 5000, 8000, 8001, 8080, 850
 AGENT_METADATA_PATHS = [
     "/.well-known/agents.json",
     "/.well-known/ai-plugin.json",
+    "/.well-known/clawhub.json",
     "/AGENTS.md",
     "/SKILL.md",
+    "/SOUL.md",
 ]
 
 # Paths that indicate OpenAPI/Swagger specs (common in agent API frameworks)

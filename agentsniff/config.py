@@ -130,6 +130,28 @@ LLM_API_DOMAINS = [
     "127.0.0.1:4000",
 ]
 
+# ── Agent infrastructure domains ─────────────────────────────────────────
+# Not LLM API providers, but domains that indicate AI agent activity
+# (skill registries, agent observability, tool connectivity, etc.)
+AGENT_INFRA_DOMAINS = [
+    # OpenClaw ecosystem
+    "clawhub.ai",
+    "clawhub.com",
+    "onlycrabs.ai",
+    "api.moltyverse.email",
+    "moltyverse.app",
+    # MCP registries
+    "smithery.ai",
+    "glama.ai",
+    # Agent observability
+    "api.langfuse.com",
+    "api.smith.langchain.com",
+    "api.helicone.ai",
+    # Tool connectivity
+    "api.composio.dev",
+    "app.composio.dev",
+]
+
 LLM_API_DOMAIN_SUFFIXES = [
     ".openai.azure.com",
     ".aiplatform.googleapis.com",
@@ -324,8 +346,14 @@ AGENT_FRAMEWORK_SIGNATURES = {
         "user_agents": ["julep"],
     },
     "openclaw": {
-        "endpoints": ["/api/agents", "/api/tasks"],
-        "user_agents": ["openclaw"],
+        # OpenClaw (formerly Clawdbot/Moltbot) - AI agent framework
+        "endpoints": [
+            "/api/agents",
+            "/api/skills",
+            "/.well-known/clawhub.json",
+        ],
+        "headers": {"x-openclaw-*"},
+        "user_agents": ["openclaw", "clawdbot", "moltbot", "clawhub"],
     },
     # ── Observability / proxy ────────────────────────────────────────
     "langfuse": {
@@ -542,6 +570,10 @@ class ScanConfig:
     @property
     def all_llm_domains(self) -> list[str]:
         return LLM_API_DOMAINS + self.custom_llm_domains
+
+    @property
+    def all_agent_infra_domains(self) -> list[str]:
+        return AGENT_INFRA_DOMAINS
 
     @property
     def all_agent_ports(self) -> dict[int, str]:

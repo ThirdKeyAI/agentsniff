@@ -13,7 +13,7 @@ import socket
 import struct
 from datetime import datetime, timezone
 
-from agentsniff.config import LLM_API_DOMAIN_SUFFIXES, ScanConfig
+from agentsniff.config import AGENT_INFRA_DOMAINS, LLM_API_DOMAIN_SUFFIXES, ScanConfig
 from agentsniff.detectors.base import BaseDetector, DetectorRegistry
 from agentsniff.models import Confidence, DetectionSignal, DetectorType
 
@@ -267,10 +267,13 @@ class DNSMonitorDetector(BaseDetector):
         return signals
 
     def _is_llm_domain(self, domain: str) -> bool:
-        """Check if a domain matches known LLM API providers."""
+        """Check if a domain matches known LLM API providers or agent infra."""
         domain = domain.rstrip(".").lower()
 
         if domain in self.config.all_llm_domains:
+            return True
+
+        if domain in self.config.all_agent_infra_domains:
             return True
 
         for suffix in LLM_API_DOMAIN_SUFFIXES:

@@ -23,6 +23,8 @@ Passively captures DNS queries on the network and matches against 60+ known LLM 
 
 Also matches domain suffixes for Azure OpenAI (`*.openai.azure.com`), AWS Bedrock (`*.bedrock-runtime.amazonaws.com`), GCP Vertex (`*.aiplatform.googleapis.com`), and others.
 
+Additionally tracks agent infrastructure domains — skill registries (ClawHub, Smithery, Glama), agent observability platforms (Langfuse, LangSmith, Helicone), and tool connectivity services (Composio, Moltyverse).
+
 **Fallback**: When raw sockets are unavailable, resolves the top 20 LLM API domains and cross-references their IPs against active connections in `/proc/net/tcp`.
 
 ## Port Scanner

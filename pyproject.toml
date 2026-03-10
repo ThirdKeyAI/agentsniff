@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "agentsniff"
-version = "1.2.1"
+version = "1.3.0"
 description = "AI Agent Network Scanner - Detect AI agents on your network"
 readme = "README.md"
 license = {text = "Apache-2.0"}
@@ -45,7 +45,7 @@ agentsniff = "agentsniff.cli:main"
 
 [project.urls]
 Homepage = "https://agentsniff.org"
-Documentation = "https://github.com/ThirdKeyAI/agentsniff#readme"
+Documentation = "https://docs.agentsniff.org"
 Repository = "https://github.com/ThirdKeyAI/agentsniff"
 Issues = "https://github.com/ThirdKeyAI/agentsniff/issues"
 
@@ -53,7 +53,7 @@ Issues = "https://github.com/ThirdKeyAI/agentsniff/issues"
 include = ["agentsniff*"]
 
 [tool.setuptools.package-data]
-agentsniff = ["dashboard/*.html"]
+agentsniff = ["dashboard/*.html", "signatures/*.json", "signatures/*.sig", "signatures/*.pub"]
 
 [tool.ruff]
 target-version = "py311"

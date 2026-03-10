@@ -76,6 +76,7 @@ class ScanConfig:
 
     # ── Custom signatures ────────────────────────────────────────────
     custom_llm_domains: list[str] = field(default_factory=list)
+    custom_agent_infra_domains: list[str] = field(default_factory=list)
     custom_agent_ports: dict[int, str] = field(default_factory=dict)
     custom_framework_signatures: dict[str, Any] = field(default_factory=dict)
 
@@ -113,7 +114,7 @@ class ScanConfig:
 
     @property
     def all_agent_infra_domains(self) -> list[str]:
-        return list(AGENT_INFRA_DOMAINS)
+        return AGENT_INFRA_DOMAINS + self.custom_agent_infra_domains
 
     @property
     def all_agent_ports(self) -> dict[int, str]:
@@ -213,8 +214,9 @@ api_port: 9090
 db_path: ""       # default: ~/.agentsniff/agentsniff.db
 log_file: ""      # empty = console only
 
-# Custom detection signatures
+# Custom detection signatures (merged with built-in)
 custom_llm_domains: []
+custom_agent_infra_domains: []
 custom_agent_ports: {}
 custom_framework_signatures: {}
 

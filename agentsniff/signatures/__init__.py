@@ -58,11 +58,11 @@ def _verify_signature(data: Any, sig_filename: str) -> str:
             return UNVERIFIED
 
         # Canonicalize and verify
-        canonical = SchemaPinCore.canonicalize(data)
-        schema_hash = SchemaPinCore.hash_schema(canonical)
+        canonical = SchemaPinCore.canonicalize_schema(data)
+        schema_hash = SchemaPinCore.hash_canonical(canonical)
         public_key = KeyManager.load_public_key_pem(public_key_pem)
 
-        if SignatureManager.verify(schema_hash, signature_b64, public_key):
+        if SignatureManager.verify_schema_signature(schema_hash, signature_b64, public_key):
             return VERIFIED
         else:
             return INVALID

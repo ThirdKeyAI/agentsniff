@@ -1,0 +1,11 @@
+[
+  ".openai.azure.com",
+  ".aiplatform.googleapis.com",
+  ".bedrock-runtime.amazonaws.com",
+  ".models.ai.azure.com",
+  ".sagemaker-runtime.amazonaws.com",
+  ".ml.cloud.ibm.com",
+  ".cognitiveservices.azure.com",
+  ".inference.ai.azure.com",
+  ".volces.com"
+]

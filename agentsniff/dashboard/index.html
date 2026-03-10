@@ -702,6 +702,7 @@
       </div>
     </div>
     <button class="settings-btn" onclick="openSettings()" title="Settings">⚙</button>
+    <span id="sigBadge" style="display:none;font-size:0.7rem;padding:2px 8px;border-radius:4px;margin-left:4px;cursor:help" title=""></span>
   </div>
 </div>
 
@@ -885,7 +886,31 @@ let scanStartTime = null;
 let liveScanState = null; // {network, hostCount, detectors, agents} when viewing history during a scan
 
 // Check for in-progress or completed scan on page load
+async function checkSignatures() {
+  try {
+    const resp = await fetch('/api/health');
+    const data = await resp.json();
+    const badge = document.getElementById('sigBadge');
+    if (data.signatures) {
+      if (data.signatures.has_invalid) {
+        badge.textContent = '⚠ SIGS INVALID';
+        badge.style.background = '#e74c3c';
+        badge.style.color = '#fff';
+        badge.title = 'Detection signatures may have been tampered with! Run: agentsniff update-signatures';
+        badge.style.display = '';
+      } else if (data.signatures.all_verified) {
+        badge.textContent = '✓ Sigs verified';
+        badge.style.background = '#27ae60';
+        badge.style.color = '#fff';
+        badge.title = 'All detection signatures verified with SchemaPin';
+        badge.style.display = '';
+      }
+    }
+  } catch (e) { /* ignore */ }
+}
+
 async function init() {
+  checkSignatures();
   try {
     const resp = await fetch('/api/scan/status');
     const status = await resp.json();

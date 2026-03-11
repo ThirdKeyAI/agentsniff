@@ -1,3 +1,6 @@
+pub mod agentpin_prober;
+pub mod endpoint_prober;
+pub mod mcp_detector;
 pub mod port_scanner;
 
 use async_trait::async_trait;

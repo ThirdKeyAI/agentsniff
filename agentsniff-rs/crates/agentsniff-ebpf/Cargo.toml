@@ -19,3 +19,7 @@ path = "src/connect.rs"
 [[bin]]
 name = "tls"
 path = "src/tls.rs"
+
+[[bin]]
+name = "traffic"
+path = "src/traffic.rs"

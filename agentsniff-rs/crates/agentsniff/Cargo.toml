@@ -12,6 +12,10 @@ path = "src/lib.rs"
 name = "agentsniff"
 path = "src/main.rs"
 
+[features]
+default = []
+ebpf = ["dep:aya", "dep:aya-log", "dep:aya-build"]
+
 [dependencies]
 agentsniff-common = { path = "../agentsniff-common", features = ["user"] }
 tokio = { version = "1", features = ["full"] }
@@ -35,6 +39,11 @@ p256 = { version = "0.13", features = ["ecdsa"] }
 sha2 = "0.10"
 base64 = "0.22"
 rust-embed = { version = "8", features = ["include-exclude"] }
+aya = { version = "0.13", optional = true }
+aya-log = { version = "0.2", optional = true }
+
+[build-dependencies]
+aya-build = { version = "0.1", optional = true }
 
 [dev-dependencies]
 tower = { version = "0.5", features = ["util"] }

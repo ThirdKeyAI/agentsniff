@@ -65,7 +65,7 @@ fn try_tcp_v4_connect(ctx: &ProbeContext) -> Result<u32, ()> {
             (*event).dst_addr = dst_addr;
             (*event).dst_port = dst_port;
             (*event).state = TCP_SYN_SENT;
-            (*event).timestamp_ns = 0; // bpf_ktime_get_ns() would go here
+            (*event).timestamp_ns = aya_ebpf::helpers::bpf_ktime_get_ns();
         }
         entry.submit(0);
         debug!(ctx, "connect: dst={}:{}", dst_addr, dst_port);

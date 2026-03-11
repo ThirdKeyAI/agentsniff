@@ -8,10 +8,13 @@ use tokio_util::sync::CancellationToken;
 
 use crate::config::ScanConfig;
 use crate::detectors::agentpin_prober::AgentpinProber;
+use crate::detectors::dns_monitor::DnsMonitorDetector;
 use crate::detectors::endpoint_prober::EndpointProberDetector;
 use crate::detectors::mcp_detector::McpDetector;
 use crate::detectors::port_scanner::PortScannerDetector;
 use crate::detectors::sse_detector::SseDetector;
+use crate::detectors::tls_fingerprint::TlsFingerprintDetector;
+use crate::detectors::traffic_analyzer::TrafficAnalyzerDetector;
 use crate::detectors::{Detector, DetectorRegistry};
 use crate::fusion::apply_fusion_rules;
 use crate::models::{DetectedAgent, ScanResult, Signal};
@@ -127,6 +130,10 @@ pub fn resolve_targets(config: &ScanConfig) -> anyhow::Result<Vec<IpAddr>> {
 pub fn build_registry() -> DetectorRegistry {
     let mut registry = DetectorRegistry::new();
 
+    registry.register("dns_monitor", "enable_dns_monitor", |config| {
+        Box::new(DnsMonitorDetector::new(config))
+    });
+
     registry.register("port_scanner", "enable_port_scanner", |config| {
         Box::new(PortScannerDetector::new(config))
     });
@@ -145,6 +152,14 @@ pub fn build_registry() -> DetectorRegistry {
 
     registry.register("sse_detector", "enable_sse_detector", |config| {
         Box::new(SseDetector::new(config))
+    });
+
+    registry.register("tls_fingerprint", "enable_tls_fingerprint", |config| {
+        Box::new(TlsFingerprintDetector::new(config))
+    });
+
+    registry.register("traffic_analyzer", "enable_traffic_analyzer", |config| {
+        Box::new(TrafficAnalyzerDetector::new(config))
     });
 
     registry

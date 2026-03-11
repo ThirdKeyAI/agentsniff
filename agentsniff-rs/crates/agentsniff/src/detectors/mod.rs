@@ -1,8 +1,11 @@
 pub mod agentpin_prober;
+pub mod dns_monitor;
 pub mod endpoint_prober;
 pub mod mcp_detector;
 pub mod port_scanner;
 pub mod sse_detector;
+pub mod tls_fingerprint;
+pub mod traffic_analyzer;
 
 use async_trait::async_trait;
 use std::net::IpAddr;

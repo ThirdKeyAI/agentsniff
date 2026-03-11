@@ -34,7 +34,7 @@ tokio-stream = { version = "0.1", features = ["sync"] }
 p256 = { version = "0.13", features = ["ecdsa"] }
 sha2 = "0.10"
 base64 = "0.22"
-rust-embed = "8"
+rust-embed = { version = "8", features = ["include-exclude"] }
 
 [dev-dependencies]
 tower = { version = "0.5", features = ["util"] }

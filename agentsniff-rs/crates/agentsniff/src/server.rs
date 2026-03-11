@@ -20,6 +20,13 @@ use crate::models::{DetectedAgent, ScanResult};
 use crate::scanner::run_scan;
 use crate::storage::{SqliteBackend, StorageBackend};
 
+// ─── Embedded dashboard assets ───────────────────────────────────────────────
+
+#[derive(rust_embed::RustEmbed)]
+#[folder = "assets/"]
+#[include = "index.html"]
+struct DashboardAssets;
+
 // ─── Scan status ────────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -293,17 +300,15 @@ async fn agents_handler(State(state): State<Arc<AppState>>) -> Json<Vec<Detected
     }
 }
 
-async fn dashboard_handler() -> Html<&'static str> {
-    Html(
-        r#"<!DOCTYPE html>
-<html>
-<head><title>AgentSniff v2 Dashboard</title></head>
-<body>
-<h1>AgentSniff v2</h1>
-<p>Dashboard placeholder — the real UI will be embedded here.</p>
-</body>
-</html>"#,
-    )
+async fn dashboard_handler() -> impl IntoResponse {
+    match DashboardAssets::get("index.html") {
+        Some(content) => {
+            let body = std::str::from_utf8(content.data.as_ref())
+                .unwrap_or("<h1>Dashboard load error</h1>");
+            Html(body.to_string())
+        }
+        None => Html("<h1>Dashboard not found</h1>".to_string()),
+    }
 }
 
 async fn static_fallback_handler() -> StatusCode {

@@ -3,4 +3,5 @@ pub mod config;
 pub mod detectors;
 pub mod fusion;
 pub mod models;
+pub mod scanner;
 pub mod storage;

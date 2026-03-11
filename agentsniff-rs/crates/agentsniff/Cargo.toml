@@ -27,3 +27,4 @@ serde_yaml = "0.9"
 async-trait = "0.1"
 reqwest = { version = "0.12", features = ["json", "rustls-tls"] }
 rusqlite = { version = "0.31", features = ["bundled"] }
+tokio-util = "0.7"

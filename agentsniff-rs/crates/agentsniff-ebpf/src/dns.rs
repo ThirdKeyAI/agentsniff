@@ -113,7 +113,7 @@ fn try_dns_egress(ctx: &TcContext) -> Result<i32, ()> {
             (*event).dst_addr = u32::from_be(dst_addr);
             (*event).query_name = query_name;
             (*event).query_len = query_len as u16;
-            (*event).timestamp_ns = 0; // bpf_ktime_get_ns() would go here
+            (*event).timestamp_ns = aya_ebpf::helpers::bpf_ktime_get_ns();
         }
         entry.submit(0);
         debug!(&ctx, "dns: captured query len={}", query_len);

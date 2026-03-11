@@ -181,7 +181,7 @@ fn try_tls_egress(ctx: &TcContext) -> Result<i32, ()> {
             (*event).cipher_count = cipher_count as u8;
             (*event).extensions = extensions;
             (*event).extension_count = extension_count as u8;
-            (*event).timestamp_ns = 0; // bpf_ktime_get_ns() would go here
+            (*event).timestamp_ns = aya_ebpf::helpers::bpf_ktime_get_ns();
         }
         entry.submit(0);
         debug!(

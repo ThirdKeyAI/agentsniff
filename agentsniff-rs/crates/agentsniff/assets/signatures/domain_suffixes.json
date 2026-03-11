@@ -1,0 +1,18 @@
+[
+  ".openai.azure.com",
+  ".aiplatform.googleapis.com",
+  ".bedrock-runtime.amazonaws.com",
+  ".models.ai.azure.com",
+  ".sagemaker-runtime.amazonaws.com",
+  ".ml.cloud.ibm.com",
+  ".cognitiveservices.azure.com",
+  ".inference.ai.azure.com",
+  ".volces.com",
+  ".run.tools",
+  ".e2b.dev",
+  ".modal.run",
+  ".fly.dev",
+  ".replit.dev",
+  ".repl.co",
+  ".gcpp.cursor.sh"
+]

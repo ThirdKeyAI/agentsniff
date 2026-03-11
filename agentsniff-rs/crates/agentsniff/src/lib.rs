@@ -4,4 +4,6 @@ pub mod detectors;
 pub mod fusion;
 pub mod models;
 pub mod scanner;
+pub mod server;
+pub mod signatures;
 pub mod storage;

@@ -28,3 +28,13 @@ async-trait = "0.1"
 reqwest = { version = "0.12", features = ["json", "rustls-tls"] }
 rusqlite = { version = "0.31", features = ["bundled"] }
 tokio-util = "0.7"
+axum = "0.7"
+tower-http = { version = "0.6", features = ["cors"] }
+tokio-stream = { version = "0.1", features = ["sync"] }
+p256 = { version = "0.13", features = ["ecdsa"] }
+sha2 = "0.10"
+base64 = "0.22"
+rust-embed = "8"
+
+[dev-dependencies]
+tower = { version = "0.5", features = ["util"] }

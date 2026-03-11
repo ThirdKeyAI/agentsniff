@@ -1,3 +1,5 @@
+pub mod port_scanner;
+
 use async_trait::async_trait;
 use std::net::IpAddr;
 

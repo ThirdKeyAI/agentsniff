@@ -106,6 +106,9 @@ pub struct DetectedAgent {
     pub agent_type: Option<String>,
     pub framework: Option<String>,
     pub status: AgentStatus,
+    pub confidence_score: f64,
+    pub confidence_level: String,
+    pub signal_count: usize,
     pub signals: Vec<Signal>,
     pub agentpin_identity: Option<Value>,
     pub mcp_capabilities: Option<Value>,
@@ -124,6 +127,9 @@ impl DetectedAgent {
             agent_type: None,
             framework: None,
             status: AgentStatus::Unknown,
+            confidence_score: 0.0,
+            confidence_level: "low".to_string(),
+            signal_count: 0,
             signals: Vec::new(),
             agentpin_identity: None,
             mcp_capabilities: None,
@@ -140,7 +146,7 @@ impl DetectedAgent {
 
     /// Compute aggregate confidence using Noisy-OR fusion:
     /// P = 1 - product(1 - weight_i)
-    pub fn confidence_score(&self) -> f64 {
+    pub fn compute_confidence_score(&self) -> f64 {
         if self.signals.is_empty() {
             return 0.0;
         }
@@ -158,9 +164,19 @@ impl DetectedAgent {
             .any(|s| s.confidence >= Confidence::High)
     }
 
-    /// Recalculate status from current signals.
+    /// Recalculate status and derived fields from current signals.
     pub fn update_status(&mut self) {
-        self.status = AgentStatus::from_score(self.confidence_score(), self.has_strong_signal());
+        let score = self.compute_confidence_score();
+        self.confidence_score = score;
+        self.signal_count = self.signals.len();
+        self.status = AgentStatus::from_score(score, self.has_strong_signal());
+        self.confidence_level = match self.status {
+            AgentStatus::Verified => "confirmed",
+            AgentStatus::Detected => "high",
+            AgentStatus::Suspected => "medium",
+            AgentStatus::Unknown => "low",
+        }
+        .to_string();
     }
 }
 
@@ -168,6 +184,7 @@ impl DetectedAgent {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ScanResult {
     pub scan_id: String,
+    pub target_network: String,
     pub agents: Vec<DetectedAgent>,
     pub detectors_run: Vec<DetectorType>,
     pub errors: Vec<String>,
@@ -179,6 +196,7 @@ impl ScanResult {
     pub fn new() -> Self {
         Self {
             scan_id: Uuid::new_v4().to_string()[..8].to_string(),
+            target_network: String::new(),
             agents: Vec::new(),
             detectors_run: Vec::new(),
             errors: Vec::new(),

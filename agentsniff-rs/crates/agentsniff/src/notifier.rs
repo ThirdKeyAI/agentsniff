@@ -34,7 +34,7 @@ impl Notifier {
         let qualifying_agents: Vec<&DetectedAgent> = result
             .agents
             .iter()
-            .filter(|a| a.confidence_score() >= self.config.alert_min_confidence)
+            .filter(|a| a.confidence_score >= self.config.alert_min_confidence)
             .collect();
 
         if qualifying_agents.len() < self.config.alert_min_agents {
@@ -63,7 +63,7 @@ impl Notifier {
                 "host": a.host,
                 "ip": a.ip_address.to_string(),
                 "status": a.status,
-                "confidence": a.confidence_score(),
+                "confidence": a.confidence_score,
                 "framework": a.framework,
             })).collect::<Vec<_>>(),
         });

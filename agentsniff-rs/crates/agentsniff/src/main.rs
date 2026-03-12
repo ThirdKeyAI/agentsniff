@@ -106,7 +106,7 @@ async fn main() -> anyhow::Result<()> {
             };
             let scan_config = ScanConfig::from_env_with_defaults(scan_config);
 
-            let result = run_scan(&scan_config, None, None).await?;
+            let result = run_scan(&scan_config, None, None, None).await?;
 
             let output = match format {
                 OutputFormat::Json => serde_json::to_string_pretty(&result)?,
@@ -119,7 +119,7 @@ async fn main() -> anyhow::Result<()> {
                         vec!["IP,STATUS,SCORE,FRAMEWORK,SIGNALS".to_string()];
                     for agent in &result.agents {
                         let status = format!("{:?}", agent.status).to_lowercase();
-                        let score = format!("{:.2}", agent.confidence_score());
+                        let score = format!("{:.2}", agent.confidence_score);
                         let framework =
                             agent.framework.as_deref().unwrap_or("-").to_string();
                         lines.push(format!(
@@ -159,7 +159,7 @@ async fn main() -> anyhow::Result<()> {
                     for agent in &result.agents {
                         let status =
                             format!("{:?}", agent.status).to_lowercase();
-                        let score = format!("{:.2}", agent.confidence_score());
+                        let score = format!("{:.2}", agent.confidence_score);
                         let framework = agent
                             .framework
                             .as_deref()
@@ -212,7 +212,7 @@ async fn main() -> anyhow::Result<()> {
             let total = sigs.verification_status.len();
             println!("agentsniff v2.0.0-alpha.1");
 
-            let (ebpf_status, _channels) =
+            let (ebpf_status, ebpf_channels) =
                 try_load_ebpf(&scan_config.ebpf_interface);
             ebpf_status.print_status();
 
@@ -223,7 +223,7 @@ async fn main() -> anyhow::Result<()> {
                 total
             );
 
-            run_server(scan_config).await?;
+            run_server(scan_config, ebpf_channels).await?;
         }
 
         Cli::UpdateSignatures { verify } => {

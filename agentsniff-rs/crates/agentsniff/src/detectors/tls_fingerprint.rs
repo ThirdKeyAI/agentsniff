@@ -1,10 +1,12 @@
 use std::net::IpAddr;
+use std::sync::Arc;
 use std::time::Duration;
 
 use async_trait::async_trait;
 use tokio::net::TcpStream;
 
 use crate::config::ScanConfig;
+use crate::ebpf::EbpfChannels;
 use crate::models::{Confidence, DetectorType, Signal};
 
 use super::Detector;
@@ -14,19 +16,19 @@ const TLS_PROBE_PORTS: &[u16] = &[443, 8443, 3000, 5000, 8000, 8080, 11434];
 
 /// TLS fingerprint detector.
 ///
-/// Fallback mode: connects to known agent ports via HTTPS, captures TLS version
-/// from the server response, and emits signals for live TLS endpoints.
-/// eBPF passive mode will be wired in a later phase.
+/// When eBPF channels are available, operates in passive mode by subscribing
+/// to TLS ClientHello events from the kernel. Falls back to active HTTPS
+/// probing when eBPF is unavailable.
 pub struct TlsFingerprintDetector {
     #[allow(dead_code)]
     config: ScanConfig,
     timeout: Duration,
     client: reqwest::Client,
+    ebpf_channels: Option<Arc<EbpfChannels>>,
 }
 
 impl TlsFingerprintDetector {
-    /// Create a new TLS fingerprint detector from scan configuration.
-    pub fn new(config: &ScanConfig) -> Self {
+    pub fn new(config: &ScanConfig, ebpf_channels: Option<Arc<EbpfChannels>>) -> Self {
         let timeout = Duration::from_secs_f64(config.port_scan_timeout);
         let client = reqwest::Client::builder()
             .danger_accept_invalid_certs(true)
@@ -38,6 +40,7 @@ impl TlsFingerprintDetector {
             config: config.clone(),
             timeout,
             client,
+            ebpf_channels,
         }
     }
 
@@ -127,6 +130,56 @@ impl Detector for TlsFingerprintDetector {
     }
 
     async fn scan(&self, targets: &[IpAddr]) -> anyhow::Result<Vec<Signal>> {
+        // Try eBPF passive mode first
+        if let Some(ref channels) = self.ebpf_channels {
+            let mut rx = channels.tls_tx.subscribe();
+            let duration = Duration::from_secs(5);
+            let deadline = tokio::time::Instant::now() + duration;
+            let mut signals = Vec::new();
+            let target_set: std::collections::HashSet<IpAddr> =
+                targets.iter().copied().collect();
+
+            loop {
+                match tokio::time::timeout_at(deadline, rx.recv()).await {
+                    Ok(Ok(event)) => {
+                        let src_ip = std::net::Ipv4Addr::from(event.src_addr);
+                        if !target_set.contains(&IpAddr::V4(src_ip)) {
+                            continue;
+                        }
+                        let ja3 = compute_ja3_string(
+                            event.tls_version,
+                            &event.cipher_suites[..event.cipher_count as usize],
+                            &event.extensions[..event.extension_count as usize],
+                        );
+                        let dst_ip = std::net::Ipv4Addr::from(event.dst_addr);
+                        signals.push(Signal::new(
+                            DetectorType::TlsFingerprint,
+                            "tls_fingerprint_captured".to_string(),
+                            format!(
+                                "TLS ClientHello from {} to {}:{} (JA3: {})",
+                                src_ip, dst_ip, event.dst_port, ja3
+                            ),
+                            Confidence::Low,
+                            serde_json::json!({
+                                "ip": src_ip.to_string(),
+                                "dst_ip": dst_ip.to_string(),
+                                "dst_port": event.dst_port,
+                                "ja3_string": ja3,
+                                "tls_version": event.tls_version,
+                                "source": "ebpf",
+                            }),
+                        ));
+                    }
+                    Ok(Err(_)) => break,
+                    Err(_) => break,
+                }
+            }
+
+            if !signals.is_empty() {
+                return Ok(signals);
+            }
+        }
+
         let mut signals = Vec::new();
 
         for &ip in targets {
@@ -174,7 +227,3 @@ impl Detector for TlsFingerprintDetector {
     }
 }
 
-// Suppress unused field warning: `config` is retained for future eBPF wiring.
-const _: () = {
-    fn _assert_config_stored(_: &TlsFingerprintDetector) {}
-};

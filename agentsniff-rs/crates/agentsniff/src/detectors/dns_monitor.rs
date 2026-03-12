@@ -1,29 +1,32 @@
 use std::net::IpAddr;
+use std::sync::Arc;
 
 use async_trait::async_trait;
 
 use crate::config::ScanConfig;
+use crate::ebpf::EbpfChannels;
 use crate::models::{Confidence, DetectorType, Signal};
 use crate::signatures::SignatureData;
 
 use super::Detector;
 
-/// DNS monitor detector that operates in fallback mode (no eBPF).
+/// DNS monitor detector.
 ///
-/// Resolves known LLM and agent infrastructure domains and checks if any
-/// resolve to a scanned target IP. Also performs reverse DNS lookups on
-/// target IPs and checks against known domain suffixes.
+/// When eBPF channels are available, operates in passive mode by subscribing
+/// to DNS query events from the kernel. Falls back to active DNS resolution
+/// against known domain lists when eBPF is unavailable.
 pub struct DnsMonitorDetector {
     config: ScanConfig,
     signatures: SignatureData,
+    ebpf_channels: Option<Arc<EbpfChannels>>,
 }
 
 impl DnsMonitorDetector {
-    /// Create a new DNS monitor detector from scan configuration.
-    pub fn new(config: &ScanConfig) -> Self {
+    pub fn new(config: &ScanConfig, ebpf_channels: Option<Arc<EbpfChannels>>) -> Self {
         Self {
             config: config.clone(),
             signatures: SignatureData::load_embedded(),
+            ebpf_channels,
         }
     }
 }
@@ -49,6 +52,70 @@ impl Detector for DnsMonitorDetector {
     async fn scan(&self, targets: &[IpAddr]) -> anyhow::Result<Vec<Signal>> {
         if targets.is_empty() {
             return Ok(Vec::new());
+        }
+
+        // Try eBPF passive mode first
+        if let Some(ref channels) = self.ebpf_channels {
+            let mut rx = channels.dns_tx.subscribe();
+            let duration = std::time::Duration::from_secs(5);
+            let deadline = tokio::time::Instant::now() + duration;
+            let mut signals = Vec::new();
+            let target_set: std::collections::HashSet<IpAddr> =
+                targets.iter().copied().collect();
+
+            let llm_domains = &self.signatures.llm_domains;
+            let agent_infra_domains = &self.signatures.agent_infra_domains;
+
+            loop {
+                match tokio::time::timeout_at(deadline, rx.recv()).await {
+                    Ok(Ok(event)) => {
+                        let src_ip = std::net::Ipv4Addr::from(event.src_addr);
+                        if !target_set.contains(&IpAddr::V4(src_ip)) {
+                            continue;
+                        }
+                        let domain =
+                            std::str::from_utf8(&event.query_name[..event.query_len as usize])
+                                .unwrap_or("")
+                                .to_lowercase();
+                        if domain.is_empty() {
+                            continue;
+                        }
+                        if matches_known_domain(&domain, llm_domains, &[], &[]).is_some() {
+                            signals.push(Signal::new(
+                                DetectorType::DnsMonitor,
+                                "llm_api_domain_query".into(),
+                                format!("DNS query to LLM API: {}", domain),
+                                Confidence::High,
+                                serde_json::json!({
+                                    "ip": src_ip.to_string(),
+                                    "domain": domain,
+                                    "source": "ebpf",
+                                }),
+                            ));
+                        }
+                        if matches_known_domain(&domain, &[], agent_infra_domains, &[]).is_some() {
+                            signals.push(Signal::new(
+                                DetectorType::DnsMonitor,
+                                "agent_infrastructure_domain_query".into(),
+                                format!("DNS query to agent infra: {}", domain),
+                                Confidence::Medium,
+                                serde_json::json!({
+                                    "ip": src_ip.to_string(),
+                                    "domain": domain,
+                                    "source": "ebpf",
+                                }),
+                            ));
+                        }
+                    }
+                    Ok(Err(_)) => break, // channel closed
+                    Err(_) => break,     // timeout
+                }
+            }
+
+            if !signals.is_empty() {
+                return Ok(signals);
+            }
+            // Fall through to active mode if no eBPF events captured
         }
 
         let mut signals = Vec::new();

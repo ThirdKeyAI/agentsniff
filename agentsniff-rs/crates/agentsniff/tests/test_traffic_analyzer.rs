@@ -61,7 +61,7 @@ fn test_parse_proc_tcp_line_invalid() {
 #[tokio::test]
 async fn test_traffic_analyzer_scan_empty_targets() {
     let config = ScanConfig::default();
-    let detector = TrafficAnalyzerDetector::new(&config);
+    let detector = TrafficAnalyzerDetector::new(&config, None);
     let signals = detector.scan(&[]).await.unwrap();
     assert!(signals.is_empty());
 }
@@ -70,7 +70,7 @@ async fn test_traffic_analyzer_scan_empty_targets() {
 fn test_detector_name_and_type() {
     use agentsniff::models::DetectorType;
     let config = ScanConfig::default();
-    let detector = TrafficAnalyzerDetector::new(&config);
+    let detector = TrafficAnalyzerDetector::new(&config, None);
     assert_eq!(detector.name(), "traffic_analyzer");
     assert_eq!(detector.detector_type(), DetectorType::TrafficAnalyzer);
 }

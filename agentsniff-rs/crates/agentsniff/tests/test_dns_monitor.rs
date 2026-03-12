@@ -127,7 +127,7 @@ fn test_empty_lists_no_match() {
 #[test]
 fn test_dns_monitor_name_and_type() {
     let config = ScanConfig::default();
-    let detector = DnsMonitorDetector::new(&config);
+    let detector = DnsMonitorDetector::new(&config, None);
     assert_eq!(detector.name(), "dns_monitor");
     assert_eq!(detector.detector_type(), DetectorType::DnsMonitor);
 }
@@ -135,7 +135,7 @@ fn test_dns_monitor_name_and_type() {
 #[tokio::test]
 async fn test_dns_monitor_scan_no_targets() {
     let config = ScanConfig::default();
-    let detector = DnsMonitorDetector::new(&config);
+    let detector = DnsMonitorDetector::new(&config, None);
     let targets: Vec<std::net::IpAddr> = vec![];
     let signals = detector.scan(&targets).await.unwrap();
     assert!(
@@ -148,7 +148,7 @@ async fn test_dns_monitor_scan_no_targets() {
 #[tokio::test]
 async fn test_dns_monitor_setup_teardown() {
     let config = ScanConfig::default();
-    let mut detector = DnsMonitorDetector::new(&config);
+    let mut detector = DnsMonitorDetector::new(&config, None);
     assert!(detector.setup().await.is_ok());
     assert!(detector.teardown().await.is_ok());
 }

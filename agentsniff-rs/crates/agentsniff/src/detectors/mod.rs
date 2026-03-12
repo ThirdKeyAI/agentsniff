@@ -9,8 +9,10 @@ pub mod traffic_analyzer;
 
 use async_trait::async_trait;
 use std::net::IpAddr;
+use std::sync::Arc;
 
 use crate::config::ScanConfig;
+use crate::ebpf::EbpfChannels;
 use crate::models::{DetectorType, Signal};
 
 /// Trait that all detectors implement.
@@ -29,7 +31,7 @@ pub trait EbpfConsumer: Detector {
     fn handle_event(&self, event: Self::Event);
 }
 
-type DetectorFactory = Box<dyn Fn(&ScanConfig) -> Box<dyn Detector> + Send + Sync>;
+type DetectorFactory = Box<dyn Fn(&ScanConfig, Option<Arc<EbpfChannels>>) -> Box<dyn Detector> + Send + Sync>;
 
 /// Registry for detector factories.
 pub struct DetectorRegistry {
@@ -45,7 +47,7 @@ impl DetectorRegistry {
 
     pub fn register<F>(&mut self, name: &str, config_field: &str, factory: F)
     where
-        F: Fn(&ScanConfig) -> Box<dyn Detector> + Send + Sync + 'static,
+        F: Fn(&ScanConfig, Option<Arc<EbpfChannels>>) -> Box<dyn Detector> + Send + Sync + 'static,
     {
         self.factories.push((
             name.to_string(),
@@ -54,7 +56,11 @@ impl DetectorRegistry {
         ));
     }
 
-    pub fn create_enabled(&self, config: &ScanConfig) -> Vec<Box<dyn Detector>> {
+    pub fn create_enabled(
+        &self,
+        config: &ScanConfig,
+        ebpf_channels: Option<Arc<EbpfChannels>>,
+    ) -> Vec<Box<dyn Detector>> {
         let mut detectors = Vec::new();
         for (name, config_field, factory) in &self.factories {
             let enabled = match config_field.as_str() {
@@ -70,7 +76,7 @@ impl DetectorRegistry {
             };
             if enabled {
                 tracing::debug!("Enabling detector: {}", name);
-                detectors.push(factory(config));
+                detectors.push(factory(config, ebpf_channels.clone()));
             }
         }
         detectors

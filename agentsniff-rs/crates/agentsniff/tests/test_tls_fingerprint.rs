@@ -25,7 +25,7 @@ async fn test_tls_detector_scan_empty_targets() {
     use agentsniff::detectors::Detector;
 
     let config = ScanConfig::default();
-    let detector = TlsFingerprintDetector::new(&config);
+    let detector = TlsFingerprintDetector::new(&config, None);
     let signals = detector.scan(&[]).await.unwrap();
     assert!(signals.is_empty());
 }

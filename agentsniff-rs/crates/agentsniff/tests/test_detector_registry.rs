@@ -45,19 +45,19 @@ async fn test_detector_scan_returns_signals() {
 fn test_detector_registry_create_enabled() {
     let config = ScanConfig::default();
     let registry = DetectorRegistry::new();
-    let detectors = registry.create_enabled(&config);
+    let detectors = registry.create_enabled(&config, None);
     assert!(detectors.is_empty());
 }
 
 #[test]
 fn test_detector_registry_with_registered_factory() {
     let mut registry = DetectorRegistry::new();
-    registry.register("mock", "enable_port_scanner", |_config| {
+    registry.register("mock", "enable_port_scanner", |_config, _channels| {
         Box::new(MockDetector)
     });
 
     let config = ScanConfig::default(); // port_scanner enabled by default
-    let detectors = registry.create_enabled(&config);
+    let detectors = registry.create_enabled(&config, None);
     assert_eq!(detectors.len(), 1);
     assert_eq!(detectors[0].name(), "mock");
 }
@@ -65,12 +65,12 @@ fn test_detector_registry_with_registered_factory() {
 #[test]
 fn test_detector_registry_respects_disabled() {
     let mut registry = DetectorRegistry::new();
-    registry.register("mock", "enable_port_scanner", |_config| {
+    registry.register("mock", "enable_port_scanner", |_config, _channels| {
         Box::new(MockDetector)
     });
 
     let mut config = ScanConfig::default();
     config.enable_port_scanner = false;
-    let detectors = registry.create_enabled(&config);
+    let detectors = registry.create_enabled(&config, None);
     assert!(detectors.is_empty());
 }

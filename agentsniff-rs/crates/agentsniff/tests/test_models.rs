@@ -18,7 +18,7 @@ fn test_confidence_ordering() {
 #[test]
 fn test_noisy_or_single_signal() {
     let agent = DetectedAgent::new("test-host".into(), "192.168.1.1".parse().unwrap());
-    assert_eq!(agent.confidence_score(), 0.0);
+    assert_eq!(agent.confidence_score, 0.0);
 }
 
 #[test]
@@ -38,7 +38,7 @@ fn test_noisy_or_multiple_signals() {
         Confidence::High,
         serde_json::json!({"framework": "ollama"}),
     ));
-    let score = agent.confidence_score();
+    let score = agent.confidence_score;
     assert!((score - 0.9).abs() < 1e-10);
 }
 

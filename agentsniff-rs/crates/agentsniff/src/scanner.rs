@@ -3,7 +3,7 @@ use std::net::{IpAddr, Ipv4Addr};
 use std::sync::Arc;
 
 use chrono::Utc;
-use tokio::sync::Mutex;
+use tokio::task::JoinSet;
 use tokio_util::sync::CancellationToken;
 
 use crate::config::ScanConfig;
@@ -16,6 +16,7 @@ use crate::detectors::sse_detector::SseDetector;
 use crate::detectors::tls_fingerprint::TlsFingerprintDetector;
 use crate::detectors::traffic_analyzer::TrafficAnalyzerDetector;
 use crate::detectors::{Detector, DetectorRegistry};
+use crate::ebpf::EbpfChannels;
 use crate::fusion::apply_fusion_rules;
 use crate::models::{DetectedAgent, ScanResult, Signal};
 
@@ -126,55 +127,108 @@ pub fn resolve_targets(config: &ScanConfig) -> anyhow::Result<Vec<IpAddr>> {
     Ok(targets)
 }
 
-/// Build a detector registry with all 5 active detectors.
+/// Build a detector registry with all active detectors.
 pub fn build_registry() -> DetectorRegistry {
     let mut registry = DetectorRegistry::new();
 
-    registry.register("dns_monitor", "enable_dns_monitor", |config| {
-        Box::new(DnsMonitorDetector::new(config))
+    registry.register("dns_monitor", "enable_dns_monitor", |config, channels| {
+        Box::new(DnsMonitorDetector::new(config, channels))
     });
 
-    registry.register("port_scanner", "enable_port_scanner", |config| {
+    registry.register("port_scanner", "enable_port_scanner", |config, _channels| {
         Box::new(PortScannerDetector::new(config))
     });
 
-    registry.register("endpoint_prober", "enable_endpoint_prober", |config| {
+    registry.register("endpoint_prober", "enable_endpoint_prober", |config, _channels| {
         Box::new(EndpointProberDetector::new(config))
     });
 
-    registry.register("mcp_detector", "enable_mcp_detector", |config| {
+    registry.register("mcp_detector", "enable_mcp_detector", |config, _channels| {
         Box::new(McpDetector::new(config))
     });
 
-    registry.register("agentpin_prober", "enable_agentpin_prober", |config| {
+    registry.register("agentpin_prober", "enable_agentpin_prober", |config, _channels| {
         Box::new(AgentpinProber::new(config))
     });
 
-    registry.register("sse_detector", "enable_sse_detector", |config| {
+    registry.register("sse_detector", "enable_sse_detector", |config, _channels| {
         Box::new(SseDetector::new(config))
     });
 
-    registry.register("tls_fingerprint", "enable_tls_fingerprint", |config| {
-        Box::new(TlsFingerprintDetector::new(config))
+    registry.register("tls_fingerprint", "enable_tls_fingerprint", |config, channels| {
+        Box::new(TlsFingerprintDetector::new(config, channels))
     });
 
-    registry.register("traffic_analyzer", "enable_traffic_analyzer", |config| {
-        Box::new(TrafficAnalyzerDetector::new(config))
+    registry.register("traffic_analyzer", "enable_traffic_analyzer", |config, channels| {
+        Box::new(TrafficAnalyzerDetector::new(config, channels))
     });
 
     registry
 }
 
+/// Correlate signals into agents by host IP, calling `on_agent` for each
+/// new or updated agent.
+fn correlate_signals(
+    signals: Vec<Signal>,
+    agents_by_host: &mut HashMap<String, DetectedAgent>,
+    on_agent: &Option<OnAgentCallback>,
+) {
+    // Track which hosts got new signals so we can notify
+    let mut updated_hosts = Vec::new();
+
+    for signal in signals {
+        let ip_str = signal
+            .evidence
+            .get("ip")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        if ip_str.is_empty() {
+            continue;
+        }
+
+        let prev_count = agents_by_host
+            .get(&ip_str)
+            .map(|a| a.signal_count)
+            .unwrap_or(0);
+
+        let agent = agents_by_host.entry(ip_str.clone()).or_insert_with(|| {
+            let ip: IpAddr = ip_str
+                .parse()
+                .unwrap_or(IpAddr::V4(Ipv4Addr::UNSPECIFIED));
+            DetectedAgent::new(ip_str.clone(), ip)
+        });
+        agent.add_signal(signal);
+
+        // Only notify if the agent actually gained new signals
+        if agent.signal_count > prev_count && !updated_hosts.contains(&ip_str) {
+            updated_hosts.push(ip_str);
+        }
+    }
+
+    // Notify for each updated agent
+    if let Some(ref cb) = on_agent {
+        for host in updated_hosts {
+            if let Some(agent) = agents_by_host.get(&host) {
+                cb(agent);
+            }
+        }
+    }
+}
+
 /// Run a full network scan.
 ///
-/// Resolves targets, runs all enabled detectors concurrently, correlates
-/// signals by host IP, applies fusion rules, and returns the scan result.
+/// Resolves targets, runs all enabled detectors concurrently, streams
+/// agent updates as each detector completes, applies fusion rules at the
+/// end, and returns the final scan result.
 pub async fn run_scan(
     config: &ScanConfig,
+    ebpf_channels: Option<Arc<EbpfChannels>>,
     cancel: Option<CancellationToken>,
     on_agent: Option<OnAgentCallback>,
 ) -> anyhow::Result<ScanResult> {
     let mut result = ScanResult::new();
+    result.target_network = config.target_network.clone();
 
     // 1. Resolve targets
     let targets = resolve_targets(config)?;
@@ -190,7 +244,7 @@ pub async fn run_scan(
 
     // 2. Build registry and create enabled detectors
     let registry = build_registry();
-    let mut detectors = registry.create_enabled(config);
+    let mut detectors = registry.create_enabled(config, ebpf_channels);
     tracing::info!("Enabled {} detector(s)", detectors.len());
 
     // 3. Setup each detector (log errors, continue)
@@ -210,48 +264,53 @@ pub async fn run_scan(
         }
     }
 
-    // 4. Run all detectors concurrently
+    // 4. Spawn all detectors into a JoinSet for incremental result processing
     let targets = Arc::new(targets);
-    let all_signals: Arc<Mutex<Vec<Signal>>> = Arc::new(Mutex::new(Vec::new()));
-    let mut handles = Vec::new();
+    let mut join_set = JoinSet::new();
 
-    // We need to move detectors into tasks. Since Detector is not Clone,
-    // wrap each in an Arc<Mutex<>> to allow the spawn.
     for detector in detectors {
         let targets = Arc::clone(&targets);
-        let all_signals = Arc::clone(&all_signals);
         let detector_type = detector.detector_type();
-
-        // We need the detector to be Send + 'static for tokio::spawn.
-        // Use a wrapper that moves the detector into the task.
         let detector: Arc<dyn Detector> = Arc::from(detector);
 
-        let handle = tokio::spawn(async move {
-            match detector.scan(&targets).await {
+        join_set.spawn(async move {
+            let signals = match detector.scan(&targets).await {
                 Ok(signals) => {
                     tracing::info!(
                         "Detector {:?} produced {} signal(s)",
                         detector_type,
                         signals.len()
                     );
-                    let mut all = all_signals.lock().await;
-                    all.extend(signals);
+                    signals
                 }
                 Err(e) => {
                     tracing::error!("Detector {:?} failed: {}", detector_type, e);
+                    Vec::new()
                 }
-            }
-            detector_type
+            };
+            (detector_type, signals)
         });
-
-        handles.push(handle);
     }
 
-    // Collect results
-    for handle in handles {
-        match handle.await {
-            Ok(dt) => {
-                result.detectors_run.push(dt);
+    // 5. Process results incrementally as each detector completes
+    let mut agents_by_host: HashMap<String, DetectedAgent> = HashMap::new();
+
+    while let Some(task_result) = join_set.join_next().await {
+        // Check cancellation between detectors
+        if let Some(ref token) = cancel {
+            if token.is_cancelled() {
+                result.completed_at = Some(Utc::now());
+                // Return whatever we have so far
+                result.agents = agents_by_host.into_values().collect();
+                return Ok(result);
+            }
+        }
+
+        match task_result {
+            Ok((detector_type, signals)) => {
+                result.detectors_run.push(detector_type);
+                // Incrementally correlate and stream to dashboard
+                correlate_signals(signals, &mut agents_by_host, &on_agent);
             }
             Err(e) => {
                 let msg = format!("Detector task panicked: {}", e);
@@ -261,52 +320,11 @@ pub async fn run_scan(
         }
     }
 
-    // Check cancellation
-    if let Some(ref token) = cancel {
-        if token.is_cancelled() {
-            result.completed_at = Some(Utc::now());
-            return Ok(result);
-        }
-    }
-
-    // 5. Correlate: group signals by host IP
-    let signals = match Arc::try_unwrap(all_signals) {
-        Ok(mutex) => mutex.into_inner(),
-        Err(arc) => {
-            let guard = arc.lock().await;
-            guard.clone()
-        }
-    };
-
-    let mut by_host: HashMap<String, Vec<Signal>> = HashMap::new();
-    for signal in signals {
-        let ip_str = signal
-            .evidence
-            .get("ip")
-            .and_then(|v| v.as_str())
-            .unwrap_or("")
-            .to_string();
-        if !ip_str.is_empty() {
-            by_host.entry(ip_str).or_default().push(signal);
-        }
-    }
-
-    // 6. Build DetectedAgent per host
-    let mut agents = Vec::new();
-    for (ip_str, host_signals) in by_host {
-        if let Ok(ip) = ip_str.parse::<IpAddr>() {
-            let mut agent = DetectedAgent::new(ip_str.clone(), ip);
-            for signal in host_signals {
-                agent.add_signal(signal);
-            }
-            agents.push(agent);
-        }
-    }
-
-    // 7. Apply fusion rules
+    // 6. Apply fusion rules to the final set
+    let agents: Vec<DetectedAgent> = agents_by_host.into_values().collect();
     let agents = apply_fusion_rules(agents);
 
-    // 8. Update status and call callback for each agent
+    // 7. Final status update and callback for agents that changed after fusion
     let mut final_agents = Vec::new();
     for mut agent in agents {
         agent.update_status();

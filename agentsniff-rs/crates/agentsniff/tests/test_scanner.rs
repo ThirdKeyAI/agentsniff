@@ -67,7 +67,7 @@ async fn test_run_scan_empty_targets() {
     config.port_scan_timeout = 0.1;
     config.http_timeout = 0.1;
     // Only port scanner + endpoint prober + mcp detector + agentpin + sse
-    let result = run_scan(&config, None, None).await.unwrap();
+    let result = run_scan(&config, None, None, None).await.unwrap();
     assert!(result.agents.is_empty()); // unreachable host
     assert!(result.completed_at.is_some());
 }

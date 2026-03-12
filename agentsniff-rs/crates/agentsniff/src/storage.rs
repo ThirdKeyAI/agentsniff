@@ -13,6 +13,7 @@ use crate::models::{
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ScanSummary {
     pub scan_id: String,
+    pub target_network: String,
     pub started_at: String,
     pub completed_at: Option<String>,
     pub agent_count: usize,
@@ -75,6 +76,7 @@ impl SqliteBackend {
         conn.execute_batch(
             "CREATE TABLE IF NOT EXISTS scans (
                 scan_id TEXT PRIMARY KEY,
+                target_network TEXT DEFAULT '',
                 started_at TEXT,
                 completed_at TEXT,
                 status TEXT DEFAULT 'running',
@@ -112,6 +114,10 @@ impl SqliteBackend {
                 timestamp TEXT
             );",
         )?;
+        // Migrate existing databases that lack target_network column
+        let _ = conn.execute_batch(
+            "ALTER TABLE scans ADD COLUMN target_network TEXT DEFAULT '';",
+        );
         Ok(())
     }
 }
@@ -140,10 +146,11 @@ impl StorageBackend for SqliteBackend {
         let errors_json = serde_json::to_string(&result.errors)?;
 
         conn.execute(
-            "INSERT OR REPLACE INTO scans (scan_id, started_at, completed_at, status, agent_count, detectors_run, errors)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            "INSERT OR REPLACE INTO scans (scan_id, target_network, started_at, completed_at, status, agent_count, detectors_run, errors)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
             params![
                 result.scan_id,
+                result.target_network,
                 result.started_at.to_rfc3339(),
                 completed_at,
                 status,
@@ -164,18 +171,19 @@ impl StorageBackend for SqliteBackend {
     async fn list_scans(&self, limit: u32, offset: u32) -> Result<Vec<ScanSummary>> {
         let conn = self.conn.lock().map_err(|e| anyhow::anyhow!("{e}"))?;
         let mut stmt = conn.prepare(
-            "SELECT scan_id, started_at, completed_at, agent_count, status, detectors_run
+            "SELECT scan_id, target_network, started_at, completed_at, agent_count, status, detectors_run
              FROM scans ORDER BY started_at DESC LIMIT ?1 OFFSET ?2",
         )?;
         let rows = stmt.query_map(params![limit, offset], |row| {
             Ok(ScanSummary {
                 scan_id: row.get(0)?,
-                started_at: row.get(1)?,
-                completed_at: row.get(2)?,
-                agent_count: row.get::<_, i64>(3)? as usize,
-                status: row.get(4)?,
+                target_network: row.get::<_, String>(1).unwrap_or_default(),
+                started_at: row.get(2)?,
+                completed_at: row.get(3)?,
+                agent_count: row.get::<_, i64>(4)? as usize,
+                status: row.get(5)?,
                 detectors_run: serde_json::from_str(
-                    &row.get::<_, String>(5).unwrap_or_else(|_| "[]".to_string()),
+                    &row.get::<_, String>(6).unwrap_or_else(|_| "[]".to_string()),
                 )
                 .unwrap_or_default(),
             })
@@ -301,6 +309,8 @@ impl StorageBackend for SqliteBackend {
                 });
             }
 
+            // Recompute derived fields from loaded signals
+            agent.update_status();
             agents.push(agent);
         }
 
@@ -351,7 +361,7 @@ impl SqliteBackend {
                 agent_type_str,
                 framework_str,
                 status_str,
-                agent.confidence_score(),
+                agent.confidence_score,
                 agentpin_json,
                 mcp_json,
                 agent.tls_fingerprint,

@@ -1,13 +1,23 @@
+use std::sync::Arc;
+
 use agentsniff::config::ScanConfig;
-use agentsniff::server::create_router;
+use agentsniff::ebpf::EbpfChannels;
+use agentsniff::server::create_router_with_storage;
+use agentsniff::storage::SqliteBackend;
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
 use tower::ServiceExt;
 
+fn test_router() -> axum::Router {
+    let config = ScanConfig::default();
+    let storage = Box::new(SqliteBackend::in_memory().unwrap());
+    let channels = Arc::new(EbpfChannels::new());
+    create_router_with_storage(config, storage, channels)
+}
+
 #[tokio::test]
 async fn test_health_endpoint() {
-    let config = ScanConfig::default();
-    let app = create_router(config);
+    let app = test_router();
     let response = app
         .oneshot(
             Request::builder()
@@ -22,8 +32,7 @@ async fn test_health_endpoint() {
 
 #[tokio::test]
 async fn test_scan_status_idle() {
-    let config = ScanConfig::default();
-    let app = create_router(config);
+    let app = test_router();
     let response = app
         .oneshot(
             Request::builder()
@@ -38,8 +47,7 @@ async fn test_scan_status_idle() {
 
 #[tokio::test]
 async fn test_scan_history_empty() {
-    let config = ScanConfig::default();
-    let app = create_router(config);
+    let app = test_router();
     let response = app
         .oneshot(
             Request::builder()
@@ -54,8 +62,7 @@ async fn test_scan_history_empty() {
 
 #[tokio::test]
 async fn test_agents_empty() {
-    let config = ScanConfig::default();
-    let app = create_router(config);
+    let app = test_router();
     let response = app
         .oneshot(
             Request::builder()
@@ -70,8 +77,7 @@ async fn test_agents_empty() {
 
 #[tokio::test]
 async fn test_dashboard_serves() {
-    let config = ScanConfig::default();
-    let app = create_router(config);
+    let app = test_router();
     let response = app
         .oneshot(
             Request::builder()

@@ -612,5 +612,61 @@
     "user_agents": [
       "koboldcpp"
     ]
+  },
+  "ollama": {
+    "endpoints": [
+      "/api/generate",
+      "/api/chat",
+      "/api/tags",
+      "/api/ps"
+    ],
+    "user_agents": [
+      "ollama"
+    ]
+  },
+  "vllm": {
+    "endpoints": [
+      "/v1/chat/completions",
+      "/v1/models"
+    ],
+    "user_agents": [
+      "vLLM",
+      "vllm"
+    ]
+  },
+  "lm_studio": {
+    "endpoints": [
+      "/v1/models",
+      "/v1/chat/completions"
+    ],
+    "user_agents": [
+      "LM Studio",
+      "LMStudio"
+    ]
+  },
+  "gradio_agent_ui": {
+    "endpoints": [
+      "/api/predict",
+      "/queue/join"
+    ],
+    "user_agents": [
+      "gradio"
+    ]
+  },
+  "streamlit_agent_ui": {
+    "endpoints": [
+      "/_stcore/health",
+      "/_stcore/host-config"
+    ]
+  },
+  "langchain4j": {
+    "user_agents": [
+      "langchain4j"
+    ]
+  },
+  "spring_ai": {
+    "user_agents": [
+      "Spring-AI"
+    ]
   }
 }

@@ -1,5 +1,5 @@
 {
-  "signature": "MEUCIQDpCoHXGDMBqTWQ5mCeRMSfy2u+03fW80ir7+iXlAyoPQIgdOfJBpVEav81pZ90pJAghSpWhwu/8dq2gkIAhD3q5+U=",
-  "public_key": "-----BEGIN PUBLIC KEY-----\nMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEtWBDdK89Cr/0slpX6WuNDCj9nHJ/\nnGaueO0f7RhDViZLQIZ5GN8NakL85/doQIa1ct53WHhrvx5sihXFyrumhA==\n-----END PUBLIC KEY-----\n",
+  "signature": "MEUCIAJlbQRRgLOmYA2gsvWMZ2X6ad4WdP4m9NAl2RW5C6tKAiEAlSgq4FTJfqF529Zw4I1ZirXStzWakC0Gt9tGAWglCVU=",
+  "public_key": "-----BEGIN PUBLIC KEY-----\nMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE2UHWqeFsoOyraSZ/tmAsXzpPwmMN\nGb4mY5cgtmEt4sXJsPhgZfaG4EkJFQ1MczLYbkCRqazbYjSltdTo9Y07vg==\n-----END PUBLIC KEY-----\n",
   "algorithm": "ECDSA-P256-SHA256"
 }

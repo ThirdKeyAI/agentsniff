@@ -18,7 +18,10 @@ use crate::detectors::traffic_analyzer::TrafficAnalyzerDetector;
 use crate::detectors::{Detector, DetectorRegistry};
 use crate::ebpf::EbpfChannels;
 use crate::fusion::apply_fusion_rules;
-use crate::models::{DetectedAgent, ScanResult, Signal};
+use crate::integrations::nmap::NmapEnricher;
+use crate::integrations::zeek::ZeekDataSource;
+use crate::integrations::{DataSource, Enricher};
+use crate::models::{Confidence, DetectedAgent, DetectorType, ScanResult, Signal};
 
 /// Callback type for reporting detected agents during a scan.
 pub type OnAgentCallback = Box<dyn Fn(&DetectedAgent) + Send + Sync>;
@@ -320,9 +323,105 @@ pub async fn run_scan(
         }
     }
 
+    // 5b. Load Zeek supplementary signals (post-detector, pre-fusion)
+    if config.zeek_enabled && !config.zeek_log_path.is_empty() {
+        tracing::info!("Loading Zeek data from {}", config.zeek_log_path);
+        let zeek = ZeekDataSource::new(&config.zeek_log_path);
+        let time_window = std::time::Duration::from_secs(config.zeek_time_window);
+        let sigs = crate::signatures::SignatureData::load_embedded();
+
+        // Convert Zeek DNS records to signals
+        if let Ok(dns_records) = zeek.load_dns(&targets, time_window).await {
+            let llm_domains: std::collections::HashSet<&str> =
+                sigs.llm_domains.iter().map(|s| s.as_str()).collect();
+            let infra_domains: std::collections::HashSet<&str> =
+                sigs.agent_infra_domains.iter().map(|s| s.as_str()).collect();
+
+            let mut zeek_signals = Vec::new();
+            for rec in &dns_records {
+                if llm_domains.contains(rec.query.as_str()) {
+                    zeek_signals.push(Signal::new(
+                        DetectorType::Zeek,
+                        "llm_api_domain_query".to_string(),
+                        format!("Zeek: DNS query to LLM domain {}", rec.query),
+                        Confidence::High,
+                        serde_json::json!({
+                            "ip": rec.src_ip.to_string(),
+                            "domain": rec.query,
+                            "source": "zeek",
+                        }),
+                    ));
+                } else if infra_domains.contains(rec.query.as_str()) {
+                    zeek_signals.push(Signal::new(
+                        DetectorType::Zeek,
+                        "agent_infrastructure_domain_query".to_string(),
+                        format!("Zeek: DNS query to agent infra domain {}", rec.query),
+                        Confidence::Medium,
+                        serde_json::json!({
+                            "ip": rec.src_ip.to_string(),
+                            "domain": rec.query,
+                            "source": "zeek",
+                        }),
+                    ));
+                }
+            }
+
+            if !zeek_signals.is_empty() {
+                tracing::info!("Zeek produced {} supplementary signal(s)", zeek_signals.len());
+                result.detectors_run.push(DetectorType::Zeek);
+                correlate_signals(zeek_signals, &mut agents_by_host, &on_agent);
+            }
+        }
+
+        // Convert Zeek TLS records to signals
+        if let Ok(tls_records) = zeek.load_tls(&targets, time_window).await {
+            let mut zeek_tls_signals = Vec::new();
+            for rec in &tls_records {
+                if let Some(ref ja3) = rec.ja3_hash {
+                    zeek_tls_signals.push(Signal::new(
+                        DetectorType::Zeek,
+                        "tls_fingerprint_captured".to_string(),
+                        format!(
+                            "Zeek: TLS fingerprint captured for {} (JA3: {})",
+                            rec.server_name.as_deref().unwrap_or("unknown"),
+                            ja3
+                        ),
+                        Confidence::Low,
+                        serde_json::json!({
+                            "ip": rec.src_ip.to_string(),
+                            "server_name": rec.server_name,
+                            "ja3": ja3,
+                            "source": "zeek",
+                        }),
+                    ));
+                }
+            }
+            if !zeek_tls_signals.is_empty() {
+                correlate_signals(zeek_tls_signals, &mut agents_by_host, &on_agent);
+            }
+        }
+    }
+
     // 6. Apply fusion rules to the final set
     let agents: Vec<DetectedAgent> = agents_by_host.into_values().collect();
-    let agents = apply_fusion_rules(agents);
+    let mut agents = apply_fusion_rules(agents);
+
+    // 6b. Nmap enrichment (post-fusion, pre-final-status)
+    if config.nmap_enabled {
+        tracing::info!("Running nmap enrichment");
+        let enricher = NmapEnricher::new(&config.nmap_scan_args, config.nmap_timeout);
+        match enricher.enrich(agents.clone()).await {
+            Ok(enriched) => {
+                result.detectors_run.push(DetectorType::NmapEnricher);
+                agents = enriched;
+            }
+            Err(e) => {
+                let msg = format!("Nmap enrichment failed: {}", e);
+                tracing::warn!("{}", msg);
+                result.errors.push(msg);
+            }
+        }
+    }
 
     // 7. Final status update and callback for agents that changed after fusion
     let mut final_agents = Vec::new();

@@ -43,7 +43,7 @@ pub struct SignatureData {
 }
 
 /// Signature file names and their corresponding data files.
-const SIGNATURE_FILES: &[(&str, &str, &str)] = &[
+pub(crate) const SIGNATURE_FILES: &[(&str, &str, &str)] = &[
     ("llm_domains", "llm_domains.json", "llm_domains.sig"),
     (
         "agent_infra_domains",

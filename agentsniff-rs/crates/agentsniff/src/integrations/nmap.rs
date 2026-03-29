@@ -245,6 +245,13 @@ impl NmapEnricher {
 
         let fut = async move {
             let output = cmd.output().await?;
+            if !output.status.success() {
+                anyhow::bail!(
+                    "nmap exited with status {}: {}",
+                    output.status,
+                    String::from_utf8_lossy(&output.stderr)
+                );
+            }
             let xml = String::from_utf8_lossy(&output.stdout).into_owned();
             Ok::<String, anyhow::Error>(xml)
         };
@@ -258,6 +265,15 @@ impl NmapEnricher {
 #[async_trait]
 impl Enricher for NmapEnricher {
     async fn enrich(&self, mut agents: Vec<DetectedAgent>) -> anyhow::Result<Vec<DetectedAgent>> {
+        // Check if nmap is available
+        match tokio::process::Command::new("nmap").arg("--version").output().await {
+            Ok(output) if output.status.success() => {}
+            _ => {
+                tracing::warn!("nmap binary not found or not working; skipping enrichment");
+                return Ok(agents);
+            }
+        }
+
         let corroborating: HashSet<DetectorType> =
             CORROBORATING_DETECTORS.iter().copied().collect();
 

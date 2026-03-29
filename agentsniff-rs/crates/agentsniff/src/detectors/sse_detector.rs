@@ -197,6 +197,10 @@ impl SseDetector {
         let mut buf = [0u8; 65535];
 
         while start.elapsed() < duration {
+            // SAFETY: `buf` is a fully-initialized [u8; 65535] on the stack.
+            // Casting to [MaybeUninit<u8>] is sound because MaybeUninit<u8> has
+            // the same size and alignment as u8, and initialized memory is valid
+            // MaybeUninit.
             let n = match socket.recv(unsafe {
                 &mut *(&mut buf[..] as *mut [u8] as *mut [std::mem::MaybeUninit<u8>])
             }) {

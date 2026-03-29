@@ -339,11 +339,12 @@ pub async fn run_scan(
 
             let mut zeek_signals = Vec::new();
             for rec in &dns_records {
-                if llm_domains.contains(rec.query.as_str()) {
+                let query = rec.query.trim_end_matches('.');
+                if llm_domains.contains(query) {
                     zeek_signals.push(Signal::new(
                         DetectorType::Zeek,
                         "llm_api_domain_query".to_string(),
-                        format!("Zeek: DNS query to LLM domain {}", rec.query),
+                        format!("Zeek: DNS query to LLM domain {}", query),
                         Confidence::High,
                         serde_json::json!({
                             "ip": rec.src_ip.to_string(),
@@ -351,11 +352,11 @@ pub async fn run_scan(
                             "source": "zeek",
                         }),
                     ));
-                } else if infra_domains.contains(rec.query.as_str()) {
+                } else if infra_domains.contains(query) {
                     zeek_signals.push(Signal::new(
                         DetectorType::Zeek,
                         "agent_infrastructure_domain_query".to_string(),
-                        format!("Zeek: DNS query to agent infra domain {}", rec.query),
+                        format!("Zeek: DNS query to agent infra domain {}", query),
                         Confidence::Medium,
                         serde_json::json!({
                             "ip": rec.src_ip.to_string(),
@@ -373,24 +374,33 @@ pub async fn run_scan(
             }
         }
 
-        // Convert Zeek TLS records to signals
+        // Convert Zeek TLS records to signals (only matching fingerprints or LLM domains)
         if let Ok(tls_records) = zeek.load_tls(&targets, time_window).await {
+            let llm_domains: std::collections::HashSet<&str> =
+                sigs.llm_domains.iter().map(|s| s.as_str()).collect();
+
             let mut zeek_tls_signals = Vec::new();
             for rec in &tls_records {
-                if let Some(ref ja3) = rec.ja3_hash {
+                // Match by server_name against known LLM domains
+                let server_match = rec.server_name.as_deref().is_some_and(|sn| {
+                    let sn = sn.trim_end_matches('.');
+                    llm_domains.contains(sn)
+                });
+
+                if server_match {
                     zeek_tls_signals.push(Signal::new(
                         DetectorType::Zeek,
                         "tls_fingerprint_captured".to_string(),
                         format!(
-                            "Zeek: TLS fingerprint captured for {} (JA3: {})",
+                            "Zeek: TLS to LLM domain {} (JA3: {})",
                             rec.server_name.as_deref().unwrap_or("unknown"),
-                            ja3
+                            rec.ja3_hash.as_deref().unwrap_or("none")
                         ),
-                        Confidence::Low,
+                        Confidence::Medium,
                         serde_json::json!({
                             "ip": rec.src_ip.to_string(),
                             "server_name": rec.server_name,
-                            "ja3": ja3,
+                            "ja3": rec.ja3_hash,
                             "source": "zeek",
                         }),
                     ));

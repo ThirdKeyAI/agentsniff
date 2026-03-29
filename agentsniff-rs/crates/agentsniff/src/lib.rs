@@ -4,6 +4,7 @@ pub mod config;
 pub mod detectors;
 pub mod ebpf;
 pub mod fusion;
+pub mod integrations;
 pub mod models;
 pub mod notifier;
 pub mod sarif_export;

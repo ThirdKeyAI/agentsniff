@@ -91,6 +91,14 @@ pub struct ScanConfig {
 
     // ── eBPF ─────────────────────────────────────────────────────────
     pub ebpf_interface: String,
+
+    // ── Integrations ────────────────────────────────────────────────
+    pub zeek_enabled: bool,
+    pub zeek_log_path: String,
+    pub zeek_time_window: u64,
+    pub nmap_enabled: bool,
+    pub nmap_scan_args: String,
+    pub nmap_timeout: u64,
 }
 
 impl Default for ScanConfig {
@@ -158,6 +166,14 @@ impl Default for ScanConfig {
 
             // eBPF
             ebpf_interface: String::new(),
+
+            // Integrations
+            zeek_enabled: false,
+            zeek_log_path: String::new(),
+            zeek_time_window: 300,
+            nmap_enabled: false,
+            nmap_scan_args: "-sV".to_string(),
+            nmap_timeout: 120,
         }
     }
 }
@@ -197,4 +213,89 @@ impl ScanConfig {
         }
         config
     }
+}
+
+/// Generate a well-commented default YAML configuration template.
+pub fn default_config_yaml() -> String {
+    r#"# AgentSniff v2 Configuration
+# See https://agentsniff.org/docs/configuration for full reference.
+
+# ── Network targets ──────────────────────────────────────────────────
+target_network: "192.168.1.0/24"
+# target_hosts:
+#   - "10.0.0.5"
+#   - "myhost.local"
+# exclude_hosts:
+#   - "192.168.1.1"
+
+# ── Detector toggles ────────────────────────────────────────────────
+enable_dns_monitor: true
+enable_port_scanner: true
+enable_agentpin_prober: true
+enable_mcp_detector: true
+enable_endpoint_prober: true
+enable_tls_fingerprint: true
+enable_traffic_analyzer: true
+enable_sse_detector: true
+
+# ── Scan parameters ─────────────────────────────────────────────────
+port_scan_timeout: 2.0        # seconds per port
+port_scan_concurrency: 100
+http_timeout: 5.0             # seconds per HTTP request
+http_concurrency: 100
+dns_monitor_duration: 60      # seconds to monitor DNS
+# scan_interval: 0            # 0 = one-shot, >0 = repeat every N seconds
+
+# ── Output ──────────────────────────────────────────────────────────
+# output_format: "table"      # table, json, csv, sarif
+# output_file: ""
+
+# ── API server ──────────────────────────────────────────────────────
+# api_enabled: true
+# api_host: "0.0.0.0"
+# api_port: 9090
+# api_cors_origins:
+#   - "*"
+
+# ── Storage ─────────────────────────────────────────────────────────
+# storage:
+#   backend: "sqlite"
+#   sqlite_path: "~/.agentsniff/agentsniff.db"
+#   postgres_url: ""
+#   redis_url: ""
+
+# ── Custom signatures ───────────────────────────────────────────────
+# custom_llm_domains:
+#   - "my-llm-api.example.com"
+# custom_agent_infra_domains:
+#   - "my-vector-db.example.com"
+# custom_agent_ports:
+#   12345: "my-agent-service"
+
+# ── eBPF ────────────────────────────────────────────────────────────
+# ebpf_interface: "eth0"      # network interface for eBPF capture
+
+# ── Integrations ────────────────────────────────────────────────────
+# zeek_enabled: false
+# zeek_log_path: "/opt/zeek/logs/current"
+# zeek_time_window: 300       # seconds of history to load
+
+# nmap_enabled: false
+# nmap_scan_args: "-sV"
+# nmap_timeout: 120           # seconds
+
+# ── Alerting ────────────────────────────────────────────────────────
+# alert_enabled: false
+# alert_min_agents: 1
+# alert_min_confidence: 0.5
+# alert_cooldown: 300         # seconds between alerts
+# webhook_url: ""
+# webhook_headers: {}
+# smtp_host: ""
+# smtp_port: 587
+# smtp_use_tls: true
+# smtp_from: ""
+# smtp_to: []
+"#
+    .to_string()
 }

@@ -151,8 +151,8 @@ pub fn build_registry() -> DetectorRegistry {
         Box::new(AgentpinProber::new(config))
     });
 
-    registry.register("sse_detector", "enable_sse_detector", |config, _channels| {
-        Box::new(SseDetector::new(config))
+    registry.register("sse_detector", "enable_sse_detector", |config, channels| {
+        Box::new(SseDetector::new(config, channels))
     });
 
     registry.register("tls_fingerprint", "enable_tls_fingerprint", |config, channels| {

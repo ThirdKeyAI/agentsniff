@@ -39,7 +39,7 @@ p256 = { version = "0.13", features = ["ecdsa"] }
 sha2 = "0.10"
 base64 = "0.22"
 rust-embed = { version = "8", features = ["include-exclude"] }
-socket2 = "0.5"
+socket2 = { version = "0.5", features = ["all"] }
 quick-xml = { version = "0.36", features = ["serialize"] }
 aya = { version = "0.13", optional = true }
 aya-log = { version = "0.2", optional = true }

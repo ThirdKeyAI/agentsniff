@@ -65,6 +65,20 @@ enum Cli {
         /// Verify signatures after update
         #[arg(long, default_value = "true")]
         verify: bool,
+
+        /// Base URL for signature files
+        #[arg(long)]
+        url: Option<String>,
+    },
+    /// Generate a default configuration file
+    InitConfig {
+        /// Output file path
+        #[arg(long, default_value = "agentsniff.yaml")]
+        output: String,
+
+        /// Overwrite existing file
+        #[arg(long)]
+        force: bool,
     },
 }
 
@@ -226,9 +240,29 @@ async fn main() -> anyhow::Result<()> {
             run_server(scan_config, ebpf_channels).await?;
         }
 
-        Cli::UpdateSignatures { verify } => {
-            tracing::info!("Updating signatures (verify={})", verify);
-            println!("Signature update not yet implemented.");
+        Cli::UpdateSignatures { verify, url } => {
+            if !verify {
+                println!("Warning: signature verification is disabled.");
+            }
+            agentsniff::signatures::updater::update_signatures(
+                verify,
+                url.as_deref(),
+            )
+            .await?;
+        }
+
+        Cli::InitConfig { output, force } => {
+            let path = std::path::Path::new(&output);
+            if path.exists() && !force {
+                eprintln!(
+                    "Error: {} already exists. Use --force to overwrite.",
+                    output
+                );
+                std::process::exit(1);
+            }
+            let yaml = agentsniff::config::default_config_yaml();
+            fs::write(&output, yaml)?;
+            println!("Generated default config: {}", output);
         }
     }
 

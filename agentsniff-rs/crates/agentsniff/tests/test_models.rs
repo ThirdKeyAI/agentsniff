@@ -67,6 +67,21 @@ fn test_signal_serialization() {
 }
 
 #[test]
+fn test_detector_type_serialization() {
+    let dt = DetectorType::NmapEnricher;
+    let json = serde_json::to_string(&dt).unwrap();
+    assert_eq!(json, "\"nmap_enricher\"");
+    let deserialized: DetectorType = serde_json::from_str(&json).unwrap();
+    assert_eq!(deserialized, DetectorType::NmapEnricher);
+
+    let dt = DetectorType::Zeek;
+    let json = serde_json::to_string(&dt).unwrap();
+    assert_eq!(json, "\"zeek\"");
+    let deserialized: DetectorType = serde_json::from_str(&json).unwrap();
+    assert_eq!(deserialized, DetectorType::Zeek);
+}
+
+#[test]
 fn test_detected_agent_serialization() {
     let agent = DetectedAgent::new("test-host".into(), "192.168.1.1".parse().unwrap());
     let json = serde_json::to_string(&agent).unwrap();

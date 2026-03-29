@@ -64,6 +64,8 @@ pub enum DetectorType {
     TlsFingerprint,
     TrafficAnalyzer,
     SseDetector,
+    NmapEnricher,
+    Zeek,
 }
 
 /// A single detection signal emitted by a detector.

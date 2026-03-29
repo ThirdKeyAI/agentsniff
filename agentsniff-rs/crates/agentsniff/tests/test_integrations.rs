@@ -1,3 +1,4 @@
+use agentsniff::integrations::nmap::{parse_nmap_xml, classify_service, ServiceClass};
 use agentsniff::integrations::{DnsRecord, TlsRecord, TrafficRecord};
 use agentsniff::integrations::zeek::{
     detect_format, parse_conn_line, parse_dns_line, parse_ssl_line, ZeekFormat,
@@ -134,4 +135,53 @@ fn test_parse_tsv_dash_means_empty() {
     let rec = rec.unwrap();
     assert!(rec.duration.is_none());
     assert_eq!(rec.bytes_sent, 0);
+}
+
+#[test]
+fn test_classify_agent_like_service() {
+    assert_eq!(classify_service("uvicorn"), ServiceClass::AgentLike);
+    assert_eq!(classify_service("ollama"), ServiceClass::AgentLike);
+    assert_eq!(classify_service("fastapi"), ServiceClass::AgentLike);
+    assert_eq!(classify_service("gunicorn"), ServiceClass::AgentLike);
+}
+
+#[test]
+fn test_classify_non_agent_service() {
+    assert_eq!(classify_service("sshd"), ServiceClass::NonAgent);
+    assert_eq!(classify_service("postgresql"), ServiceClass::NonAgent);
+    assert_eq!(classify_service("nginx"), ServiceClass::NonAgent);
+    assert_eq!(classify_service("cups"), ServiceClass::NonAgent);
+}
+
+#[test]
+fn test_classify_unknown_service() {
+    assert_eq!(classify_service("some-custom-app"), ServiceClass::Unknown);
+}
+
+#[test]
+fn test_parse_nmap_xml() {
+    let xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+<nmaprun>
+  <host>
+    <address addr="192.168.1.10" addrtype="ipv4"/>
+    <ports>
+      <port protocol="tcp" portid="8000">
+        <state state="open"/>
+        <service name="http" product="uvicorn" version="0.30.0"/>
+      </port>
+      <port protocol="tcp" portid="22">
+        <state state="open"/>
+        <service name="ssh" product="OpenSSH" version="9.7"/>
+      </port>
+    </ports>
+  </host>
+</nmaprun>"#;
+    let hosts = parse_nmap_xml(xml);
+    assert_eq!(hosts.len(), 1);
+    let host = &hosts[0];
+    assert_eq!(host.ip, "192.168.1.10");
+    assert_eq!(host.services.len(), 2);
+    assert_eq!(host.services[0].product.as_deref(), Some("uvicorn"));
+    assert_eq!(host.services[0].port, 8000);
+    assert_eq!(host.services[1].product.as_deref(), Some("OpenSSH"));
 }

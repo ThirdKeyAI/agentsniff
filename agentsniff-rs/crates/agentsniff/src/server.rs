@@ -18,6 +18,7 @@ use tower_http::cors::{Any, CorsLayer};
 use crate::config::ScanConfig;
 use crate::ebpf::EbpfChannels;
 use crate::models::{DetectedAgent, ScanResult};
+use crate::notifier::send_alerts;
 use crate::scanner::{resolve_targets, run_scan};
 use crate::storage::{SqliteBackend, StorageBackend};
 
@@ -113,7 +114,7 @@ impl ScanSummary {
 // ─── App state ──────────────────────────────────────────────────────────────
 
 pub struct AppState {
-    pub config: ScanConfig,
+    pub config: Mutex<ScanConfig>,
     pub storage: Box<dyn StorageBackend>,
     pub scan_status: Mutex<ScanStatus>,
     pub latest_result: Mutex<Option<ScanResult>>,
@@ -310,7 +311,7 @@ async fn start_scan_handler(
     }
 
     // Build a config for this scan — accept both query params and JSON body
-    let mut scan_config = state.config.clone();
+    let mut scan_config = state.config.lock().await.clone();
     if let Some(network) = query.network {
         scan_config.target_network = network;
     }
@@ -391,7 +392,7 @@ async fn scan_stream_handler(
         };
 
         if !already_running {
-            let mut scan_config = state.config.clone();
+            let mut scan_config = state.config.lock().await.clone();
             scan_config.target_network = network;
 
             if let Some(detectors_csv) = query.detectors {
@@ -495,6 +496,197 @@ async fn agents_handler(State(state): State<Arc<AppState>>) -> Json<Vec<Detected
     }
 }
 
+// ─── Alert settings fields ─────────────────────────────────────────────────
+
+/// The subset of ScanConfig fields exposed via /api/settings.
+#[derive(Debug, Serialize, Deserialize)]
+struct AlertSettings {
+    alert_enabled: bool,
+    alert_min_agents: usize,
+    alert_min_confidence: f64,
+    alert_cooldown: u64,
+    webhook_url: String,
+    smtp_host: String,
+    smtp_port: u16,
+    smtp_user: String,
+    smtp_password: String,
+    smtp_use_tls: bool,
+    smtp_from: String,
+    smtp_to: Vec<String>,
+}
+
+impl AlertSettings {
+    fn from_config(config: &ScanConfig) -> Self {
+        Self {
+            alert_enabled: config.alert_enabled,
+            alert_min_agents: config.alert_min_agents,
+            alert_min_confidence: config.alert_min_confidence,
+            alert_cooldown: config.alert_cooldown,
+            webhook_url: config.webhook_url.clone(),
+            smtp_host: config.smtp_host.clone(),
+            smtp_port: config.smtp_port,
+            smtp_user: config.smtp_user.clone(),
+            // Never expose the actual password
+            smtp_password: if config.smtp_password.is_empty() {
+                String::new()
+            } else {
+                "\u{2022}\u{2022}\u{2022}\u{2022}\u{2022}\u{2022}\u{2022}\u{2022}".to_string()
+            },
+            smtp_use_tls: config.smtp_use_tls,
+            smtp_from: config.smtp_from.clone(),
+            smtp_to: config.smtp_to.clone(),
+        }
+    }
+}
+
+async fn get_settings_handler(State(state): State<Arc<AppState>>) -> Json<AlertSettings> {
+    let config = state.config.lock().await;
+    Json(AlertSettings::from_config(&config))
+}
+
+#[derive(Debug, Deserialize)]
+struct UpdateSettingsRequest {
+    alert_enabled: Option<bool>,
+    alert_min_agents: Option<usize>,
+    alert_min_confidence: Option<String>,
+    alert_cooldown: Option<u64>,
+    webhook_url: Option<String>,
+    smtp_host: Option<String>,
+    smtp_port: Option<u16>,
+    smtp_user: Option<String>,
+    smtp_password: Option<String>,
+    smtp_use_tls: Option<bool>,
+    smtp_from: Option<String>,
+    smtp_to: Option<Vec<String>>,
+}
+
+async fn update_settings_handler(
+    State(state): State<Arc<AppState>>,
+    Json(body): Json<UpdateSettingsRequest>,
+) -> Json<serde_json::Value> {
+    let mut config = state.config.lock().await;
+    let mut updated = Vec::new();
+
+    if let Some(v) = body.alert_enabled {
+        config.alert_enabled = v;
+        updated.push("alert_enabled");
+    }
+    if let Some(v) = body.alert_min_agents {
+        config.alert_min_agents = v;
+        updated.push("alert_min_agents");
+    }
+    if let Some(ref v) = body.alert_min_confidence {
+        // Dashboard sends string confidence levels; map to f64
+        let score = match v.as_str() {
+            "confirmed" => 0.9,
+            "high" => 0.7,
+            "medium" => 0.4,
+            _ => 0.1, // "low"
+        };
+        config.alert_min_confidence = score;
+        updated.push("alert_min_confidence");
+    }
+    if let Some(v) = body.alert_cooldown {
+        config.alert_cooldown = v;
+        updated.push("alert_cooldown");
+    }
+    if let Some(ref v) = body.webhook_url {
+        config.webhook_url = v.clone();
+        updated.push("webhook_url");
+    }
+    if let Some(ref v) = body.smtp_host {
+        config.smtp_host = v.clone();
+        updated.push("smtp_host");
+    }
+    if let Some(v) = body.smtp_port {
+        config.smtp_port = v;
+        updated.push("smtp_port");
+    }
+    if let Some(ref v) = body.smtp_user {
+        config.smtp_user = v.clone();
+        updated.push("smtp_user");
+    }
+    if let Some(ref v) = body.smtp_password {
+        // Skip masked password placeholder
+        if v != "\u{2022}\u{2022}\u{2022}\u{2022}\u{2022}\u{2022}\u{2022}\u{2022}" {
+            config.smtp_password = v.clone();
+            updated.push("smtp_password");
+        }
+    }
+    if let Some(v) = body.smtp_use_tls {
+        config.smtp_use_tls = v;
+        updated.push("smtp_use_tls");
+    }
+    if let Some(ref v) = body.smtp_from {
+        config.smtp_from = v.clone();
+        updated.push("smtp_from");
+    }
+    if let Some(ref v) = body.smtp_to {
+        config.smtp_to = v.clone();
+        updated.push("smtp_to");
+    }
+
+    let count = updated.len();
+    Json(serde_json::json!({
+        "updated": updated,
+        "count": count,
+    }))
+}
+
+async fn test_alert_handler(
+    State(state): State<Arc<AppState>>,
+) -> Json<serde_json::Value> {
+    let config = state.config.lock().await.clone();
+
+    // Build a minimal fake result for testing
+    let result = ScanResult {
+        scan_id: "test-alert".to_string(),
+        target_network: config.target_network.clone(),
+        ..ScanResult::new()
+    };
+
+    let outcomes = send_alerts(&result, &config).await;
+    Json(serde_json::json!({ "outcomes": outcomes }))
+}
+
+// ─── Database management ───────────────────────────────────────────────────
+
+async fn db_backup_handler(
+    State(state): State<Arc<AppState>>,
+) -> Result<impl IntoResponse, StatusCode> {
+    match state.storage.backup().await {
+        Ok(data) => {
+            let headers = [
+                (
+                    axum::http::header::CONTENT_TYPE,
+                    "application/x-sqlite3".to_string(),
+                ),
+                (
+                    axum::http::header::CONTENT_DISPOSITION,
+                    "attachment; filename=\"agentsniff-backup.db\"".to_string(),
+                ),
+            ];
+            Ok((headers, data))
+        }
+        Err(e) => {
+            tracing::error!("Database backup failed: {}", e);
+            Err(StatusCode::INTERNAL_SERVER_ERROR)
+        }
+    }
+}
+
+async fn db_reset_handler(
+    State(state): State<Arc<AppState>>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    match state.storage.reset().await {
+        Ok(()) => Ok(Json(serde_json::json!({ "status": "ok" }))),
+        Err(e) => {
+            tracing::error!("Database reset failed: {}", e);
+            Err(StatusCode::INTERNAL_SERVER_ERROR)
+        }
+    }
+}
+
 async fn dashboard_handler() -> impl IntoResponse {
     match DashboardAssets::get("index.html") {
         Some(content) => {
@@ -533,7 +725,7 @@ pub fn create_router_with_storage(
     let (sse_tx, _rx) = broadcast::channel::<SseEvent>(256);
 
     let state = Arc::new(AppState {
-        config,
+        config: Mutex::new(config),
         storage,
         scan_status: Mutex::new(ScanStatus::Idle),
         latest_result: Mutex::new(None),
@@ -557,6 +749,10 @@ pub fn create_router_with_storage(
         .route("/api/scan/history", get(scan_history_handler))
         .route("/api/scan/{scan_id}", get(get_scan_handler))
         .route("/api/agents", get(agents_handler))
+        .route("/api/settings", get(get_settings_handler).put(update_settings_handler))
+        .route("/api/settings/test", post(test_alert_handler))
+        .route("/api/db/backup", get(db_backup_handler))
+        .route("/api/db/reset", post(db_reset_handler))
         .route("/", get(dashboard_handler))
         .fallback(get(static_fallback_handler))
         .layer(cors)

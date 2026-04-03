@@ -29,6 +29,10 @@ pub trait StorageBackend: Send + Sync {
     async fn get_scan_count(&self) -> Result<u64>;
     async fn save_agent(&self, scan_id: &str, agent: &DetectedAgent) -> Result<()>;
     async fn get_agents(&self, scan_id: &str) -> Result<Vec<DetectedAgent>>;
+    /// Return the raw SQLite database bytes for backup download.
+    async fn backup(&self) -> Result<Vec<u8>>;
+    /// Delete all data (scans, agents, signals).
+    async fn reset(&self) -> Result<()>;
 }
 
 /// SQLite-backed storage.
@@ -315,6 +319,37 @@ impl StorageBackend for SqliteBackend {
         }
 
         Ok(agents)
+    }
+
+    async fn backup(&self) -> Result<Vec<u8>> {
+        let conn = self.conn.lock().map_err(|e| anyhow::anyhow!("{e}"))?;
+        // Get the database file path from PRAGMA database_list
+        let db_path: String = conn.query_row(
+            "PRAGMA database_list",
+            [],
+            |row| row.get::<_, String>(2),
+        )?;
+
+        if db_path.is_empty() || db_path == ":memory:" {
+            anyhow::bail!("Cannot backup in-memory database");
+        }
+
+        // Checkpoint WAL to ensure all data is in the main file
+        let _ = conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE);");
+        drop(conn);
+
+        let data = std::fs::read(&db_path)?;
+        Ok(data)
+    }
+
+    async fn reset(&self) -> Result<()> {
+        let conn = self.conn.lock().map_err(|e| anyhow::anyhow!("{e}"))?;
+        conn.execute_batch(
+            "DELETE FROM signals;
+             DELETE FROM agents;
+             DELETE FROM scans;",
+        )?;
+        Ok(())
     }
 }
 

@@ -49,4 +49,12 @@ impl StorageBackend for RedisOverlay {
     async fn get_agents(&self, scan_id: &str) -> anyhow::Result<Vec<DetectedAgent>> {
         self.inner.get_agents(scan_id).await
     }
+
+    async fn backup(&self) -> anyhow::Result<Vec<u8>> {
+        self.inner.backup().await
+    }
+
+    async fn reset(&self) -> anyhow::Result<()> {
+        self.inner.reset().await
+    }
 }

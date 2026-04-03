@@ -43,4 +43,12 @@ impl StorageBackend for PostgresBackend {
     async fn get_agents(&self, _scan_id: &str) -> anyhow::Result<Vec<DetectedAgent>> {
         anyhow::bail!("PostgreSQL backend not yet implemented")
     }
+
+    async fn backup(&self) -> anyhow::Result<Vec<u8>> {
+        anyhow::bail!("PostgreSQL backend not yet implemented")
+    }
+
+    async fn reset(&self) -> anyhow::Result<()> {
+        anyhow::bail!("PostgreSQL backend not yet implemented")
+    }
 }

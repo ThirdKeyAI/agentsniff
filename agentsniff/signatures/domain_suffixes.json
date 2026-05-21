@@ -14,5 +14,9 @@
   ".fly.dev",
   ".replit.dev",
   ".repl.co",
-  ".gcpp.cursor.sh"
+  ".gcpp.cursor.sh",
+  ".pinecone.io",
+  ".weaviate.cloud",
+  ".qdrant.tech",
+  ".databricks.com"
 ]

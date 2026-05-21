@@ -1,0 +1,1718 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AgentSniff Dashboard</title>
+<style>
+  :root {
+    --bg: #0a0e14;
+    --surface: #111820;
+    --surface2: #1a2230;
+    --border: #243040;
+    --text: #c8d4e0;
+    --text-dim: #6a7a8a;
+    --accent: #00d4aa;
+    --accent-dim: #00a080;
+    --red: #f04060;
+    --yellow: #f0c040;
+    --blue: #40a0f0;
+    --purple: #a080f0;
+    --green: #40d080;
+    --radius: 8px;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'SF Mono', 'JetBrains Mono', 'Fira Code', monospace;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.5;
+    min-height: 100vh;
+  }
+
+  .header {
+    padding: 20px 32px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: var(--surface);
+  }
+
+  .header h1 {
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--accent);
+    letter-spacing: 1px;
+  }
+
+  .header .subtitle {
+    font-size: 11px;
+    color: var(--text-dim);
+    margin-top: 2px;
+  }
+
+  .controls {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+  }
+
+  input[type="text"] {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 8px 14px;
+    border-radius: var(--radius);
+    font-family: inherit;
+    font-size: 13px;
+    width: 220px;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+
+  input[type="text"]:focus { border-color: var(--accent); }
+
+  button {
+    background: var(--accent);
+    color: var(--bg);
+    border: none;
+    padding: 8px 20px;
+    border-radius: var(--radius);
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: opacity 0.2s;
+  }
+
+  button:hover { opacity: 0.85; }
+  button:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  button.secondary {
+    background: var(--surface2);
+    color: var(--text);
+    border: 1px solid var(--border);
+  }
+
+  .export-dropdown { position: relative; }
+  .export-menu {
+    display: none;
+    position: absolute;
+    top: 100%;
+    right: 0;
+    margin-top: 4px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    min-width: 100px;
+    z-index: 100;
+    overflow: hidden;
+  }
+  .export-menu.open { display: block; }
+  .export-item {
+    padding: 8px 16px;
+    cursor: pointer;
+    font-size: 13px;
+    color: var(--text);
+    transition: background 0.15s;
+  }
+  .export-item:hover { background: var(--surface); }
+
+  .main { padding: 24px 32px; }
+
+  .stats-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 16px;
+    margin-bottom: 24px;
+  }
+
+  .stat-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 16px 20px;
+  }
+
+  .stat-card .label { font-size: 11px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 1px; }
+  .stat-card .value { font-size: 28px; font-weight: 700; margin-top: 4px; }
+  .stat-card .value.green { color: var(--green); }
+  .stat-card .value.yellow { color: var(--yellow); }
+  .stat-card .value.blue { color: var(--blue); }
+  .stat-card .value.red { color: var(--red); }
+
+  .agents-table {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+  }
+
+  .agents-table table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+
+  .agents-table th {
+    text-align: left;
+    padding: 12px 16px;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--text-dim);
+    background: var(--surface2);
+    border-bottom: 1px solid var(--border);
+  }
+
+  .agents-table td {
+    padding: 12px 16px;
+    font-size: 13px;
+    border-bottom: 1px solid var(--border);
+    vertical-align: top;
+  }
+
+  .agents-table tr:last-child td { border-bottom: none; }
+  .agents-table tr:hover td { background: rgba(0, 212, 170, 0.03); }
+
+  .badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  .badge.confirmed { background: rgba(64, 208, 128, 0.15); color: var(--green); }
+  .badge.high { background: rgba(240, 192, 64, 0.15); color: var(--yellow); }
+  .badge.medium { background: rgba(64, 160, 240, 0.15); color: var(--blue); }
+  .badge.low { background: rgba(106, 122, 138, 0.15); color: var(--text-dim); }
+
+  .badge.verified { background: rgba(64, 208, 128, 0.15); color: var(--green); }
+  .badge.detected { background: rgba(240, 192, 64, 0.15); color: var(--yellow); }
+  .badge.suspected { background: rgba(64, 160, 240, 0.15); color: var(--blue); }
+
+  .progress-bar {
+    width: 80px;
+    height: 6px;
+    background: var(--surface2);
+    border-radius: 3px;
+    overflow: hidden;
+    display: inline-block;
+    vertical-align: middle;
+    margin-right: 8px;
+  }
+
+  .progress-bar .fill {
+    height: 100%;
+    border-radius: 3px;
+    transition: width 0.3s;
+  }
+
+  .signal-list {
+    list-style: none;
+    margin-top: 8px;
+    font-size: 12px;
+  }
+
+  .signal-list li {
+    padding: 4px 0;
+    color: var(--text-dim);
+  }
+
+  .signal-list li::before {
+    content: "●";
+    margin-right: 6px;
+    color: var(--accent-dim);
+  }
+
+  .log-panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    margin-top: 24px;
+    max-height: 200px;
+    overflow-y: auto;
+    padding: 12px 16px;
+    font-size: 12px;
+    color: var(--text-dim);
+  }
+
+  .log-panel .log-entry { padding: 2px 0; }
+  .log-panel .log-entry .ts { color: var(--accent-dim); margin-right: 8px; }
+
+  .empty-state {
+    text-align: center;
+    padding: 60px 20px;
+    color: var(--text-dim);
+  }
+
+  .empty-state .icon { font-size: 48px; margin-bottom: 16px; }
+  .empty-state h3 { color: var(--text); margin-bottom: 8px; }
+
+  .spinner {
+    display: inline-block;
+    width: 16px;
+    height: 16px;
+    border: 2px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    margin-right: 8px;
+    vertical-align: middle;
+  }
+
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .expandable { cursor: pointer; }
+  .expandable:hover { color: var(--accent); }
+  .detail-row { display: none; }
+  .detail-row.open { display: table-row; }
+  .detail-content { padding: 16px; background: var(--surface2); }
+
+  /* Settings modal */
+  .modal-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.7);
+    z-index: 1000;
+    align-items: center;
+    justify-content: center;
+  }
+  .modal-overlay.open { display: flex; }
+
+  .modal {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    width: 560px;
+    max-height: 85vh;
+    overflow-y: auto;
+    padding: 0;
+  }
+
+  .modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 20px 24px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .modal-header h2 { font-size: 16px; color: var(--accent); }
+  .modal-close {
+    background: none;
+    border: none;
+    color: var(--text-dim);
+    font-size: 20px;
+    cursor: pointer;
+    padding: 4px 8px;
+  }
+  .modal-close:hover { color: var(--text); }
+
+  .modal-body { padding: 20px 24px; }
+
+  .modal-section { margin-bottom: 20px; }
+  .modal-section h3 {
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--text-dim);
+    margin-bottom: 12px;
+    padding-bottom: 6px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .field-row {
+    display: flex;
+    align-items: center;
+    margin-bottom: 10px;
+    gap: 12px;
+  }
+
+  .field-row .toggle-row {
+    flex: 0 0 auto;
+  }
+
+  .field-row label {
+    flex: 0 0 120px;
+    font-size: 12px;
+    color: var(--text-dim);
+    text-align: right;
+  }
+
+  .field-row input[type="text"],
+  .field-row input[type="password"],
+  .field-row input[type="number"],
+  .field-row select {
+    flex: 1;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 6px 10px;
+    border-radius: 6px;
+    font-family: inherit;
+    font-size: 12px;
+    outline: none;
+    width: auto;
+  }
+
+  .field-row input:focus,
+  .field-row select:focus { border-color: var(--accent); }
+
+  .toggle-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: none;
+  }
+
+  .toggle {
+    position: relative;
+    display: inline-block;
+    width: 36px;
+    min-width: 36px;
+    max-width: 36px;
+    height: 20px;
+    cursor: pointer;
+    flex: 0 0 36px;
+  }
+
+  .toggle input { display: none; }
+  .toggle .slider {
+    position: absolute;
+    inset: 0;
+    background: var(--surface2);
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    transition: background 0.2s;
+  }
+  .toggle .slider::after {
+    content: "";
+    position: absolute;
+    top: 2px; left: 2px;
+    width: 14px; height: 14px;
+    background: var(--text-dim);
+    border-radius: 50%;
+    transition: transform 0.2s, background 0.2s;
+  }
+  .toggle input:checked + .slider { background: var(--accent-dim); border-color: var(--accent); }
+  .toggle input:checked + .slider::after { transform: translateX(16px); background: var(--accent); }
+
+  .modal-footer {
+    display: flex;
+    justify-content: space-between;
+    padding: 16px 24px;
+    border-top: 1px solid var(--border);
+  }
+
+  .modal-footer .left { display: flex; gap: 8px; }
+  .modal-footer .right { display: flex; gap: 8px; }
+
+  button.danger { background: var(--red); color: #fff; border: none; }
+
+  .settings-btn {
+    background: none;
+    border: 1px solid var(--border);
+    color: var(--text-dim);
+    padding: 8px 12px;
+    border-radius: var(--radius);
+    font-family: inherit;
+    font-size: 14px;
+    cursor: pointer;
+    transition: color 0.2s, border-color 0.2s;
+  }
+  .settings-btn:hover { color: var(--accent); border-color: var(--accent); }
+
+  .toast {
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 12px 20px;
+    font-size: 12px;
+    z-index: 2000;
+    opacity: 0;
+    transform: translateY(10px);
+    transition: opacity 0.3s, transform 0.3s;
+  }
+  .toast.show { opacity: 1; transform: translateY(0); }
+  .toast.success { border-color: var(--green); color: var(--green); }
+  .toast.error { border-color: var(--red); color: var(--red); }
+
+  .history-panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    margin-top: 24px;
+    overflow: hidden;
+  }
+
+  .history-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 16px;
+    cursor: pointer;
+    user-select: none;
+    transition: background 0.15s;
+  }
+  .history-header:hover { background: var(--surface2); }
+
+  .history-header h3 {
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--text-dim);
+  }
+
+  .history-toggle {
+    font-size: 12px;
+    color: var(--text-dim);
+    transition: transform 0.2s;
+  }
+  .history-toggle.open { transform: rotate(180deg); }
+
+  .history-body { display: none; }
+  .history-body.open { display: block; }
+
+  .history-body table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+  .history-body th {
+    text-align: left;
+    padding: 8px 16px;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--text-dim);
+    background: var(--surface2);
+    border-bottom: 1px solid var(--border);
+  }
+  .history-body td {
+    padding: 8px 16px;
+    font-size: 12px;
+    border-bottom: 1px solid var(--border);
+    cursor: pointer;
+  }
+  .history-body tr:last-child td { border-bottom: none; }
+  .history-body tr:hover td { background: rgba(0, 212, 170, 0.03); }
+
+  .history-empty {
+    padding: 20px 16px;
+    text-align: center;
+    font-size: 12px;
+    color: var(--text-dim);
+  }
+
+  .site-footer {
+    text-align: center;
+    padding: 16px 32px;
+    font-size: 11px;
+    color: var(--text-dim);
+    border-top: 1px solid var(--border);
+    margin-top: 24px;
+  }
+  .site-footer a { color: var(--accent-dim); text-decoration: none; }
+  .site-footer a:hover { color: var(--accent); text-decoration: underline; }
+
+  .agent-tooltip {
+    display: none;
+    position: fixed;
+    z-index: 500;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 10px 14px;
+    font-size: 12px;
+    color: var(--text);
+    max-width: 420px;
+    pointer-events: none;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+    line-height: 1.6;
+  }
+
+  .agent-tooltip .tip-host {
+    font-weight: 600;
+    color: var(--accent);
+    margin-bottom: 6px;
+    font-size: 13px;
+  }
+
+  .agent-tooltip .tip-signal {
+    color: var(--text-dim);
+    padding: 1px 0;
+  }
+
+  .agent-tooltip .tip-signal strong {
+    color: var(--accent-dim);
+    font-weight: 600;
+  }
+
+  .det-info {
+    display: inline-block;
+    width: 14px;
+    height: 14px;
+    line-height: 14px;
+    text-align: center;
+    font-size: 10px;
+    font-weight: 700;
+    font-style: normal;
+    color: var(--text-dim);
+    border: 1px solid var(--border);
+    border-radius: 50%;
+    cursor: help;
+    position: relative;
+    vertical-align: middle;
+    margin-left: 4px;
+    flex-shrink: 0;
+  }
+
+  .det-info:hover { color: var(--accent); border-color: var(--accent); }
+
+  .det-info .det-desc {
+    display: none;
+    position: absolute;
+    bottom: calc(100% + 6px);
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 8px 12px;
+    font-size: 11px;
+    font-weight: 400;
+    color: var(--text);
+    white-space: normal;
+    width: 260px;
+    text-align: left;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.5);
+    z-index: 600;
+    pointer-events: none;
+    line-height: 1.5;
+  }
+
+  .det-info .det-desc::after {
+    content: "";
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    border: 5px solid transparent;
+    border-top-color: var(--border);
+  }
+
+  .det-info:hover .det-desc { display: block; }
+
+  .detector-bar {
+    padding: 8px 32px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+
+  .detector-bar .label {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--text-dim);
+    margin-right: 4px;
+    flex-shrink: 0;
+  }
+
+  .detector-toggle {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+    user-select: none;
+  }
+
+  .detector-toggle input[type="checkbox"] {
+    appearance: none;
+    width: 14px;
+    height: 14px;
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    background: var(--surface2);
+    cursor: pointer;
+    position: relative;
+    flex-shrink: 0;
+  }
+
+  .detector-toggle input[type="checkbox"]:checked {
+    background: var(--accent-dim);
+    border-color: var(--accent);
+  }
+
+  .detector-toggle input[type="checkbox"]:checked::after {
+    content: "✓";
+    position: absolute;
+    top: -1px;
+    left: 2px;
+    font-size: 11px;
+    color: var(--bg);
+    font-weight: 700;
+  }
+
+  .detector-toggle span {
+    font-size: 12px;
+    color: var(--text-dim);
+  }
+
+  .detector-toggle:hover span { color: var(--text); }
+  .detector-toggle input[type="checkbox"]:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+  .detector-toggle:has(input:disabled) span {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div>
+    <h1>⊘ AGENTSNIFF</h1>
+    <div class="subtitle">AI Agent Network Scanner</div>
+  </div>
+  <div class="controls">
+    <input type="text" id="networkInput" placeholder="192.168.1.0/24" value="192.168.1.0/24">
+    <button id="scanBtn" onclick="startScan()">⟐ Scan Network</button>
+    <button id="stopBtn" class="secondary" onclick="stopScan()" style="display:none;background:var(--red);color:#fff;border:none">■ Stop</button>
+    <div class="export-dropdown">
+      <button class="secondary" onclick="toggleExportMenu()">↓ Export</button>
+      <div class="export-menu" id="exportMenu">
+        <div class="export-item" onclick="exportJSON()">JSON</div>
+        <div class="export-item" onclick="exportCSV()">CSV</div>
+        <div class="export-item" onclick="exportSARIF()">SARIF</div>
+      </div>
+    </div>
+    <button class="settings-btn" onclick="openSettings()" title="Settings">⚙</button>
+    <span id="sigBadge" style="display:none;font-size:0.7rem;padding:2px 8px;border-radius:4px;margin-left:4px;cursor:help" title=""></span>
+  </div>
+</div>
+
+<div class="detector-bar">
+  <span class="label">Detectors</span>
+  <label class="detector-toggle"><input type="checkbox" id="det_dns_monitor" checked><span>DNS</span></label>
+  <label class="detector-toggle"><input type="checkbox" id="det_port_scanner" checked><span>Ports</span></label>
+  <label class="detector-toggle"><input type="checkbox" id="det_agentpin_prober" checked><span>AgentPin</span></label>
+  <label class="detector-toggle"><input type="checkbox" id="det_mcp_detector" checked><span>MCP</span></label>
+  <label class="detector-toggle"><input type="checkbox" id="det_endpoint_prober" checked><span>Endpoints</span></label>
+  <label class="detector-toggle"><input type="checkbox" id="det_tls_fingerprint" checked><span>TLS</span></label>
+  <label class="detector-toggle"><input type="checkbox" id="det_traffic_analyzer" checked><span>Traffic</span></label>
+  <label class="detector-toggle"><input type="checkbox" id="det_sse_detector" checked><span>SSE</span></label>
+</div>
+
+<div class="main">
+  <div class="stats-row">
+    <div class="stat-card">
+      <div class="label">Agents Found</div>
+      <div class="value green" id="statTotal">—</div>
+    </div>
+    <div class="stat-card">
+      <div class="label">Confirmed</div>
+      <div class="value green" id="statConfirmed">—</div>
+    </div>
+    <div class="stat-card">
+      <div class="label">High Confidence</div>
+      <div class="value yellow" id="statHigh">—</div>
+    </div>
+    <div class="stat-card">
+      <div class="label">Suspected</div>
+      <div class="value blue" id="statSuspected">—</div>
+    </div>
+    <div class="stat-card">
+      <div class="label">Scan Duration</div>
+      <div class="value" id="statDuration">—</div>
+    </div>
+    <div class="stat-card">
+      <div class="label">Detectors</div>
+      <div class="value" id="statDetectors">—</div>
+    </div>
+  </div>
+
+  <div id="scanProgressBar" style="display:none"></div>
+
+  <div class="agents-table" id="agentsTable">
+    <div class="empty-state" id="emptyState">
+      <div class="icon">⊘</div>
+      <h3>Ready to Scan</h3>
+      <p>Enter a network range and click Scan to detect AI agents</p>
+    </div>
+  </div>
+
+  <div class="history-panel" id="historyPanel">
+    <div class="history-header" onclick="toggleHistory()">
+      <h3>Scan History</h3>
+      <span class="history-toggle" id="historyToggle">▼</span>
+    </div>
+    <div class="history-body" id="historyBody">
+      <div class="history-empty" id="historyEmpty">No scan history yet</div>
+    </div>
+  </div>
+
+  <div class="log-panel" id="logPanel">
+    <div class="log-entry"><span class="ts">—</span> AgentSniff ready</div>
+  </div>
+
+  <div class="site-footer">
+    <a href="https://agentsniff.org" target="_blank">AgentSniff</a> &copy; 2026 <a href="https://thirdkey.ai" target="_blank">ThirdKey.AI</a>
+  </div>
+</div>
+
+<!-- Settings Modal -->
+<div class="modal-overlay" id="settingsOverlay" onclick="if(event.target===this)closeSettings()">
+  <div class="modal">
+    <div class="modal-header">
+      <h2>⚙ Alert Settings</h2>
+      <button class="modal-close" onclick="closeSettings()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="modal-section">
+        <h3>General</h3>
+        <div class="field-row">
+          <label>Alerts</label>
+          <div class="toggle-row">
+            <label class="toggle"><input type="checkbox" id="setAlertEnabled"><span class="slider"></span></label>
+            <span style="font-size:12px;color:var(--text-dim)">Enable alert notifications</span>
+          </div>
+        </div>
+        <div class="field-row">
+          <label>Min Agents</label>
+          <input type="number" id="setMinAgents" min="1" value="1" style="width:80px;flex:none">
+        </div>
+        <div class="field-row">
+          <label>Min Confidence</label>
+          <select id="setMinConfidence">
+            <option value="low">Low</option>
+            <option value="medium">Medium</option>
+            <option value="high">High</option>
+            <option value="confirmed">Confirmed</option>
+          </select>
+        </div>
+        <div class="field-row">
+          <label>Cooldown (s)</label>
+          <input type="number" id="setCooldown" min="0" value="0" style="width:80px;flex:none">
+        </div>
+      </div>
+
+      <div class="modal-section">
+        <h3>Webhook</h3>
+        <div class="field-row">
+          <label>URL</label>
+          <input type="text" id="setWebhookUrl" placeholder="https://hooks.example.com/agentsniff" style="width:auto;flex:1">
+        </div>
+      </div>
+
+      <div class="modal-section">
+        <h3>Email (SMTP)</h3>
+        <div class="field-row">
+          <label>SMTP Host</label>
+          <input type="text" id="setSmtpHost" placeholder="smtp.example.com">
+        </div>
+        <div class="field-row">
+          <label>SMTP Port</label>
+          <input type="number" id="setSmtpPort" value="587" style="width:80px;flex:none">
+        </div>
+        <div class="field-row">
+          <label>Username</label>
+          <input type="text" id="setSmtpUser" placeholder="user@example.com">
+        </div>
+        <div class="field-row">
+          <label>Password</label>
+          <input type="password" id="setSmtpPassword" placeholder="••••••••">
+        </div>
+        <div class="field-row">
+          <label>TLS</label>
+          <div class="toggle-row">
+            <label class="toggle"><input type="checkbox" id="setSmtpTls" checked><span class="slider"></span></label>
+            <span style="font-size:12px;color:var(--text-dim)">Use STARTTLS</span>
+          </div>
+        </div>
+        <div class="field-row">
+          <label>From</label>
+          <input type="text" id="setSmtpFrom" placeholder="agentsniff@example.com">
+        </div>
+        <div class="field-row">
+          <label>To</label>
+          <input type="text" id="setSmtpTo" placeholder="admin@example.com, security@example.com">
+        </div>
+      </div>
+      <div class="modal-section">
+        <h3>Database</h3>
+        <div class="field-row" style="justify-content:flex-start;gap:12px">
+          <label style="flex:0 0 120px">Scan History</label>
+          <button class="secondary" onclick="backupDB()" style="font-size:12px;padding:6px 14px">↓ Download Backup</button>
+          <button class="danger" onclick="confirmResetDB()" style="font-size:12px;padding:6px 14px">Reset Database</button>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <div class="left">
+        <button class="secondary" onclick="testAlert()">▶ Test Alert</button>
+      </div>
+      <div class="right">
+        <button class="secondary" onclick="closeSettings()">Cancel</button>
+        <button onclick="saveSettings()">Save</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+<div class="agent-tooltip" id="agentTooltip"></div>
+
+<script>
+let lastResult = null;
+let scanning = false;
+let activeEventSource = null;
+let scanTimer = null;
+let scanStartTime = null;
+let liveScanState = null; // {network, hostCount, detectors, agents} when viewing history during a scan
+
+// Check for in-progress or completed scan on page load
+async function checkSignatures() {
+  try {
+    const resp = await fetch('/api/health');
+    const data = await resp.json();
+    const badge = document.getElementById('sigBadge');
+    if (data.signatures) {
+      if (data.signatures.has_invalid) {
+        badge.textContent = '⚠ SIGS INVALID';
+        badge.style.background = '#e74c3c';
+        badge.style.color = '#fff';
+        badge.title = 'Detection signatures may have been tampered with! Run: agentsniff update-signatures';
+        badge.style.display = '';
+      } else if (data.signatures.all_verified) {
+        badge.textContent = '✓ Sigs verified';
+        badge.style.background = '#27ae60';
+        badge.style.color = '#fff';
+        badge.title = 'All detection signatures verified with SchemaPin';
+        badge.style.display = '';
+      }
+    }
+  } catch (e) { /* ignore */ }
+}
+
+async function init() {
+  checkSignatures();
+  try {
+    const resp = await fetch('/api/scan/status');
+    const status = await resp.json();
+
+    if (status.status === 'running') {
+      log('Reconnecting to running scan...');
+      scanning = true;
+      const btn = document.getElementById('scanBtn');
+      btn.disabled = true;
+      btn.innerHTML = '<span class="spinner"></span> Scanning...';
+      document.getElementById('stopBtn').style.display = '';
+
+      const net = (status.config && status.config.network) || '...';
+      showScanProgress(net, null, null);
+
+      // Start timer from when scan actually started
+      if (status.started_at) {
+        scanStartTime = new Date(status.started_at).getTime();
+      }
+      startElapsedTimer();
+
+      // Poll until done
+      const poll = setInterval(async () => {
+        const r = await fetch('/api/scan/status');
+        const s = await r.json();
+        if (s.status === 'completed' || s.status === 'cancelled' || s.status === 'failed') {
+          clearInterval(poll);
+          if (s.status === 'completed') {
+            lastResult = s;
+            updateStats(s.summary || {});
+            renderAgents(s.agents || []);
+            log('Scan complete: ' + (s.agents || []).length + ' agents found');
+          } else if (s.status === 'cancelled') {
+            lastResult = s;
+            if (s.summary) updateStats(s.summary);
+            renderAgents(s.agents || []);
+            log('Scan was cancelled');
+          } else {
+            log('Scan failed: ' + (s.error || 'unknown error'));
+          }
+          resetScanUI();
+        }
+      }, 2000);
+
+    } else if (status.status === 'completed') {
+      lastResult = status;
+      updateStats(status.summary || {});
+      renderAgents(status.agents || []);
+      log('Loaded previous scan results');
+    }
+  } catch (e) {
+    // Server not ready or no prior scan — that's fine
+  }
+}
+
+function log(msg) {
+  const panel = document.getElementById('logPanel');
+  const ts = new Date().toLocaleTimeString();
+  const entry = document.createElement('div');
+  entry.className = 'log-entry';
+  entry.innerHTML = `<span class="ts">${ts}</span> ${msg}`;
+  panel.appendChild(entry);
+  panel.scrollTop = panel.scrollHeight;
+}
+
+function confColor(score) {
+  if (score >= 0.9) return '#40d080';
+  if (score >= 0.6) return '#f0c040';
+  if (score >= 0.3) return '#40a0f0';
+  return '#6a7a8a';
+}
+
+function updateLiveStats(agents) {
+  const bc = { confirmed: 0, high: 0, medium: 0, low: 0 };
+  agents.forEach(a => {
+    const lvl = (a.confidence_level || '').toLowerCase();
+    if (lvl === 'confirmed') bc.confirmed++;
+    else if (lvl === 'high') bc.high++;
+    else if (lvl === 'medium') bc.medium++;
+    else if (lvl === 'low') bc.low++;
+  });
+  document.getElementById('statTotal').textContent = agents.length;
+  document.getElementById('statConfirmed').textContent = bc.confirmed;
+  document.getElementById('statHigh').textContent = bc.high;
+  document.getElementById('statSuspected').textContent = bc.medium + bc.low;
+}
+
+function updateStats(summary) {
+  const bc = summary.by_confidence || {};
+  document.getElementById('statTotal').textContent = summary.total_agents || 0;
+  document.getElementById('statConfirmed').textContent = bc.confirmed || 0;
+  document.getElementById('statHigh').textContent = bc.high || 0;
+  document.getElementById('statSuspected').textContent = (bc.medium || 0) + (bc.low || 0);
+  document.getElementById('statDuration').textContent =
+    summary.duration_seconds ? summary.duration_seconds.toFixed(1) + 's' : '—';
+  document.getElementById('statDetectors').textContent =
+    summary.detectors_run ? summary.detectors_run.length : '—';
+}
+
+function renderAgents(agents) {
+  const container = document.getElementById('agentsTable');
+
+  if (!agents || agents.length === 0) {
+    container.innerHTML = `<div class="empty-state">
+      <div class="icon">✓</div>
+      <h3>Scan Complete</h3>
+      <p>No AI agents detected on this network</p>
+    </div>`;
+    return;
+  }
+
+  let html = `<table>
+    <thead><tr>
+      <th>Host</th><th>Port</th><th>Type</th><th>Framework</th>
+      <th>Confidence</th><th>Signals</th><th>Status</th>
+    </tr></thead><tbody>`;
+
+  agents.forEach((agent, idx) => {
+    const score = agent.confidence_score || 0;
+    const level = agent.confidence_level || 'low';
+    const color = confColor(score);
+    const pct = Math.round(score * 100);
+
+    html += `<tr class="expandable" onclick="toggleDetail(${idx})" data-agent-idx="${idx}">
+      <td><strong>${agent.ip_address || agent.host}</strong></td>
+      <td>${agent.port || '—'}</td>
+      <td>${agent.agent_type || 'unknown'}</td>
+      <td>${agent.framework || 'unknown'}</td>
+      <td>
+        <div class="progress-bar"><div class="fill" style="width:${pct}%;background:${color}"></div></div>
+        ${pct}% <span class="badge ${level}">${level}</span>
+      </td>
+      <td>${agent.signal_count || 0}</td>
+      <td><span class="badge ${agent.status}">${agent.status}</span></td>
+    </tr>
+    <tr class="detail-row" id="detail-${idx}">
+      <td colspan="7"><div class="detail-content">
+        <ul class="signal-list">
+          ${(agent.signals || []).slice(0, 8).map(s =>
+            `<li><strong>[${s.detector}]</strong>${detInfoIcon(s.detector)} ${s.description}</li>`
+          ).join('')}
+          ${(agent.signals || []).length > 8 ? `<li>... and ${agent.signals.length - 8} more</li>` : ''}
+        </ul>
+        ${agent.agentpin_identity ? `<div style="margin-top:8px;color:var(--green)">
+          ⚿ AgentPin: ${agent.agentpin_identity.agent_id} (${agent.agentpin_identity.issuer})</div>` : ''}
+        ${agent.mcp_capabilities ? `<div style="margin-top:4px;color:var(--purple)">
+          ⚡ MCP Server: ${JSON.stringify(agent.mcp_capabilities.server_info || {})}</div>` : ''}
+      </div></td>
+    </tr>`;
+  });
+
+  html += '</tbody></table>';
+  container.innerHTML = html;
+  _renderedAgents = agents;
+  wireTooltips();
+}
+
+let _renderedAgents = [];
+
+function wireTooltips() {
+  const tip = document.getElementById('agentTooltip');
+  const rows = document.querySelectorAll('tr[data-agent-idx]');
+  rows.forEach(row => {
+    row.addEventListener('mouseenter', (e) => {
+      const idx = parseInt(row.dataset.agentIdx);
+      const agent = _renderedAgents[idx];
+      if (!agent || !agent.signals || !agent.signals.length) return;
+      const host = agent.ip_address || agent.host;
+      const signals = agent.signals.slice(0, 6);
+      let html = `<div class="tip-host">${host}${agent.port ? ':' + agent.port : ''}</div>`;
+      html += signals.map(s =>
+        `<div class="tip-signal"><strong>[${s.detector}]</strong>${detInfoIcon(s.detector)} ${escHtml(s.description)}</div>`
+      ).join('');
+      if (agent.signals.length > 6) html += `<div class="tip-signal" style="color:var(--text-dim)">+ ${agent.signals.length - 6} more</div>`;
+      tip.innerHTML = html;
+      tip.style.display = 'block';
+      positionTooltip(e, tip);
+    });
+    row.addEventListener('mousemove', (e) => positionTooltip(e, tip));
+    row.addEventListener('mouseleave', () => { tip.style.display = 'none'; });
+  });
+}
+
+function positionTooltip(e, tip) {
+  const pad = 12;
+  let x = e.clientX + pad;
+  let y = e.clientY + pad;
+  const rect = tip.getBoundingClientRect();
+  if (x + rect.width > window.innerWidth - pad) x = e.clientX - rect.width - pad;
+  if (y + rect.height > window.innerHeight - pad) y = e.clientY - rect.height - pad;
+  tip.style.left = x + 'px';
+  tip.style.top = y + 'px';
+}
+
+function escHtml(s) {
+  const d = document.createElement('div');
+  d.textContent = s;
+  return d.innerHTML;
+}
+
+const DETECTOR_INFO = {
+  dns_monitor: 'Passive DNS monitoring — detects hosts querying known LLM API domains (OpenAI, Anthropic, Google, etc.)',
+  port_scanner: 'TCP port scanning — identifies open ports associated with agent frameworks, MCP servers, and LLM inference engines',
+  agentpin_prober: 'AgentPin discovery — probes for /.well-known/agent-identity.json cryptographic identity documents',
+  mcp_detector: 'MCP protocol detection — sends JSON-RPC initialize requests and enumerates tools, resources, and prompts',
+  endpoint_prober: 'HTTP endpoint probing — checks for agent framework signatures (LangChain, CrewAI, Dify, n8n, etc.)',
+  tls_fingerprint: 'TLS fingerprinting — computes JA3 hashes to identify agent HTTP client libraries by their TLS handshake',
+  traffic_analyzer: 'Traffic analysis — detects agent behavioral patterns like bursty tool calls, LLM API connections, and streaming SSE',
+};
+
+function detInfoIcon(detector) {
+  const desc = DETECTOR_INFO[detector];
+  if (!desc) return '';
+  return `<span class="det-info">i<span class="det-desc">${escHtml(desc)}</span></span>`;
+}
+
+function toggleDetail(idx) {
+  const row = document.getElementById(`detail-${idx}`);
+  if (row) row.classList.toggle('open');
+}
+
+function setDetectorTogglesDisabled(disabled) {
+  const allDetectors = ['dns_monitor','port_scanner','agentpin_prober','mcp_detector','endpoint_prober','tls_fingerprint','traffic_analyzer','sse_detector'];
+  allDetectors.forEach(d => {
+    const el = document.getElementById('det_' + d);
+    if (el) el.disabled = disabled;
+  });
+}
+
+function resetScanUI() {
+  scanning = false;
+  activeEventSource = null;
+  liveScanState = null;
+  if (scanTimer) { clearInterval(scanTimer); scanTimer = null; }
+  scanStartTime = null;
+  hideScanProgress();
+  const btn = document.getElementById('scanBtn');
+  btn.disabled = false;
+  btn.innerHTML = '⟐ Scan Network';
+  document.getElementById('stopBtn').style.display = 'none';
+  setDetectorTogglesDisabled(false);
+  // Refresh history if panel is open
+  if (document.getElementById('historyBody').classList.contains('open')) {
+    loadHistory();
+  }
+}
+
+function startElapsedTimer() {
+  if (!scanStartTime) scanStartTime = Date.now();
+  if (scanTimer) clearInterval(scanTimer);
+  scanTimer = setInterval(() => {
+    const el = document.getElementById('scanElapsed');
+    if (el) {
+      const secs = Math.floor((Date.now() - scanStartTime) / 1000);
+      const m = Math.floor(secs / 60);
+      const s = secs % 60;
+      el.textContent = (m > 0 ? m + ':' + String(s).padStart(2, '0') : s + 's');
+    }
+  }, 1000);
+}
+
+function estimateScanTime(hostCount, detectors) {
+  if (!hostCount || !detectors) return null;
+  // Base time: passive monitors run in parallel (dns=60s, tls=30s, traffic=30s)
+  let baseSecs = 0;
+  if (detectors.includes('dns_monitor')) baseSecs = Math.max(baseSecs, 60);
+  if (detectors.includes('tls_fingerprint')) baseSecs = Math.max(baseSecs, 30);
+  if (detectors.includes('traffic_analyzer')) baseSecs = Math.max(baseSecs, 30);
+  // HTTP probers: hosts × ports × timeout, but concurrent (20 at a time)
+  let probeRequests = 0;
+  if (detectors.includes('agentpin_prober')) probeRequests += hostCount * 6;
+  if (detectors.includes('mcp_detector')) probeRequests += hostCount * 7;
+  if (detectors.includes('endpoint_prober')) probeRequests += hostCount * 4;
+  if (detectors.includes('tls_fingerprint')) probeRequests += hostCount * 5;
+  const concurrency = 20;
+  const timeoutSecs = 5;
+  const probeSecs = Math.ceil(probeRequests / concurrency) * timeoutSecs;
+  // Probers run in parallel with passive monitors, take the max
+  const totalSecs = Math.max(baseSecs, probeSecs);
+  if (totalSecs < 60) return `~${totalSecs}s`;
+  const mins = Math.ceil(totalSecs / 60);
+  return `~${mins} min`;
+}
+
+function showScanProgress(network, hostCount, detectors) {
+  liveScanState = { network, hostCount, detectors };
+  const detectorCount = detectors ? detectors.length : '?';
+  const hosts = hostCount || '?';
+  const estimate = estimateScanTime(hostCount, detectors);
+  const estimateHtml = estimate ? ` · est. ${estimate}` : '';
+
+  // Compact progress bar shown above agents table
+  const bar = document.getElementById('scanProgressBar');
+  bar.style.display = '';
+  bar.innerHTML = `<div style="padding:12px 16px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);margin-bottom:12px;display:flex;align-items:center;gap:12px">
+    <div class="spinner" style="width:16px;height:16px;border-width:2px;flex-shrink:0"></div>
+    <span style="font-size:12px;color:var(--text)">Scanning <strong>${hosts}</strong> hosts on <strong>${network}</strong> with ${detectorCount} detectors</span>
+    <span style="font-size:14px;font-weight:600;color:var(--accent);margin-left:auto" id="scanElapsed">0s</span>
+    <span style="font-size:11px;color:var(--text-dim)">${estimateHtml}</span>
+  </div>`;
+
+  // Show empty state in agents table until first agent arrives
+  document.getElementById('agentsTable').innerHTML = `<div class="empty-state">
+    <div class="spinner" style="width:32px;height:32px;border-width:3px"></div>
+    <h3 style="margin-top:16px">Scanning Network</h3>
+    <p>Waiting for detector results...</p>
+  </div>`;
+}
+
+function hideScanProgress() {
+  const bar = document.getElementById('scanProgressBar');
+  bar.style.display = 'none';
+  bar.innerHTML = '';
+}
+
+function returnToLiveScan() {
+  if (scanning && liveScanState) {
+    // Scan still running — restore live progress view
+    showScanProgress(liveScanState.network, liveScanState.hostCount, liveScanState.detectors);
+    if (liveScanState.agents && liveScanState.agents.length > 0) {
+      renderAgents(liveScanState.agents);
+    }
+    startElapsedTimer();
+    log('Returned to live scan view');
+  } else if (lastResult) {
+    // Scan finished while viewing history — restore completed results
+    hideScanProgress();
+    if (lastResult.summary) updateStats(lastResult.summary);
+    renderAgents(lastResult.agents || []);
+    log('Restored completed scan results');
+  }
+}
+
+async function stopScan() {
+  const stopBtn = document.getElementById('stopBtn');
+  stopBtn.disabled = true;
+  stopBtn.textContent = 'Stopping...';
+  log('Stopping scan...');
+  try {
+    // Send stop request BEFORE closing SSE so the server sets the cancel event
+    const resp = await fetch('/api/scan/stop', { method: 'POST' });
+    const data = await resp.json();
+    if (resp.ok) {
+      log('Stop requested: ' + (data.status || 'ok'));
+    } else {
+      log('Stop: ' + (data.error || 'failed'));
+    }
+  } catch (e) {
+    log(`Stop request failed: ${e.message}`);
+  }
+  // Now close SSE — the scan_cancelled event should arrive first, but
+  // if it doesn't, poll for final results as a fallback.
+  if (activeEventSource) {
+    activeEventSource.close();
+    activeEventSource = null;
+  }
+  // Poll until the server reports non-running status
+  const poll = setInterval(async () => {
+    try {
+      const r = await fetch('/api/scan/status');
+      const s = await r.json();
+      // Wait for background task to finish and populate results (agents key present)
+      if (s.status !== 'running' && s.agents !== undefined) {
+        clearInterval(poll);
+        if (s.status === 'cancelled' || s.status === 'completed') {
+          lastResult = s;
+          if (s.summary) updateStats(s.summary);
+          renderAgents(s.agents || []);
+          log(`Scan stopped — ${(s.agents || []).length} agent(s) found`);
+        }
+        resetScanUI();
+      }
+    } catch (e) {
+      clearInterval(poll);
+      resetScanUI();
+    }
+  }, 500);
+}
+
+async function startScan() {
+  if (scanning) return;
+  scanning = true;
+
+  const btn = document.getElementById('scanBtn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> Scanning...';
+  document.getElementById('stopBtn').style.display = '';
+
+  const network = document.getElementById('networkInput').value || '192.168.1.0/24';
+
+  // Collect enabled detectors (before disabling checkboxes)
+  const allDetectors = ['dns_monitor','port_scanner','agentpin_prober','mcp_detector','endpoint_prober','tls_fingerprint','traffic_analyzer','sse_detector'];
+  const enabledDetectors = allDetectors.filter(d => document.getElementById('det_' + d).checked);
+  const detectorsParam = enabledDetectors.length < allDetectors.length
+    ? '&detectors=' + encodeURIComponent(enabledDetectors.join(','))
+    : '';
+
+  // Grey out detector checkboxes during scan
+  setDetectorTogglesDisabled(true);
+
+  log(`Starting scan of ${network} with ${enabledDetectors.length} detectors...`);
+
+  // Reset stats
+  ['statTotal','statConfirmed','statHigh','statSuspected','statDuration'].forEach(
+    id => document.getElementById(id).textContent = '...'
+  );
+
+  showScanProgress(network, null, null);
+  startElapsedTimer();
+
+  try {
+    // Try SSE streaming first
+    const evtSource = new EventSource(`/api/scan/stream?network=${encodeURIComponent(network)}${detectorsParam}`);
+    activeEventSource = evtSource;
+    const agents = [];
+
+    evtSource.onmessage = (event) => {
+      const data = JSON.parse(event.data);
+
+      if (data.event === 'scan_started') {
+        showScanProgress(data.network, data.host_count, data.detectors);
+        document.getElementById('statDetectors').textContent = data.detectors ? data.detectors.length : '—';
+        document.getElementById('statTotal').textContent = 0;
+        document.getElementById('statConfirmed').textContent = 0;
+        document.getElementById('statHigh').textContent = 0;
+        document.getElementById('statSuspected').textContent = 0;
+      }
+
+      if (data.event === 'agent_detected') {
+        const idx = agents.findIndex(a => a.ip_address === data.agent.ip_address);
+        if (idx >= 0) {
+          agents[idx] = data.agent;
+        } else {
+          agents.push(data.agent);
+          log(`Detected: ${data.agent.ip_address} (${data.agent.agent_type})`);
+        }
+        if (liveScanState) liveScanState.agents = agents;
+        renderAgents(agents);
+        updateLiveStats(agents);
+      }
+
+      if (data.event === 'scan_completed') {
+        evtSource.close();
+        lastResult = { agents, summary: data.summary };
+        updateStats(data.summary);
+        log(`Scan complete: ${agents.length} agents found`);
+        resetScanUI();
+      }
+
+      if (data.event === 'scan_cancelled') {
+        evtSource.close();
+        lastResult = { agents, summary: data.summary };
+        if (data.summary) updateStats(data.summary);
+        log(`Scan cancelled — ${agents.length} agent(s) found before stop`);
+        resetScanUI();
+      }
+
+      if (data.event === 'scan_error') {
+        evtSource.close();
+        log(`Error: ${data.error}`);
+        resetScanUI();
+      }
+    };
+
+    evtSource.onerror = async () => {
+      evtSource.close();
+      activeEventSource = null;
+      // Fallback to REST API
+      log('SSE unavailable, using REST API...');
+      try {
+        const resp = await fetch(`/api/scan?network=${encodeURIComponent(network)}${detectorsParam}`, { method: 'POST' });
+        const data = await resp.json();
+        log(`Scan started: ${data.scan_id}`);
+
+        // Poll for results
+        const poll = setInterval(async () => {
+          const statusResp = await fetch('/api/scan/status');
+          const status = await statusResp.json();
+
+          if (status.status === 'completed' || status.status === 'cancelled') {
+            clearInterval(poll);
+            lastResult = status;
+            updateStats(status.summary || {});
+            renderAgents(status.agents || []);
+            log(status.status === 'cancelled' ? 'Scan cancelled' : 'Scan complete');
+            resetScanUI();
+          }
+        }, 2000);
+      } catch (e) {
+        log(`Error: ${e.message}`);
+        resetScanUI();
+      }
+    };
+
+  } catch (e) {
+    log(`Error: ${e.message}`);
+    resetScanUI();
+  }
+}
+
+function toggleExportMenu() {
+  document.getElementById('exportMenu').classList.toggle('open');
+}
+document.addEventListener('click', e => {
+  const dd = document.querySelector('.export-dropdown');
+  if (dd && !dd.contains(e.target)) {
+    document.getElementById('exportMenu').classList.remove('open');
+  }
+});
+
+function exportJSON() {
+  if (!lastResult) { log('No results to export'); return; }
+  const blob = new Blob([JSON.stringify(lastResult, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `agentsniff-${new Date().toISOString().slice(0, 10)}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+  log('Results exported as JSON');
+  document.getElementById('exportMenu').classList.remove('open');
+}
+
+function exportCSV() {
+  if (!lastResult) { log('No results to export'); return; }
+  const agents = lastResult.agents || [];
+  if (!agents.length) { log('No agents to export'); return; }
+
+  const headers = ['host','ip_address','port','agent_type','framework','confidence_score','confidence_level','status','signal_count'];
+  const rows = [headers.join(',')];
+  for (const a of agents) {
+    rows.push([
+      a.host || '', a.ip_address || '', a.port || '', a.agent_type || '',
+      a.framework || '', a.confidence_score || 0, a.confidence_level || '',
+      a.status || '', a.signal_count || 0
+    ].join(','));
+  }
+
+  const blob = new Blob([rows.join('\n')], { type: 'text/csv' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `agentsniff-${new Date().toISOString().slice(0, 10)}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+  log('Results exported as CSV');
+  document.getElementById('exportMenu').classList.remove('open');
+}
+
+function exportSARIF() {
+  if (!lastResult) { log('No results to export'); return; }
+  fetch('/api/scan/sarif')
+    .then(resp => {
+      if (!resp.ok) throw new Error('SARIF export failed: ' + resp.statusText);
+      return resp.blob();
+    })
+    .then(blob => {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `agentsniff-${new Date().toISOString().slice(0, 10)}.sarif`;
+      a.click();
+      URL.revokeObjectURL(url);
+      log('Results exported as SARIF 2.1.0');
+      document.getElementById('exportMenu').classList.remove('open');
+    })
+    .catch(err => {
+      log('SARIF export failed: ' + err.message);
+      document.getElementById('exportMenu').classList.remove('open');
+    });
+}
+
+// ── Settings modal ──────────────────────────────────────────────────
+
+function showToast(msg, type) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'toast ' + type + ' show';
+  setTimeout(() => t.className = 'toast', 3000);
+}
+
+async function openSettings() {
+  const overlay = document.getElementById('settingsOverlay');
+  overlay.classList.add('open');
+
+  try {
+    const resp = await fetch('/api/settings');
+    const s = await resp.json();
+
+    document.getElementById('setAlertEnabled').checked = s.alert_enabled || false;
+    document.getElementById('setMinAgents').value = s.alert_min_agents || 1;
+    document.getElementById('setMinConfidence').value = s.alert_min_confidence || 'low';
+    document.getElementById('setCooldown').value = s.alert_cooldown || 0;
+    document.getElementById('setWebhookUrl').value = s.webhook_url || '';
+    document.getElementById('setSmtpHost').value = s.smtp_host || '';
+    document.getElementById('setSmtpPort').value = s.smtp_port || 587;
+    document.getElementById('setSmtpUser').value = s.smtp_user || '';
+    document.getElementById('setSmtpPassword').value = '';
+    document.getElementById('setSmtpPassword').placeholder = s.smtp_password ? '••••••••' : 'password';
+    document.getElementById('setSmtpTls').checked = s.smtp_use_tls !== false;
+    document.getElementById('setSmtpFrom').value = s.smtp_from || '';
+    document.getElementById('setSmtpTo').value = (s.smtp_to || []).join(', ');
+  } catch (e) {
+    log('Failed to load settings: ' + e.message);
+  }
+}
+
+function closeSettings() {
+  document.getElementById('settingsOverlay').classList.remove('open');
+}
+
+async function saveSettings() {
+  const smtpToRaw = document.getElementById('setSmtpTo').value;
+  const smtpTo = smtpToRaw ? smtpToRaw.split(',').map(s => s.trim()).filter(Boolean) : [];
+
+  const body = {
+    alert_enabled: document.getElementById('setAlertEnabled').checked,
+    alert_min_agents: parseInt(document.getElementById('setMinAgents').value) || 1,
+    alert_min_confidence: document.getElementById('setMinConfidence').value,
+    alert_cooldown: parseInt(document.getElementById('setCooldown').value) || 0,
+    webhook_url: document.getElementById('setWebhookUrl').value.trim(),
+    smtp_host: document.getElementById('setSmtpHost').value.trim(),
+    smtp_port: parseInt(document.getElementById('setSmtpPort').value) || 587,
+    smtp_user: document.getElementById('setSmtpUser').value.trim(),
+    smtp_use_tls: document.getElementById('setSmtpTls').checked,
+    smtp_from: document.getElementById('setSmtpFrom').value.trim(),
+    smtp_to: smtpTo,
+  };
+
+  // Only include password if user typed a new one
+  const pw = document.getElementById('setSmtpPassword').value;
+  if (pw) body.smtp_password = pw;
+
+  try {
+    const resp = await fetch('/api/settings', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const data = await resp.json();
+    showToast(`Settings saved (${data.count} fields)`, 'success');
+    log(`Settings saved: ${data.updated.join(', ')}`);
+    closeSettings();
+  } catch (e) {
+    showToast('Failed to save settings', 'error');
+    log('Save settings error: ' + e.message);
+  }
+}
+
+async function testAlert() {
+  try {
+    showToast('Sending test alert...', 'success');
+    const resp = await fetch('/api/settings/test', { method: 'POST' });
+    const data = await resp.json();
+    const outcomes = data.outcomes || [];
+    if (outcomes.length === 0) {
+      showToast('No alert channels configured', 'error');
+    } else {
+      showToast('Test: ' + outcomes.join(', '), outcomes.some(o => o.includes('ok')) ? 'success' : 'error');
+    }
+    log('Test alert: ' + outcomes.join(', '));
+  } catch (e) {
+    showToast('Test alert failed', 'error');
+    log('Test alert error: ' + e.message);
+  }
+}
+
+// ── Database management ─────────────────────────────────────────────
+
+function backupDB() {
+  log('Downloading database backup...');
+  const a = document.createElement('a');
+  a.href = '/api/db/backup';
+  a.download = '';
+  a.click();
+  showToast('Backup download started', 'success');
+}
+
+function confirmResetDB() {
+  if (!confirm('Are you sure you want to delete ALL scan history? This cannot be undone.')) return;
+  if (!confirm('This will permanently erase all scans, agents, and signals from the database. Continue?')) return;
+  resetDB();
+}
+
+async function resetDB() {
+  try {
+    const resp = await fetch('/api/db/reset', { method: 'POST' });
+    const data = await resp.json();
+    if (resp.ok) {
+      showToast('Database reset successfully', 'success');
+      log('Database reset: all scan data deleted');
+      // Clear UI
+      document.getElementById('agentsTable').innerHTML = `<div class="empty-state">
+        <div class="icon">⊘</div><h3>Ready to Scan</h3>
+        <p>Enter a network range and click Scan to detect AI agents</p>
+      </div>`;
+      ['statTotal','statConfirmed','statHigh','statSuspected','statDuration','statDetectors'].forEach(
+        id => document.getElementById(id).textContent = '—'
+      );
+      lastResult = null;
+      if (document.getElementById('historyBody').classList.contains('open')) loadHistory();
+    } else {
+      showToast('Reset failed: ' + (data.error || 'unknown'), 'error');
+    }
+  } catch (e) {
+    showToast('Reset failed: ' + e.message, 'error');
+    log('Database reset error: ' + e.message);
+  }
+}
+
+// Close settings on Escape
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') closeSettings();
+});
+
+// ── Scan History ────────────────────────────────────────────────────
+
+function toggleHistory() {
+  const body = document.getElementById('historyBody');
+  const toggle = document.getElementById('historyToggle');
+  body.classList.toggle('open');
+  toggle.classList.toggle('open');
+  if (body.classList.contains('open')) loadHistory();
+}
+
+async function loadHistory() {
+  try {
+    const resp = await fetch('/api/scan/history?limit=20');
+    const data = await resp.json();
+    renderHistory(data.scans || []);
+  } catch (e) {
+    log('Failed to load history: ' + e.message);
+  }
+}
+
+function renderHistory(scans) {
+  const body = document.getElementById('historyBody');
+
+  if (!scans || scans.length === 0) {
+    body.innerHTML = '<div class="history-empty">No scan history yet</div>';
+    return;
+  }
+
+  let html = `<table>
+    <thead><tr>
+      <th>Time</th><th>Network</th><th>Agents</th><th>Status</th><th>Duration</th>
+    </tr></thead><tbody>`;
+
+  for (const scan of scans) {
+    const time = scan.started_at ? new Date(scan.started_at).toLocaleString() : '—';
+    const network = scan.target_network || '—';
+    const agents = scan.agent_count != null ? scan.agent_count : '—';
+    const status = scan.status || '—';
+    const summary = scan.summary || {};
+    const duration = summary.duration_seconds
+      ? summary.duration_seconds.toFixed(1) + 's'
+      : '—';
+    const statusClass = status === 'completed' ? 'verified' : (status === 'failed' ? 'low' : 'detected');
+
+    html += `<tr onclick="loadHistoryScan('${scan.scan_id}')">
+      <td>${time}</td>
+      <td>${network}</td>
+      <td>${agents}</td>
+      <td><span class="badge ${statusClass}">${status}</span></td>
+      <td>${duration}</td>
+    </tr>`;
+  }
+
+  html += '</tbody></table>';
+  body.innerHTML = html;
+}
+
+async function loadHistoryScan(scanId) {
+  try {
+    log('Loading scan ' + scanId.substring(0, 8) + '...');
+    const resp = await fetch('/api/scan/' + encodeURIComponent(scanId));
+    if (!resp.ok) { log('Scan not found'); return; }
+    const data = await resp.json();
+    lastResult = data;
+    if (data.summary) updateStats(data.summary);
+    renderAgents(data.agents || []);
+    // Show "back" banner if viewing history while a scan is running or results exist
+    if (scanning || lastResult) {
+      const container = document.getElementById('agentsTable');
+      const banner = document.createElement('div');
+      banner.style.cssText = 'padding:10px 16px;background:var(--surface2);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;font-size:12px;';
+      const msg = scanning
+        ? 'Viewing historical scan — a live scan is in progress'
+        : 'Viewing historical scan';
+      const btnLabel = scanning ? 'Back to live scan' : 'Back to current results';
+      banner.innerHTML = `<span style="color:var(--yellow)">⟐ ${msg}</span>
+        <button onclick="returnToLiveScan()" style="padding:4px 12px;font-size:11px">${btnLabel}</button>`;
+      container.insertBefore(banner, container.firstChild);
+    }
+    log('Loaded historical scan: ' + (data.agents || []).length + ' agents');
+  } catch (e) {
+    log('Failed to load scan: ' + e.message);
+  }
+}
+
+// Restore state on page load
+init();
+</script>
+</body>
+</html>

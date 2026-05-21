@@ -43,5 +43,15 @@
   "cursor.sh",
   "api.githubcopilot.com",
   "api.business.githubcopilot.com",
-  "windsurf.com"
+  "windsurf.com",
+  "api.tavily.com",
+  "api.exa.ai",
+  "google.serper.dev",
+  "serpapi.com",
+  "api.apify.com",
+  "api.browserbase.com",
+  "api.val.town",
+  "controller.pinecone.io",
+  "api.pinecone.io",
+  "api.zillizcloud.com"
 ]

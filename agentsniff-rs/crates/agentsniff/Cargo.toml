@@ -1,0 +1,52 @@
+[package]
+name = "agentsniff"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+name = "agentsniff"
+path = "src/lib.rs"
+
+[[bin]]
+name = "agentsniff"
+path = "src/main.rs"
+
+[features]
+default = []
+ebpf = ["dep:aya", "dep:aya-log", "dep:aya-build"]
+
+[dependencies]
+agentsniff-common = { path = "../agentsniff-common", features = ["user"] }
+tokio = { version = "1", features = ["full"] }
+clap = { version = "4", features = ["derive"] }
+anyhow = "1"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+chrono = { version = "0.4", features = ["serde"] }
+uuid = { version = "1", features = ["v4"] }
+serde_yaml = "0.9"
+async-trait = "0.1"
+reqwest = { version = "0.12", features = ["json", "rustls-tls"] }
+rusqlite = { version = "0.31", features = ["bundled"] }
+tokio-util = "0.7"
+axum = "0.7"
+tower-http = { version = "0.6", features = ["cors"] }
+tokio-stream = { version = "0.1", features = ["sync"] }
+p256 = { version = "0.13", features = ["ecdsa"] }
+sha2 = "0.10"
+base64 = "0.22"
+rust-embed = { version = "8", features = ["include-exclude"] }
+socket2 = { version = "0.5", features = ["all"] }
+quick-xml = { version = "0.36", features = ["serialize"] }
+lettre = { version = "0.11", default-features = false, features = ["tokio1-rustls-tls", "smtp-transport", "builder"] }
+aya = { version = "0.13", optional = true }
+aya-log = { version = "0.2", optional = true }
+
+[build-dependencies]
+aya-build = { version = "0.1", optional = true }
+
+[dev-dependencies]
+tower = { version = "0.5", features = ["util"] }

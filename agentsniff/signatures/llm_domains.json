@@ -61,5 +61,14 @@
   "gateway.ai.vercel.app",
   "api.portkey.ai",
   "localhost:4000",
-  "127.0.0.1:4000"
+  "127.0.0.1:4000",
+  "integrate.api.nvidia.com",
+  "api.nvcf.nvidia.com",
+  "api.cloudflare.com",
+  "api.upstage.ai",
+  "api.runpod.ai",
+  "text.octoai.run",
+  "model.baseten.co",
+  "api.writer.com",
+  "api.corcel.io"
 ]

@@ -1,25 +1,28 @@
 # API Reference
 
-When running `agentsniff serve`, a REST API is available with the following endpoints.
+When running `agentsniff serve`, a REST API is available with the following endpoints. The endpoint set is identical between v1 and v2 except where tagged.
 
 ## Endpoints
 
 | Endpoint | Method | Description |
 |---|---|---|
 | `GET /` | — | Web dashboard |
-| `GET /docs` | — | Swagger / OpenAPI docs |
+| `GET /docs` | — | Swagger / OpenAPI docs (v1 only) |
 | `GET /api/health` | — | Health check |
-| `POST /api/scan` | `?network=CIDR` | Start a scan |
+| `POST /api/scan` | `?network=CIDR&detectors=...` or JSON body | Start a scan |
 | `POST /api/scan/stop` | — | Stop running scan |
 | `GET /api/scan/status` | — | Current scan status |
 | `GET /api/scan/results` | — | Latest scan results |
 | `GET /api/scan/history` | `?limit=&offset=` | Previous scan results |
 | `GET /api/scan/{scan_id}` | — | Specific historical scan |
+| `GET /api/scan/sarif` | — | Latest scan as SARIF 2.1.0 JSON |
 | `GET /api/agents` | — | All detected agents |
 | `GET /api/scan/stream` | SSE | Real-time scan streaming |
 | `GET /api/settings` | — | Get alert settings |
 | `PUT /api/settings` | JSON body | Update alert settings |
 | `POST /api/settings/test` | — | Send test alert |
+| `GET /api/db/backup` | — | Download SQLite database snapshot (v2 only) |
+| `POST /api/db/reset` | — | Wipe scan history (v2 only) |
 
 ## SSE Streaming
 
@@ -31,28 +34,33 @@ GET /api/scan/stream?network=192.168.1.0/24&detectors=port_scanner,endpoint_prob
 
 ### Event Types
 
-| Event | Data | Description |
+The event tag is carried inside each JSON payload's `event` field (the SSE stream uses unnamed `message` events). Possible values:
+
+| `event` value | Data | Description |
 |-------|------|-------------|
-| `scan_started` | `{"scan_id", "detectors", "target"}` | Scan has begun |
-| `agent_detected` | Agent JSON object | New agent found or updated |
-| `scan_complete` | Full scan result JSON | Scan finished |
-| `scan_error` | `{"error"}` | Scan failed |
+| `scan_started` | `{scan_id, network, host_count, detectors}` | Scan has begun |
+| `agent_detected` | `{agent: <DetectedAgent>}` | New agent found or updated |
+| `scan_progress` | `{message}` | Free-form progress update (v2 only) |
+| `scan_completed` | `{scan_id, agent_count, summary}` | Scan finished |
+| `scan_error` | `{message}` | Scan failed |
 
 ### Example
 
 ```javascript
 const source = new EventSource('/api/scan/stream?network=192.168.1.0/24');
 
-source.addEventListener('agent_detected', (e) => {
-  const agent = JSON.parse(e.data);
-  console.log(`Found: ${agent.framework} at ${agent.ip_address}:${agent.port}`);
-});
-
-source.addEventListener('scan_complete', (e) => {
-  const result = JSON.parse(e.data);
-  console.log(`Done: ${result.agents.length} agents in ${result.duration_seconds}s`);
-  source.close();
-});
+source.onmessage = (e) => {
+  const payload = JSON.parse(e.data);
+  switch (payload.event) {
+    case 'agent_detected':
+      console.log(`Found: ${payload.agent.framework} at ${payload.agent.ip_address}:${payload.agent.port}`);
+      break;
+    case 'scan_completed':
+      console.log(`Done: ${payload.agent_count} agents`);
+      source.close();
+      break;
+  }
+};
 ```
 
 ## Scan Result Schema

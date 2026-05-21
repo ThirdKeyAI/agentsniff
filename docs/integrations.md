@@ -1,10 +1,10 @@
 # Integrations
 
-AgentSniff supports optional integrations with external tools that enrich detection without adding required dependencies. The core scanner stays pure Python.
+AgentSniff supports optional integrations with external tools that enrich detection without adding required dependencies. v1 stays pure Python; v2 ships the same integrations behind config flags with no extra build step.
 
 ## Zeek (Data Source)
 
-Zeek integration reads JSON log files and feeds normalized records to the traffic analyzer and DNS monitor detectors. No Zeek binary dependency — just reads log files using stdlib `json`.
+Zeek integration reads JSON log files (or TSV in v2) and feeds normalized records to the traffic analyzer and DNS monitor detectors. There is no runtime Zeek binary dependency on either version — AgentSniff just reads log files that Zeek has already written.
 
 ### Setup
 
@@ -44,11 +44,20 @@ nmap integration is a post-processing step that runs after detection and correla
 
 ### Setup
 
+Both versions just need the `nmap` binary on `$PATH`:
+
 ```bash
-# Install optional dependency
+# Debian / Ubuntu
+sudo apt install nmap
+
+# v1: optional pip extra also installs the python-nmap wrapper
 pip install agentsniff[nmap]
 
-# Use via CLI
+# v2: no extra build step, just have `nmap` available
+```
+
+```bash
+# Same flags on both versions
 agentsniff scan 192.168.1.0/24 --nmap
 agentsniff scan 192.168.1.0/24 --nmap --nmap-args "-sV -O"
 ```

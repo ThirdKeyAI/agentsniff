@@ -59,6 +59,10 @@ pub struct ScanConfig {
     pub verbose: bool,
     pub quiet: bool,
 
+    // ── Logging ──────────────────────────────────────────────────────
+    /// Optional file path for logs (empty = no file logging).
+    pub log_file: String,
+
     // ── API server ───────────────────────────────────────────────────
     pub api_enabled: bool,
     pub api_host: String,
@@ -134,6 +138,9 @@ impl Default for ScanConfig {
             verbose: false,
             quiet: false,
 
+            // Logging
+            log_file: String::new(),
+
             // API server
             api_enabled: true,
             api_host: "0.0.0.0".to_string(),
@@ -184,6 +191,21 @@ impl ScanConfig {
         let contents = std::fs::read_to_string(path)?;
         let config: Self = serde_yaml::from_str(&contents)?;
         Ok(config)
+    }
+
+    /// Map a textual confidence level ("low" | "medium" | "high" | "confirmed")
+    /// to a numeric threshold compatible with `alert_min_confidence`.
+    ///
+    /// Mirrors the dashboard / Python implementation's mapping so YAML or CLI
+    /// callers can supply either a number or a level name.
+    pub fn confidence_level_to_score(level: &str) -> f64 {
+        match level.trim().to_ascii_lowercase().as_str() {
+            "confirmed" => 0.9,
+            "high" => 0.7,
+            "medium" => 0.4,
+            "low" => 0.1,
+            _ => 0.1,
+        }
     }
 
     /// Apply environment-variable overrides on top of an existing config.

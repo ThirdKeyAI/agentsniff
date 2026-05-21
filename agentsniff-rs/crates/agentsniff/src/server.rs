@@ -367,6 +367,16 @@ async fn scan_results_handler(
     }
 }
 
+async fn scan_sarif_handler(
+    State(state): State<Arc<AppState>>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    let latest = state.latest_result.lock().await;
+    match latest.as_ref() {
+        Some(result) => Ok(Json(crate::sarif_export::to_sarif(result))),
+        None => Ok(Json(crate::sarif_export::to_sarif(&ScanResult::new()))),
+    }
+}
+
 async fn stop_scan_handler(State(state): State<Arc<AppState>>) -> Json<StopResponse> {
     let token = state.cancel_token.lock().await;
     if let Some(ref cancel) = *token {
@@ -746,8 +756,9 @@ pub fn create_router_with_storage(
         .route("/api/scan/results", get(scan_results_handler))
         .route("/api/scan/stop", post(stop_scan_handler))
         .route("/api/scan/stream", get(scan_stream_handler))
+        .route("/api/scan/sarif", get(scan_sarif_handler))
         .route("/api/scan/history", get(scan_history_handler))
-        .route("/api/scan/{scan_id}", get(get_scan_handler))
+        .route("/api/scan/:scan_id", get(get_scan_handler))
         .route("/api/agents", get(agents_handler))
         .route("/api/settings", get(get_settings_handler).put(update_settings_handler))
         .route("/api/settings/test", post(test_alert_handler))

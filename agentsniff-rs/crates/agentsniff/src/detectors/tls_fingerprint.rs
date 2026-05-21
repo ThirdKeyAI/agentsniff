@@ -180,42 +180,49 @@ impl Detector for TlsFingerprintDetector {
             }
         }
 
-        let mut signals = Vec::new();
+        // Probe all (host, port) pairs concurrently.
+        use tokio::sync::Semaphore;
+        let sem = std::sync::Arc::new(Semaphore::new(128));
+        let timeout = self.timeout;
+        let client = self.client.clone();
 
+        let mut handles: Vec<tokio::task::JoinHandle<Option<Signal>>> = Vec::new();
         for &ip in targets {
             for &port in TLS_PROBE_PORTS {
-                // Quick TCP gate before attempting TLS handshake.
-                if !Self::is_port_open(ip, port, self.timeout).await {
-                    continue;
-                }
-
-                match probe_tls(&self.client, ip, port).await {
-                    Ok(info) => {
-                        if let Some(tls_version) = info.tls_version {
-                            tracing::debug!(
-                                "TLS endpoint detected at {}:{} ({})",
-                                ip,
-                                port,
-                                tls_version
-                            );
-
-                            signals.push(Signal::new(
+                let permit = sem.clone().acquire_owned().await?;
+                let client = client.clone();
+                handles.push(tokio::spawn(async move {
+                    let _permit = permit;
+                    if !Self::is_port_open(ip, port, timeout).await {
+                        return None;
+                    }
+                    match probe_tls(&client, ip, port).await {
+                        Ok(info) => info.tls_version.map(|v| {
+                            Signal::new(
                                 DetectorType::TlsFingerprint,
                                 "tls_endpoint_detected".to_string(),
-                                format!("TLS endpoint at {}:{} ({})", ip, port, tls_version),
+                                format!("TLS endpoint at {}:{} ({})", ip, port, v),
                                 Confidence::Low,
                                 serde_json::json!({
                                     "ip": ip.to_string(),
                                     "port": port,
-                                    "tls_version": tls_version,
+                                    "tls_version": v,
                                 }),
-                            ));
+                            )
+                        }),
+                        Err(e) => {
+                            tracing::trace!("TLS probe failed for {}:{}: {}", ip, port, e);
+                            None
                         }
                     }
-                    Err(e) => {
-                        tracing::trace!("TLS probe failed for {}:{}: {}", ip, port, e);
-                    }
-                }
+                }));
+            }
+        }
+
+        let mut signals = Vec::new();
+        for h in handles {
+            if let Ok(Some(sig)) = h.await {
+                signals.push(sig);
             }
         }
 

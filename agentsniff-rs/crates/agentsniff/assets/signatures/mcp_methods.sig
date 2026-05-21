@@ -1,5 +1,5 @@
 {
-  "signature": "MEUCID77ekmUr6FS5tNpXs+N8lLnUPbg2m/2sGCSZAo/lS6jAiEAgoMEV/9yB6PoDDEulHge4hCdDkj4vGkMuGDzUsBeZrQ=",
+  "signature": "MEUCIGy+A9gvclXo3GnVtgaoM+kgUAywMaMKZlf1TuuSqwEAAiEAjGl2uKjOqZv4cIvyxhzgEqVsgl9vM8UsQ+OGb2t5kPw=",
   "public_key": "-----BEGIN PUBLIC KEY-----\nMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE2UHWqeFsoOyraSZ/tmAsXzpPwmMN\nGb4mY5cgtmEt4sXJsPhgZfaG4EkJFQ1MczLYbkCRqazbYjSltdTo9Y07vg==\n-----END PUBLIC KEY-----\n",
   "algorithm": "ECDSA-P256-SHA256"
 }

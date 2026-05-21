@@ -1,6 +1,6 @@
 # Getting Started
 
-## Installation
+## Installation — v1 (Python)
 
 ### PyPI
 
@@ -46,13 +46,39 @@ docker compose up -d
 # Dashboard at http://localhost:9090
 ```
 
+## Installation — v2 (Rust)
+
+```bash
+git clone -b rust-rewrite https://github.com/ThirdKeyAI/agentsniff.git
+cd agentsniff/agentsniff-rs
+
+# Standard build — binary at ./target/release/agentsniff
+cargo build --release
+
+# With optional eBPF passive capture (requires nightly + bpf-linker)
+cargo build --release --features ebpf
+```
+
+The Rust binary is self-contained: it statically embeds the dashboard HTML and the signed signature files. Drop the single `agentsniff` executable anywhere and run it.
+
+To pull in the optional Zeek and Nmap integrations, just have `nmap` on `$PATH` and point `--zeek-logs` at a Zeek JSON log directory — no extra build flags needed.
+
 ## Requirements
 
+**v1 (Python)**
 - Python 3.11+
 - Linux recommended (for `/proc/net/tcp` analysis)
 - Root/CAP_NET_RAW optional (enables passive DNS, TLS, and traffic monitoring)
 
+**v2 (Rust)**
+- Rust 1.75+ (stable) — the `rust-toolchain.toml` pins `stable`
+- Linux recommended; `--features ebpf` requires nightly + `bpf-linker` and a recent kernel
+- Root/CAP_NET_RAW optional (same passive-capture trade-off as v1)
+- Optional external integrations: `nmap` binary on `$PATH` for `--nmap`, Zeek log directory for `--zeek-logs`
+
 ## Your First Scan
+
+The CLI is identical on both v1 and v2. Use `agentsniff` (v1) or the path to the Rust binary (`./target/release/agentsniff` for v2).
 
 Scan a single host:
 

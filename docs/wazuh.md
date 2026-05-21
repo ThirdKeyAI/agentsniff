@@ -2,6 +2,8 @@
 
 AgentSniff logs can be ingested by [Wazuh](https://wazuh.com/) for SIEM alerting and correlation. Example rules are provided in [`docs/wazuh-rules.xml`](https://github.com/ThirdKeyAI/agentsniff/blob/main/docs/wazuh-rules.xml).
 
+The rules below match on log content, so they work identically against v1 (Python) and v2 (Rust) — same `--log-file` and `--format json --output` semantics.
+
 ## Setup
 
 ### 1. Configure AgentSniff Logging

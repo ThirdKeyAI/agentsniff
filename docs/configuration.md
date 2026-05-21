@@ -53,9 +53,16 @@ api_enabled: false
 api_host: "0.0.0.0"
 api_port: 9090
 
-# Storage
+# Storage (v1)
 db_path: ""       # default: ~/.agentsniff/agentsniff.db
 log_file: ""      # empty = console only
+
+# Storage (v2) — multi-backend block; v1 ignores this
+# storage:
+#   backend: "sqlite"          # "sqlite" | "postgres" | "redis"
+#   sqlite_path: "~/.agentsniff/agentsniff.db"
+#   postgres_url: ""           # e.g. postgres://user:pass@host/db
+#   redis_url: ""              # e.g. redis://host:6379/0
 
 # Custom detection signatures
 custom_llm_domains: []
@@ -161,3 +168,17 @@ agentsniff scan 192.168.1.0/24 --log-file /var/log/agentsniff/scan.log
 ```
 
 The database stores full scan results including detected agents and signals. The web dashboard's Scan History panel loads from the database, so history persists across server restarts.
+
+### Multi-backend storage (v2 only)
+
+The Rust build adds PostgreSQL and Redis storage backends behind the same `StorageBackend` trait. Select via the `storage` block in YAML:
+
+```yaml
+storage:
+  backend: "sqlite"           # "sqlite" | "postgres" | "redis"
+  sqlite_path: "~/.agentsniff/agentsniff.db"
+  postgres_url: ""            # e.g. postgres://user:pass@host/db
+  redis_url: ""               # e.g. redis://host:6379/0
+```
+
+Or via env vars: `AGENTSNIFF_STORAGE_BACKEND`, `AGENTSNIFF_POSTGRES_URL`, `AGENTSNIFF_REDIS_URL`. The `--db` CLI flag still overrides `sqlite_path` and applies to all backends that need a local fallback path.

@@ -11,5 +11,16 @@
   "logging/setLevel",
   "completion/complete",
   "sampling/createMessage",
-  "ping"
+  "ping",
+  "roots/list",
+  "notifications/initialized",
+  "notifications/cancelled",
+  "notifications/progress",
+  "notifications/message",
+  "notifications/resources/list_changed",
+  "notifications/resources/updated",
+  "notifications/tools/list_changed",
+  "notifications/prompts/list_changed",
+  "elicitation/create",
+  "cancelled"
 ]

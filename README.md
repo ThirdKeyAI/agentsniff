@@ -25,9 +25,22 @@ AgentSniff identifies AI agents on enterprise networks using seven complementary
   <a href="AgentSniff-Dashboard-Settings.png"><img src="AgentSniff-Dashboard-Settings.png" alt="AgentSniff Dashboard - Settings" width="48%"></a>
 </p>
 
+## Implementations
+
+AgentSniff ships in two source trees:
+
+| Version | Branch | Source | Status |
+|---|---|---|---|
+| **v1 (Python)** | `main` | `agentsniff/` | Released — current stable |
+| **v2 (Rust)** | `rust-rewrite` | `agentsniff-rs/` | Preview — feature-parity with v1, plus eBPF passive capture, PostgreSQL / Redis storage backends, and Zeek / Nmap integrations |
+
+Both versions share the same signed signature files (`agentsniff/signatures/` and `agentsniff-rs/crates/agentsniff/assets/signatures/`), the same dashboard HTML, and the same `Detected Agent` JSON schema, so configuration, alert payloads, SARIF exports, and database history are interchangeable.
+
+The CLI subcommands (`scan`, `serve`, `init-config`, `update-signatures`) and the dashboard REST API are identical between v1 and v2; everything in the **CLI Usage** and **API Endpoints** sections below applies to both. Where v2 adds something on top of v1 it is called out inline.
+
 ## Quick Start
 
-### Standalone
+### Standalone (Python v1)
 
 ```bash
 # Install
@@ -48,6 +61,25 @@ agentsniff scan 192.168.1.0/24 --continuous 60
 # Start web dashboard
 agentsniff serve --port 9090
 ```
+
+### Standalone (Rust v2)
+
+```bash
+# Switch to the rust-rewrite branch and build
+git checkout rust-rewrite
+cd agentsniff-rs
+cargo build --release   # binary at ./target/release/agentsniff
+
+# Same CLI as v1
+./target/release/agentsniff scan 192.168.1.0/24
+./target/release/agentsniff scan 192.168.1.0/24 --continuous 60
+./target/release/agentsniff serve --port 9090
+
+# Optional: build with eBPF passive capture (requires nightly + bpf-linker)
+cargo build --release --features ebpf
+```
+
+The Rust binary statically embeds the dashboard and the signed signature files, so the single `agentsniff` executable is fully self-contained.
 
 ### Docker
 
@@ -102,6 +134,9 @@ Scan Options:
   --smtp-to ADDR,ADDR  Email recipients for alerts (auto-enables alerting)
   --db PATH            SQLite database path (default: ~/.agentsniff/agentsniff.db)
   --log-file PATH      Log file path (default: no file logging)
+  --zeek-logs PATH     Path to Zeek JSON log directory (enables Zeek integration)
+  --nmap               Enable nmap enrichment (requires nmap on PATH)
+  --nmap-args ARGS     Arguments to pass to nmap (default: -sV)
   -v, --verbose        Debug logging
   -q, --quiet          Minimal output
 
@@ -169,6 +204,18 @@ export AGENTSNIFF_LOG_FILE="/var/log/agentsniff/scan.log"
 ```
 
 The database stores full scan results including detected agents and signals. The web dashboard's Scan History panel loads from the database, so history persists across server restarts.
+
+**v2 (Rust)** additionally supports PostgreSQL and Redis backends. Select with the `storage` block in `agentsniff.yaml`:
+
+```yaml
+storage:
+  backend: "sqlite"           # "sqlite" | "postgres" | "redis"
+  sqlite_path: "~/.agentsniff/agentsniff.db"
+  postgres_url: ""            # e.g. postgres://user:pass@host/db
+  redis_url: ""               # e.g. redis://host:6379/0
+```
+
+Or via env vars: `AGENTSNIFF_STORAGE_BACKEND`, `AGENTSNIFF_POSTGRES_URL`, `AGENTSNIFF_REDIS_URL`.
 
 ## Configuration
 
@@ -264,9 +311,13 @@ When running `agentsniff serve`:
 | `GET /api/scan/{scan_id}` | — | Get a specific historical scan |
 | `GET /api/agents` | — | All detected agents |
 | `GET /api/scan/stream` | SSE | Real-time scan streaming |
+| `GET /api/scan/sarif` | — | Export latest scan as SARIF 2.1.0 |
+| `POST /api/scan/stop` | — | Cancel the running scan |
 | `GET /api/settings` | — | Get alert settings |
 | `PUT /api/settings` | JSON body | Update alert settings |
 | `POST /api/settings/test` | — | Send test alert |
+| `GET /api/db/backup` | — | Download SQLite database snapshot (v2) |
+| `POST /api/db/reset` | — | Wipe scan history (v2) |
 
 ## Architecture
 
@@ -301,9 +352,16 @@ AgentSniff complements the ThirdKey trust infrastructure:
 
 ## Requirements
 
+**v1 (Python)**
 - Python 3.11+
 - Linux recommended (for `/proc/net/tcp` analysis)
 - Root/CAP_NET_RAW optional (enables passive DNS, TLS, and traffic monitoring)
+
+**v2 (Rust)**
+- Rust 1.75+ (stable) — `cargo build --release`
+- Linux recommended; `--features ebpf` requires nightly + `bpf-linker` and a recent kernel
+- Root/CAP_NET_RAW optional (same passive-capture trade-off as v1)
+- Optional external integrations: `nmap` binary on PATH for `--nmap`, Zeek log directory for `--zeek-logs`
 
 ## License
 

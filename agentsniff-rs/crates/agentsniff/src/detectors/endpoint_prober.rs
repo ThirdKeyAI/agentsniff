@@ -544,13 +544,29 @@ impl Detector for EndpointProberDetector {
         let semaphore = std::sync::Arc::new(Semaphore::new(self.concurrency));
         let mut handles = Vec::new();
 
+        // Probe all (host, port) pairs concurrently — sequential per-port
+        // probing across a /24 turned this detector into a 25-minute loop.
+        let mut probe_handles: Vec<tokio::task::JoinHandle<(IpAddr, u16, bool)>> = Vec::new();
         for &ip in targets {
-            let mut open_ports = Vec::new();
             for &port in PROBE_PORTS {
-                if Self::is_port_open(ip, port).await {
-                    open_ports.push(port);
+                let permit = semaphore.clone().acquire_owned().await?;
+                probe_handles.push(tokio::spawn(async move {
+                    let _permit = permit;
+                    (ip, port, Self::is_port_open(ip, port).await)
+                }));
+            }
+        }
+        let mut open_by_host: std::collections::HashMap<IpAddr, Vec<u16>> =
+            std::collections::HashMap::new();
+        for h in probe_handles {
+            if let Ok((ip, port, open)) = h.await {
+                if open {
+                    open_by_host.entry(ip).or_default().push(port);
                 }
             }
+        }
+
+        for (ip, open_ports) in open_by_host {
             if open_ports.is_empty() {
                 continue;
             }

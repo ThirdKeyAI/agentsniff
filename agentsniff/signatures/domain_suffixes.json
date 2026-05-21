@@ -18,5 +18,13 @@
   ".pinecone.io",
   ".weaviate.cloud",
   ".qdrant.tech",
-  ".databricks.com"
+  ".databricks.com",
+  ".together.ai",
+  ".fireworks.ai",
+  ".deepinfra.com",
+  ".elevenlabs.io",
+  ".cartesia.ai",
+  ".replicate.delivery",
+  ".bentoml.ai",
+  ".sagemaker.amazonaws.com"
 ]

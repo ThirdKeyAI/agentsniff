@@ -247,7 +247,10 @@ fn spawn_scan(
             });
 
         match run_scan(&scan_config, Some(ebpf_channels), Some(cancel_clone), Some(on_agent)).await {
-            Ok(result) => {
+            Ok(mut result) => {
+                // run_scan creates its own scan_id; overwrite so it matches
+                // the one we returned to the API caller and announced via SSE.
+                result.scan_id = scan_id_clone.clone();
                 let agent_count = result.agents.len();
                 let summary = ScanSummary::from_result(&result);
 

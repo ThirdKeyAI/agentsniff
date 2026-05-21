@@ -22,12 +22,20 @@ const TCP_ESTABLISHED: u8 = 1;
 /// When eBPF channels are available, operates in passive mode by subscribing
 /// to connection and traffic timing events from the kernel. Falls back to
 /// reading `/proc/net/tcp` when eBPF is unavailable.
+///
+/// In `/proc/net/tcp` mode the detector mirrors the Python implementation: it
+/// resolves the embedded LLM API domain list to a set of IPs and only emits
+/// signals for connections to those IPs on port 443. The signal is attributed
+/// to the local end of the connection (the host actually making the LLM
+/// call) — not to whichever target the scanner happens to be probing — so
+/// active probing against an unrelated host does not produce phantom traffic
+/// signals.
 pub struct TrafficAnalyzerDetector {
     #[allow(dead_code)]
     config: ScanConfig,
-    #[allow(dead_code)]
     signatures: SignatureData,
     ebpf_channels: Option<Arc<EbpfChannels>>,
+    llm_ips: std::sync::Mutex<std::collections::HashSet<IpAddr>>,
 }
 
 impl TrafficAnalyzerDetector {
@@ -36,8 +44,10 @@ impl TrafficAnalyzerDetector {
             config: config.clone(),
             signatures: SignatureData::load_embedded(),
             ebpf_channels,
+            llm_ips: std::sync::Mutex::new(std::collections::HashSet::new()),
         }
     }
+
 }
 
 /// A single TCP connection entry parsed from `/proc/net/tcp`.
@@ -119,6 +129,33 @@ impl Detector for TrafficAnalyzerDetector {
     }
 
     async fn setup(&mut self) -> anyhow::Result<()> {
+        // Resolve LLM API domains off the async runtime — getaddrinfo blocks.
+        let domains: Vec<String> = self
+            .signatures
+            .llm_domains
+            .iter()
+            .take(25)
+            .cloned()
+            .collect();
+        let ips = tokio::task::spawn_blocking(move || {
+            use std::net::ToSocketAddrs;
+            let mut out = std::collections::HashSet::new();
+            for domain in &domains {
+                let host = domain.split(':').next().unwrap_or(domain);
+                let target = format!("{}:443", host);
+                if let Ok(addrs) = target.to_socket_addrs() {
+                    for addr in addrs {
+                        out.insert(addr.ip());
+                    }
+                }
+            }
+            out
+        })
+        .await
+        .unwrap_or_default();
+        if let Ok(mut guard) = self.llm_ips.lock() {
+            *guard = ips;
+        }
         Ok(())
     }
 
@@ -256,69 +293,64 @@ impl Detector for TrafficAnalyzerDetector {
             // Fall through to active mode if no eBPF events captured
         }
 
-        // Read the current TCP connection table from the kernel.
+        // Active mode: read the local kernel's TCP table and report when the
+        // *local* host is talking to a known LLM API IP on port 443. This
+        // mirrors the Python implementation. Without a host agent or eBPF on
+        // the target, we cannot observe a remote host's egress, so we never
+        // attribute proc/net/tcp connections back to the target IP.
         let connections = tokio::task::spawn_blocking(read_proc_tcp).await?;
+        let llm_ips: std::collections::HashSet<IpAddr> = self
+            .llm_ips
+            .lock()
+            .map(|g| g.clone())
+            .unwrap_or_default();
+
+        if llm_ips.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        // Group LLM-bound connections by local_ip.
+        let mut by_local: HashMap<IpAddr, Vec<&TcpConnection>> = HashMap::new();
+        for c in &connections {
+            if c.remote_port == 443 && llm_ips.contains(&c.remote_ip) {
+                by_local.entry(c.local_ip).or_default().push(c);
+            }
+        }
 
         let mut signals = Vec::new();
-
-        for &target in targets {
-            // Collect connections where the target is either the local or remote end.
-            let target_conns: Vec<&TcpConnection> = connections
+        for (local_ip, conns) in by_local {
+            let unique_remotes: std::collections::HashSet<IpAddr> =
+                conns.iter().map(|c| c.remote_ip).collect();
+            let preview: Vec<serde_json::Value> = conns
                 .iter()
-                .filter(|c| c.local_ip == target || c.remote_ip == target)
-                .collect();
-
-            if target_conns.is_empty() {
-                continue;
-            }
-
-            // Check for connections to known LLM API ports on the remote end.
-            let llm_connections: Vec<&&TcpConnection> = target_conns
-                .iter()
-                .filter(|c| LLM_API_PORTS.contains(&c.remote_port))
-                .collect();
-
-            if !llm_connections.is_empty() {
-                let ports: Vec<u16> = llm_connections.iter().map(|c| c.remote_port).collect();
-                signals.push(Signal::new(
-                    DetectorType::TrafficAnalyzer,
-                    "active_llm_connections".to_string(),
-                    format!(
-                        "Host {} has {} active connection(s) to LLM API ports",
-                        target,
-                        llm_connections.len()
-                    ),
-                    Confidence::High,
+                .take(10)
+                .map(|c| {
                     serde_json::json!({
-                        "ip": target.to_string(),
-                        "connection_count": llm_connections.len(),
-                        "ports": ports,
-                    }),
-                ));
-            }
-
-            // Behavioral heuristic: many diverse remote ports suggest ORA-loop activity.
-            let unique_remote_ports: std::collections::HashSet<u16> =
-                target_conns.iter().map(|c| c.remote_port).collect();
-
-            if unique_remote_ports.len() >= 3 && target_conns.len() >= 5 {
-                signals.push(Signal::new(
-                    DetectorType::TrafficAnalyzer,
-                    "agent_behavior_pattern".to_string(),
-                    format!(
-                        "Host {} shows diverse connection pattern ({} unique ports, {} connections)",
-                        target,
-                        unique_remote_ports.len(),
-                        target_conns.len()
-                    ),
-                    Confidence::Medium,
-                    serde_json::json!({
-                        "ip": target.to_string(),
-                        "unique_ports": unique_remote_ports.len(),
-                        "total_connections": target_conns.len(),
-                    }),
-                ));
-            }
+                        "local_ip": c.local_ip.to_string(),
+                        "local_port": c.local_port,
+                        "remote_ip": c.remote_ip.to_string(),
+                        "remote_port": c.remote_port,
+                    })
+                })
+                .collect();
+            signals.push(Signal::new(
+                DetectorType::TrafficAnalyzer,
+                "active_llm_connections".to_string(),
+                format!(
+                    "Host {} has {} active connection(s) to {} LLM API endpoint(s)",
+                    local_ip,
+                    conns.len(),
+                    unique_remotes.len(),
+                ),
+                Confidence::High,
+                serde_json::json!({
+                    "ip": local_ip.to_string(),
+                    "connection_count": conns.len(),
+                    "unique_llm_endpoints": unique_remotes.len(),
+                    "connections": preview,
+                    "method": "proc_net_tcp",
+                }),
+            ));
         }
 
         Ok(signals)

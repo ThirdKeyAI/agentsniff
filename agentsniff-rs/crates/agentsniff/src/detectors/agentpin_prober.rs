@@ -72,20 +72,6 @@ impl AgentpinProber {
         Self { timeout, client }
     }
 
-    /// Attempt to fetch and validate an AgentPin document from a URL.
-    async fn probe_url(&self, url: &str) -> Option<Value> {
-        let resp = self.client.get(url).send().await.ok()?;
-        if !resp.status().is_success() {
-            return None;
-        }
-        let doc: Value = resp.json().await.ok()?;
-        if validate_agentpin_document(&doc) {
-            Some(doc)
-        } else {
-            None
-        }
-    }
-
     /// Build signals from a validated AgentPin document.
     fn signals_from_document(&self, ip: IpAddr, port: u16, scheme: &str, doc: &Value) -> Vec<Signal> {
         let mut signals = Vec::new();
@@ -147,24 +133,53 @@ impl Detector for AgentpinProber {
     }
 
     async fn scan(&self, targets: &[IpAddr]) -> anyhow::Result<Vec<Signal>> {
-        let mut signals = Vec::new();
+        use tokio::sync::Semaphore;
+        // Fan all probes out concurrently. Sequential probing turned this
+        // into a multi-hour scan on a /24.
+        let sem = std::sync::Arc::new(Semaphore::new(128));
+        let client = self.client.clone();
 
+        let mut handles: Vec<
+            tokio::task::JoinHandle<(IpAddr, u16, &'static str, Option<Value>)>,
+        > = Vec::new();
         for &ip in targets {
-            // Try HTTPS on each AgentPin port
             for &port in AGENTPIN_PORTS {
-                let url = format!("https://{}:{}{}", ip, port, AGENTPIN_PATH);
-                if let Some(doc) = self.probe_url(&url).await {
-                    signals.extend(self.signals_from_document(ip, port, "https", &doc));
-                }
+                let permit = sem.clone().acquire_owned().await?;
+                let client = client.clone();
+                handles.push(tokio::spawn(async move {
+                    let _permit = permit;
+                    let url = format!("https://{}:{}{}", ip, port, AGENTPIN_PATH);
+                    let resp = client.get(&url).send().await.ok();
+                    let doc = match resp {
+                        Some(r) if r.status().is_success() => r.json::<Value>().await.ok(),
+                        _ => None,
+                    };
+                    let doc = doc.filter(validate_agentpin_document);
+                    (ip, port, "https", doc)
+                }));
             }
-
-            // Try HTTP on port 80
-            let url = format!("http://{}:{}{}", ip, 80, AGENTPIN_PATH);
-            if let Some(doc) = self.probe_url(&url).await {
-                signals.extend(self.signals_from_document(ip, 80, "http", &doc));
-            }
+            // HTTP on port 80
+            let permit = sem.clone().acquire_owned().await?;
+            let client = client.clone();
+            handles.push(tokio::spawn(async move {
+                let _permit = permit;
+                let url = format!("http://{}:80{}", ip, AGENTPIN_PATH);
+                let resp = client.get(&url).send().await.ok();
+                let doc = match resp {
+                    Some(r) if r.status().is_success() => r.json::<Value>().await.ok(),
+                    _ => None,
+                };
+                let doc = doc.filter(validate_agentpin_document);
+                (ip, 80u16, "http", doc)
+            }));
         }
 
+        let mut signals = Vec::new();
+        for h in handles {
+            if let Ok((ip, port, scheme, Some(doc))) = h.await {
+                signals.extend(self.signals_from_document(ip, port, scheme, &doc));
+            }
+        }
         Ok(signals)
     }
 

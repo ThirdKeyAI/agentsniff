@@ -67,9 +67,12 @@ impl McpDetector {
     }
 
     /// Send a JSON-RPC request to a URL and return the parsed response body.
-    async fn send_jsonrpc(&self, url: &str, body: &Value) -> Option<(Value, reqwest::header::HeaderMap)> {
-        let resp = self
-            .client
+    async fn send_jsonrpc_with(
+        client: &Client,
+        url: &str,
+        body: &Value,
+    ) -> Option<(Value, reqwest::header::HeaderMap)> {
+        let resp = client
             .post(url)
             .header("Content-Type", "application/json")
             .header("Accept", "application/json, text/event-stream")
@@ -84,9 +87,81 @@ impl McpDetector {
         Some((json_body, headers))
     }
 
+    /// Probe a single (ip, port, path) for an MCP server. Returns any signals
+    /// emitted (server confirmation + capability enumeration).
+    async fn probe_one(
+        client: Client,
+        ip: IpAddr,
+        port: u16,
+        path: &'static str,
+    ) -> Vec<Signal> {
+        let url = format!("http://{}:{}{}", ip, port, path);
+        let init_req = build_jsonrpc_request(
+            "initialize",
+            serde_json::json!({
+                "protocolVersion": "2024-11-05",
+                "capabilities": {},
+                "clientInfo": {
+                    "name": "agentsniff",
+                    "version": "2.0.0"
+                }
+            }),
+        );
+
+        let (body, headers) = match Self::send_jsonrpc_with(&client, &url, &init_req).await {
+            Some(r) => r,
+            None => return Vec::new(),
+        };
+        if !is_valid_jsonrpc_response(&body) {
+            return Vec::new();
+        }
+
+        let has_mcp_header = headers
+            .get("MCP-Protocol-Version")
+            .or_else(|| headers.get("mcp-protocol-version"))
+            .is_some();
+        let confidence = if has_mcp_header {
+            Confidence::Confirmed
+        } else {
+            Confidence::High
+        };
+
+        let server_info = body
+            .get("result")
+            .and_then(|r| r.get("serverInfo"))
+            .cloned()
+            .unwrap_or(serde_json::json!(null));
+        let capabilities = body
+            .get("result")
+            .and_then(|r| r.get("capabilities"))
+            .cloned()
+            .unwrap_or(serde_json::json!({}));
+
+        let mut signals = vec![Signal::new(
+            DetectorType::McpDetector,
+            "mcp_server_confirmed".to_string(),
+            format!(
+                "MCP server detected on {}:{}{} (confidence: {:?})",
+                ip, port, path, confidence
+            ),
+            confidence,
+            serde_json::json!({
+                "ip": ip.to_string(),
+                "port": port,
+                "path": path,
+                "server_info": server_info,
+                "capabilities": capabilities,
+                "mcp_header_present": has_mcp_header,
+            }),
+        )];
+
+        signals.extend(Self::enumerate_capabilities_with(&client, &url, ip, port, path).await);
+        signals
+    }
+
     /// Try to enumerate MCP capabilities (tools, resources, prompts) on a confirmed endpoint.
-    async fn enumerate_capabilities(
-        &self,
+    async fn enumerate_capabilities_with(
+        client: &Client,
         url_base: &str,
         ip: IpAddr,
         port: u16,
@@ -96,7 +171,7 @@ impl McpDetector {
 
         // Try tools/list
         let tools_req = build_jsonrpc_request("tools/list", serde_json::json!({}));
-        if let Some((body, _)) = self.send_jsonrpc(url_base, &tools_req).await {
+        if let Some((body, _)) = Self::send_jsonrpc_with(client, url_base, &tools_req).await {
             if is_valid_jsonrpc_response(&body) {
                 let tools = body
                     .get("result")
@@ -126,7 +201,7 @@ impl McpDetector {
 
         // Try resources/list
         let resources_req = build_jsonrpc_request("resources/list", serde_json::json!({}));
-        if let Some((body, _)) = self.send_jsonrpc(url_base, &resources_req).await {
+        if let Some((body, _)) = Self::send_jsonrpc_with(client, url_base, &resources_req).await {
             if is_valid_jsonrpc_response(&body) {
                 let resources = body
                     .get("result")
@@ -156,7 +231,7 @@ impl McpDetector {
 
         // Try prompts/list
         let prompts_req = build_jsonrpc_request("prompts/list", serde_json::json!({}));
-        if let Some((body, _)) = self.send_jsonrpc(url_base, &prompts_req).await {
+        if let Some((body, _)) = Self::send_jsonrpc_with(client, url_base, &prompts_req).await {
             if is_valid_jsonrpc_response(&body) {
                 let prompts = body
                     .get("result")
@@ -186,6 +261,18 @@ impl McpDetector {
 
         signals
     }
+
+    /// Cheap TCP connect check, identical to the endpoint_prober pre-filter.
+    async fn is_port_open(ip: IpAddr, port: u16) -> bool {
+        let addr = std::net::SocketAddr::new(ip, port);
+        tokio::time::timeout(
+            Duration::from_millis(500),
+            tokio::net::TcpStream::connect(addr),
+        )
+        .await
+        .map(|r| r.is_ok())
+        .unwrap_or(false)
+    }
 }
 
 #[async_trait]
@@ -203,77 +290,54 @@ impl Detector for McpDetector {
     }
 
     async fn scan(&self, targets: &[IpAddr]) -> anyhow::Result<Vec<Signal>> {
-        let mut signals = Vec::new();
+        use tokio::sync::Semaphore;
+        // Bound concurrent connect probes so we don't exhaust file descriptors
+        // on a large /16 sweep. 256 is plenty to cover a /24 in seconds.
+        let probe_sem = std::sync::Arc::new(Semaphore::new(256));
 
+        // 1. Fan out a TCP-connect probe per (host, port) and collect open ones.
+        let mut probe_handles: Vec<tokio::task::JoinHandle<(IpAddr, u16, bool)>> = Vec::new();
         for &ip in targets {
             for &port in MCP_PORTS {
-                for &path in MCP_PATHS {
-                    let url = format!("http://{}:{}{}", ip, port, path);
-                    let init_req = build_jsonrpc_request(
-                        "initialize",
-                        serde_json::json!({
-                            "protocolVersion": "2024-11-05",
-                            "capabilities": {},
-                            "clientInfo": {
-                                "name": "agentsniff",
-                                "version": "2.0.0"
-                            }
-                        }),
-                    );
-
-                    if let Some((body, headers)) = self.send_jsonrpc(&url, &init_req).await {
-                        if !is_valid_jsonrpc_response(&body) {
-                            continue;
-                        }
-
-                        // Check for MCP-Protocol-Version header
-                        let has_mcp_header = headers
-                            .get("MCP-Protocol-Version")
-                            .or_else(|| headers.get("mcp-protocol-version"))
-                            .is_some();
-
-                        let confidence = if has_mcp_header {
-                            Confidence::Confirmed
-                        } else {
-                            Confidence::High
-                        };
-
-                        let server_info = body
-                            .get("result")
-                            .and_then(|r| r.get("serverInfo"))
-                            .cloned()
-                            .unwrap_or(serde_json::json!(null));
-
-                        let capabilities = body
-                            .get("result")
-                            .and_then(|r| r.get("capabilities"))
-                            .cloned()
-                            .unwrap_or(serde_json::json!({}));
-
-                        signals.push(Signal::new(
-                            DetectorType::McpDetector,
-                            "mcp_server_confirmed".to_string(),
-                            format!(
-                                "MCP server detected on {}:{}{} (confidence: {:?})",
-                                ip, port, path, confidence
-                            ),
-                            confidence,
-                            serde_json::json!({
-                                "ip": ip.to_string(),
-                                "port": port,
-                                "path": path,
-                                "server_info": server_info,
-                                "capabilities": capabilities,
-                                "mcp_header_present": has_mcp_header,
-                            }),
-                        ));
-
-                        // Enumerate tools, resources, prompts
-                        let cap_signals =
-                            self.enumerate_capabilities(&url, ip, port, path).await;
-                        signals.extend(cap_signals);
-                    }
+                let permit = probe_sem.clone().acquire_owned().await?;
+                probe_handles.push(tokio::spawn(async move {
+                    let _permit = permit;
+                    (ip, port, Self::is_port_open(ip, port).await)
+                }));
+            }
+        }
+        let mut open_pairs: Vec<(IpAddr, u16)> = Vec::new();
+        for h in probe_handles {
+            if let Ok((ip, port, open)) = h.await {
+                if open {
+                    open_pairs.push((ip, port));
                 }
+            }
+        }
+
+        if open_pairs.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        // 2. For every open (host, port), probe every MCP path in parallel.
+        let rpc_sem = std::sync::Arc::new(Semaphore::new(64));
+        let client = self.client.clone();
+        let mut probe_handles = Vec::new();
+        for (ip, port) in open_pairs {
+            for &path in MCP_PATHS {
+                let permit = rpc_sem.clone().acquire_owned().await?;
+                let client = client.clone();
+                probe_handles.push(tokio::spawn(async move {
+                    let _permit = permit;
+                    Self::probe_one(client, ip, port, path).await
+                }));
+            }
+        }
+
+        let mut signals = Vec::new();
+        for h in probe_handles {
+            if let Ok(mut sigs) = h.await {
+                signals.append(&mut sigs);
             }
         }
 

@@ -1,4 +1,441 @@
 {
+  "ag2": {
+    "endpoints": [
+      "/api/agents",
+      "/api/runs"
+    ],
+    "user_agents": [
+      "ag2"
+    ]
+  },
+  "agent_metadata_standards": {
+    "endpoints": [
+      "/AGENTS.md",
+      "/SKILL.md",
+      "/SOUL.md",
+      "/MEMORY.md",
+      "/.well-known/agents.json",
+      "/.well-known/ai-plugin.json",
+      "/.well-known/clawhub.json"
+    ]
+  },
+  "agent_zero": {
+    "endpoints": [
+      "/api/message",
+      "/poll"
+    ],
+    "headers": [],
+    "user_agents": [
+      "agent-zero",
+      "agent_zero"
+    ]
+  },
+  "agentforce": {
+    "endpoints": [],
+    "headers": [],
+    "user_agents": [
+      "agentforce",
+      "salesforce/agentforce"
+    ]
+  },
+  "agentops": {
+    "headers": [
+      "x-agentops-*"
+    ],
+    "user_agents": [
+      "agentops"
+    ]
+  },
+  "agno": {
+    "endpoints": [
+      "/v1/run",
+      "/v1/playground"
+    ],
+    "user_agents": [
+      "agno"
+    ]
+  },
+  "aider": {
+    "user_agents": [
+      "aider"
+    ]
+  },
+  "amazon_q": {
+    "endpoints": [],
+    "headers": [
+      "x-amzn-codewhisperer-*"
+    ],
+    "user_agents": [
+      "amazon-q",
+      "codewhisperer",
+      "AmazonQ"
+    ]
+  },
+  "anthropic_sdk": {
+    "headers": [
+      "anthropic-version",
+      "anthropic-beta",
+      "x-stainless-lang",
+      "x-stainless-package-version",
+      "x-stainless-os",
+      "x-stainless-arch",
+      "x-stainless-runtime"
+    ],
+    "user_agents": [
+      "Anthropic/Python",
+      "Anthropic/Node"
+    ]
+  },
+  "anythingllm": {
+    "endpoints": [
+      "/api/system/status",
+      "/api/v1/workspace"
+    ],
+    "headers": [
+      "x-anythingllm-signature"
+    ]
+  },
+  "autogen": {
+    "endpoints": [
+      "/api/messages"
+    ],
+    "user_agents": [
+      "autogen",
+      "pyautogen",
+      "ag2"
+    ]
+  },
+  "bee_agent": {
+    "endpoints": [
+      "/api/run"
+    ],
+    "user_agents": [
+      "bee-agent-framework"
+    ]
+  },
+  "big_agi": {
+    "endpoints": [
+      "/api/llms/stream"
+    ],
+    "headers": [],
+    "user_agents": [
+      "big-agi",
+      "big-AGI"
+    ]
+  },
+  "blackboxai": {
+    "user_agents": [
+      "blackboxai"
+    ]
+  },
+  "bolt_new": {
+    "endpoints": [],
+    "headers": [],
+    "user_agents": [
+      "bolt.new",
+      "stackblitz/bolt"
+    ]
+  },
+  "braintrust": {
+    "endpoints": [
+      "/api/project",
+      "/api/experiment"
+    ],
+    "headers": [
+      "x-bt-parent",
+      "x-bt-use-cache",
+      "x-bt-endpoint-name"
+    ],
+    "user_agents": [
+      "braintrust"
+    ]
+  },
+  "browser_use": {
+    "endpoints": [
+      "/api/browser",
+      "/ws/browser"
+    ],
+    "user_agents": [
+      "browser-use"
+    ]
+  },
+  "camel_ai": {
+    "endpoints": [
+      "/api/chat",
+      "/api/role"
+    ],
+    "user_agents": [
+      "camel-ai"
+    ]
+  },
+  "chatwoot": {
+    "endpoints": [
+      "/api/v1/accounts/1/conversations"
+    ],
+    "headers": [
+      "api_access_token"
+    ],
+    "user_agents": [
+      "chatwoot"
+    ]
+  },
+  "claude_code": {
+    "headers": [
+      "anthropic-beta"
+    ],
+    "mcp_client_name": "claude-code",
+    "user_agents": [
+      "claude-code",
+      "claude-cli",
+      "claude-code/"
+    ]
+  },
+  "claude_desktop": {
+    "mcp_client_name": "Claude Desktop"
+  },
+  "cline": {
+    "mcp_client_name": "cline",
+    "user_agents": [
+      "cline"
+    ]
+  },
+  "codeium": {
+    "endpoints": [],
+    "headers": [
+      "x-codeium-*"
+    ],
+    "user_agents": [
+      "codeium"
+    ]
+  },
+  "codex_cli": {
+    "user_agents": [
+      "codex-cli",
+      "openai-codex"
+    ]
+  },
+  "cody": {
+    "endpoints": [],
+    "headers": [],
+    "user_agents": [
+      "sourcegraph-cody",
+      "cody-vscode",
+      "cody-jetbrains"
+    ]
+  },
+  "composio": {
+    "endpoints": [
+      "/api/v1/actions",
+      "/api/v1/triggers"
+    ],
+    "user_agents": [
+      "composio",
+      "composio-core"
+    ]
+  },
+  "continue_dev": {
+    "endpoints": [
+      "/ide/chat"
+    ],
+    "mcp_client_name": "continue",
+    "user_agents": [
+      "continue-dev",
+      "continue"
+    ]
+  },
+  "copilot": {
+    "headers": [
+      "x-github-copilot-*",
+      "Editor-Version",
+      "Editor-Plugin-Version",
+      "Copilot-Integration-Id"
+    ],
+    "user_agents": [
+      "github-copilot",
+      "copilot",
+      "GithubCopilot",
+      "GitHubCopilotChat"
+    ]
+  },
+  "copilotkit": {
+    "endpoints": [
+      "/api/copilotkit"
+    ],
+    "headers": [],
+    "user_agents": [
+      "copilotkit"
+    ]
+  },
+  "crewai": {
+    "endpoints": [
+      "/crew/status",
+      "/crew/kickoff"
+    ],
+    "user_agents": [
+      "crewai"
+    ]
+  },
+  "cursor": {
+    "headers": [
+      "x-cursor-client-version",
+      "x-cursor-client-type",
+      "x-cursor-client-os",
+      "x-cursor-checksum",
+      "x-ghost-mode"
+    ],
+    "mcp_client_name": "cursor",
+    "user_agents": [
+      "cursor"
+    ]
+  },
+  "devin": {
+    "endpoints": [],
+    "headers": [],
+    "user_agents": [
+      "devin",
+      "cognition/devin"
+    ]
+  },
+  "dify": {
+    "endpoints": [
+      "/api/v1/chat-messages",
+      "/api/v1/workflows"
+    ]
+  },
+  "dspy": {
+    "endpoints": [
+      "/api/dspy"
+    ],
+    "headers": [],
+    "user_agents": [
+      "dspy",
+      "DSPy"
+    ]
+  },
+  "e2b": {
+    "user_agents": [
+      "e2b"
+    ]
+  },
+  "eliza": {
+    "endpoints": [
+      "/api/agents",
+      "/message"
+    ],
+    "user_agents": [
+      "eliza"
+    ]
+  },
+  "firecrawl": {
+    "endpoints": [
+      "/v1/scrape",
+      "/v1/crawl",
+      "/v1/search"
+    ],
+    "headers": [],
+    "user_agents": [
+      "firecrawl"
+    ]
+  },
+  "flowise": {
+    "endpoints": [
+      "/api/v1/prediction",
+      "/api/v1/chatflows"
+    ]
+  },
+  "gemini_cli": {
+    "user_agents": [
+      "gemini-cli",
+      "google-genai-sdk"
+    ]
+  },
+  "google_adk": {
+    "user_agents": [
+      "google-adk"
+    ]
+  },
+  "google_genai_sdk": {
+    "user_agents": [
+      "google-genai-sdk"
+    ]
+  },
+  "goose": {
+    "endpoints": [],
+    "headers": [],
+    "user_agents": [
+      "goose-ai",
+      "block/goose"
+    ]
+  },
+  "gradio_agent_ui": {
+    "endpoints": [
+      "/api/predict",
+      "/queue/join"
+    ],
+    "user_agents": [
+      "gradio"
+    ]
+  },
+  "griptape": {
+    "endpoints": [],
+    "headers": [],
+    "user_agents": [
+      "griptape"
+    ]
+  },
+  "haystack": {
+    "endpoints": [
+      "/pipeline/run"
+    ],
+    "user_agents": [
+      "haystack"
+    ]
+  },
+  "helicone": {
+    "headers": [
+      "helicone-*",
+      "helicone-auth",
+      "Helicone-Auth",
+      "Helicone-Property-*",
+      "Helicone-Session-Id",
+      "Helicone-Cache-Enabled",
+      "Helicone-User-Id",
+      "Helicone-Prompt-Id",
+      "Helicone-Target-Url"
+    ]
+  },
+  "jan": {
+    "endpoints": [
+      "/v1/chat/completions",
+      "/v1/models"
+    ],
+    "user_agents": [
+      "jan"
+    ]
+  },
+  "julep": {
+    "endpoints": [
+      "/api/sessions",
+      "/api/agents"
+    ],
+    "user_agents": [
+      "julep"
+    ]
+  },
+  "kimi_code": {
+    "user_agents": [
+      "kimi-code"
+    ]
+  },
+  "koboldcpp": {
+    "endpoints": [
+      "/api/v1/generate",
+      "/api/extra/generate/stream"
+    ],
+    "user_agents": [
+      "koboldcpp"
+    ]
+  },
   "langchain": {
     "endpoints": [
       "/docs",
@@ -13,23 +450,398 @@
       "DefaultLangchainUserAgent"
     ]
   },
-  "crewai": {
-    "endpoints": [
-      "/crew/status",
-      "/crew/kickoff"
-    ],
+  "langchain4j": {
     "user_agents": [
-      "crewai"
+      "langchain4j"
     ]
   },
-  "autogen": {
+  "langflow": {
     "endpoints": [
-      "/api/messages"
+      "/api/v1/process",
+      "/api/v1/predict",
+      "/api/v1/flows"
+    ],
+    "headers": [],
+    "user_agents": [
+      "langflow"
+    ]
+  },
+  "langfuse": {
+    "endpoints": [
+      "/api/public/traces",
+      "/api/public/generations"
+    ],
+    "headers": [
+      "x-langfuse-*"
+    ]
+  },
+  "langgraph": {
+    "endpoints": [
+      "/runs",
+      "/threads",
+      "/assistants"
     ],
     "user_agents": [
-      "autogen",
-      "pyautogen",
-      "ag2"
+      "langgraph"
+    ]
+  },
+  "langsmith": {
+    "endpoints": [
+      "/api/v1/runs",
+      "/api/v1/datasets"
+    ],
+    "headers": [
+      "x-langsmith-*"
+    ]
+  },
+  "letta": {
+    "endpoints": [
+      "/api/agents",
+      "/api/memory"
+    ],
+    "user_agents": [
+      "letta",
+      "memgpt"
+    ]
+  },
+  "librechat": {
+    "endpoints": [
+      "/api/auth",
+      "/api/convos",
+      "/api/messages"
+    ],
+    "headers": [],
+    "user_agents": [
+      "librechat"
+    ]
+  },
+  "litellm": {
+    "endpoints": [
+      "/chat/completions",
+      "/key/generate"
+    ],
+    "user_agents": [
+      "litellm"
+    ]
+  },
+  "llama_cpp": {
+    "endpoints": [
+      "/completion",
+      "/v1/chat/completions"
+    ],
+    "user_agents": [
+      "llama.cpp"
+    ]
+  },
+  "llama_deploy": {
+    "endpoints": [
+      "/control-plane/status",
+      "/message-queue/status"
+    ],
+    "user_agents": [
+      "llamaindex",
+      "llama-deploy"
+    ]
+  },
+  "llamaindex": {
+    "endpoints": [
+      "/api/v1/query",
+      "/api/v1/chat",
+      "/healthcheck"
+    ],
+    "headers": [
+      "x-llamaindex-*"
+    ],
+    "user_agents": [
+      "llamaindex",
+      "LlamaIndex",
+      "llama-index"
+    ]
+  },
+  "lm_studio": {
+    "endpoints": [
+      "/v1/models",
+      "/v1/chat/completions"
+    ],
+    "user_agents": [
+      "LM Studio",
+      "LMStudio"
+    ]
+  },
+  "lobe_chat": {
+    "endpoints": [
+      "/api/chat",
+      "/api/openai/chat"
+    ],
+    "headers": [],
+    "user_agents": [
+      "lobehub",
+      "lobe-chat"
+    ]
+  },
+  "lovable": {
+    "endpoints": [],
+    "headers": [],
+    "user_agents": [
+      "lovable.dev",
+      "lovable.app"
+    ]
+  },
+  "mastra": {
+    "endpoints": [
+      "/api/mastra",
+      "/api/agents"
+    ]
+  },
+  "mcp_inspector": {
+    "mcp_client_name": "mcp-inspector",
+    "user_agents": [
+      "mcp-inspector",
+      "inspector-client"
+    ]
+  },
+  "mcp_proxy": {
+    "endpoints": [
+      "/sse",
+      "/messages",
+      "/proxy"
+    ],
+    "headers": [],
+    "user_agents": [
+      "mcp-proxy"
+    ]
+  },
+  "mem0": {
+    "endpoints": [
+      "/v1/memories",
+      "/v1/memories/search"
+    ],
+    "headers": [
+      "x-mem0-*"
+    ],
+    "user_agents": [
+      "mem0",
+      "mem0ai"
+    ]
+  },
+  "n8n": {
+    "endpoints": [
+      "/webhook/",
+      "/rest/workflows"
+    ]
+  },
+  "nextchat": {
+    "endpoints": [
+      "/api/openai/v1/chat/completions"
+    ],
+    "headers": [],
+    "user_agents": [
+      "nextchat",
+      "chatgpt-next-web"
+    ]
+  },
+  "ollama": {
+    "endpoints": [
+      "/api/generate",
+      "/api/chat",
+      "/api/tags",
+      "/api/ps"
+    ],
+    "user_agents": [
+      "ollama"
+    ]
+  },
+  "open_webui": {
+    "endpoints": [
+      "/api/v1/auths",
+      "/api/v1/models",
+      "/openwebui"
+    ],
+    "headers": [],
+    "user_agents": [
+      "open-webui",
+      "openwebui"
+    ]
+  },
+  "openai_assistants": {
+    "headers": [
+      "OpenAI-Beta",
+      "x-stainless-lang",
+      "x-stainless-package-version",
+      "x-stainless-os",
+      "x-stainless-arch",
+      "x-stainless-runtime",
+      "x-stainless-runtime-version"
+    ],
+    "user_agents": [
+      "openai-python",
+      "openai-node",
+      "OpenAI/Python",
+      "OpenAI/Node"
+    ]
+  },
+  "openclaw": {
+    "endpoints": [
+      "/api/agents",
+      "/api/skills",
+      "/.well-known/clawhub.json"
+    ],
+    "headers": [
+      "x-openclaw-*"
+    ],
+    "user_agents": [
+      "openclaw",
+      "clawdbot",
+      "moltbot",
+      "clawhub"
+    ]
+  },
+  "opencode": {
+    "mcp_client_name": "opencode"
+  },
+  "openhands": {
+    "endpoints": [
+      "/api/options",
+      "/api/config",
+      "/ws"
+    ],
+    "user_agents": [
+      "openhands"
+    ]
+  },
+  "phidata": {
+    "endpoints": [
+      "/v1/agent/run",
+      "/v1/playground/chat"
+    ],
+    "user_agents": [
+      "phidata"
+    ]
+  },
+  "portkey": {
+    "endpoints": [
+      "/v1/chat/completions",
+      "/v1/prompts"
+    ],
+    "headers": [
+      "x-portkey-*",
+      "x-portkey-api-key",
+      "x-portkey-provider",
+      "x-portkey-virtual-key",
+      "x-portkey-config",
+      "x-portkey-trace-id",
+      "x-portkey-metadata"
+    ]
+  },
+  "promptflow": {
+    "endpoints": [
+      "/score",
+      "/api/Connections"
+    ],
+    "headers": [],
+    "user_agents": [
+      "promptflow"
+    ]
+  },
+  "pydantic_ai": {
+    "endpoints": [
+      "/api/chat",
+      "/schema.json"
+    ],
+    "headers": [
+      "x-pydantic-ai-*"
+    ],
+    "user_agents": [
+      "pydantic-ai",
+      "pydantic-core"
+    ]
+  },
+  "qwen_code": {
+    "user_agents": [
+      "qwen-code"
+    ]
+  },
+  "rasa": {
+    "endpoints": [
+      "/webhooks/rest/webhook",
+      "/status",
+      "/conversations"
+    ],
+    "headers": [
+      "x-rasa-version"
+    ]
+  },
+  "rivet": {
+    "endpoints": [
+      "/api/graph/run"
+    ],
+    "user_agents": [
+      "rivet"
+    ]
+  },
+  "roocode": {
+    "mcp_client_name": "roo-code",
+    "user_agents": [
+      "roocode",
+      "roo-code"
+    ]
+  },
+  "semantic_kernel": {
+    "headers": [
+      "semantic-kernel-version"
+    ],
+    "user_agents": [
+      "Semantic-Kernel"
+    ]
+  },
+  "smolagents": {
+    "endpoints": [
+      "/run/agent",
+      "/api/predict"
+    ],
+    "user_agents": [
+      "smolagents",
+      "huggingface-hub"
+    ]
+  },
+  "spring_ai": {
+    "user_agents": [
+      "Spring-AI"
+    ]
+  },
+  "strands_agents": {
+    "user_agents": [
+      "strands-agents"
+    ]
+  },
+  "streamlit_agent_ui": {
+    "endpoints": [
+      "/_stcore/health",
+      "/_stcore/host-config"
+    ]
+  },
+  "superagi": {
+    "endpoints": [
+      "/api/agent/schedule",
+      "/api/agent/status"
+    ],
+    "user_agents": [
+      "superagi-agent"
+    ]
+  },
+  "supermaven": {
+    "endpoints": [],
+    "headers": [],
+    "user_agents": [
+      "supermaven"
+    ]
+  },
+  "swarm": {
+    "endpoints": [],
+    "headers": [],
+    "user_agents": [
+      "openai/swarm",
+      "swarm-python"
     ]
   },
   "symbiont": {
@@ -49,359 +861,13 @@
       "/.well-known/agent-identity.json"
     ]
   },
-  "openai_assistants": {
-    "user_agents": [
-      "openai-python",
-      "openai-node",
-      "OpenAI/Python",
-      "OpenAI/Node"
-    ],
-    "headers": [
-      "OpenAI-Beta",
-      "x-stainless-lang",
-      "x-stainless-package-version",
-      "x-stainless-os",
-      "x-stainless-arch",
-      "x-stainless-runtime",
-      "x-stainless-runtime-version"
-    ]
-  },
-  "anthropic_sdk": {
-    "user_agents": [
-      "Anthropic/Python",
-      "Anthropic/Node"
-    ],
-    "headers": [
-      "anthropic-version",
-      "anthropic-beta",
-      "x-stainless-lang",
-      "x-stainless-package-version",
-      "x-stainless-os",
-      "x-stainless-arch",
-      "x-stainless-runtime"
-    ]
-  },
-  "google_genai_sdk": {
-    "user_agents": [
-      "google-genai-sdk"
-    ]
-  },
-  "dify": {
+  "tabbyml": {
     "endpoints": [
-      "/api/v1/chat-messages",
-      "/api/v1/workflows"
-    ]
-  },
-  "flowise": {
-    "endpoints": [
-      "/api/v1/prediction",
-      "/api/v1/chatflows"
-    ]
-  },
-  "n8n": {
-    "endpoints": [
-      "/webhook/",
-      "/rest/workflows"
-    ]
-  },
-  "pydantic_ai": {
-    "endpoints": [
-      "/api/chat",
-      "/schema.json"
+      "/v1/completions",
+      "/v1/health"
     ],
     "user_agents": [
-      "pydantic-ai",
-      "pydantic-core"
-    ],
-    "headers": [
-      "x-pydantic-ai-*"
-    ]
-  },
-  "smolagents": {
-    "endpoints": [
-      "/run/agent",
-      "/api/predict"
-    ],
-    "user_agents": [
-      "smolagents",
-      "huggingface-hub"
-    ]
-  },
-  "browser_use": {
-    "endpoints": [
-      "/api/browser",
-      "/ws/browser"
-    ],
-    "user_agents": [
-      "browser-use"
-    ]
-  },
-  "openhands": {
-    "endpoints": [
-      "/api/options",
-      "/api/config",
-      "/ws"
-    ],
-    "user_agents": [
-      "openhands"
-    ]
-  },
-  "anythingllm": {
-    "endpoints": [
-      "/api/system/status",
-      "/api/v1/workspace"
-    ],
-    "headers": [
-      "x-anythingllm-signature"
-    ]
-  },
-  "superagi": {
-    "endpoints": [
-      "/api/agent/schedule",
-      "/api/agent/status"
-    ],
-    "user_agents": [
-      "superagi-agent"
-    ]
-  },
-  "llama_deploy": {
-    "endpoints": [
-      "/control-plane/status",
-      "/message-queue/status"
-    ],
-    "user_agents": [
-      "llamaindex",
-      "llama-deploy"
-    ]
-  },
-  "rasa": {
-    "endpoints": [
-      "/webhooks/rest/webhook",
-      "/status",
-      "/conversations"
-    ],
-    "headers": [
-      "x-rasa-version"
-    ]
-  },
-  "chatwoot": {
-    "endpoints": [
-      "/api/v1/accounts/1/conversations"
-    ],
-    "headers": [
-      "api_access_token"
-    ],
-    "user_agents": [
-      "chatwoot"
-    ]
-  },
-  "eliza": {
-    "endpoints": [
-      "/api/agents",
-      "/message"
-    ],
-    "user_agents": [
-      "eliza"
-    ]
-  },
-  "phidata": {
-    "endpoints": [
-      "/v1/agent/run",
-      "/v1/playground/chat"
-    ],
-    "user_agents": [
-      "phidata"
-    ]
-  },
-  "semantic_kernel": {
-    "headers": [
-      "semantic-kernel-version"
-    ],
-    "user_agents": [
-      "Semantic-Kernel"
-    ]
-  },
-  "mastra": {
-    "endpoints": [
-      "/api/mastra",
-      "/api/agents"
-    ]
-  },
-  "agent_metadata_standards": {
-    "endpoints": [
-      "/AGENTS.md",
-      "/SKILL.md",
-      "/SOUL.md",
-      "/MEMORY.md",
-      "/.well-known/agents.json",
-      "/.well-known/ai-plugin.json",
-      "/.well-known/clawhub.json"
-    ]
-  },
-  "roocode": {
-    "user_agents": [
-      "roocode",
-      "roo-code"
-    ],
-    "mcp_client_name": "roo-code"
-  },
-  "cline": {
-    "user_agents": [
-      "cline"
-    ],
-    "mcp_client_name": "cline"
-  },
-  "cursor": {
-    "user_agents": [
-      "cursor"
-    ],
-    "headers": [
-      "x-cursor-client-version",
-      "x-cursor-client-type",
-      "x-cursor-client-os",
-      "x-cursor-checksum",
-      "x-ghost-mode"
-    ],
-    "mcp_client_name": "cursor"
-  },
-  "aider": {
-    "user_agents": [
-      "aider"
-    ]
-  },
-  "continue_dev": {
-    "user_agents": [
-      "continue-dev",
-      "continue"
-    ],
-    "endpoints": [
-      "/ide/chat"
-    ],
-    "mcp_client_name": "continue"
-  },
-  "claude_code": {
-    "user_agents": [
-      "claude-code",
-      "claude-cli",
-      "claude-code/"
-    ],
-    "headers": [
-      "anthropic-beta"
-    ],
-    "mcp_client_name": "claude-code"
-  },
-  "claude_desktop": {
-    "mcp_client_name": "Claude Desktop"
-  },
-  "codex_cli": {
-    "user_agents": [
-      "codex-cli",
-      "openai-codex"
-    ]
-  },
-  "gemini_cli": {
-    "user_agents": [
-      "gemini-cli",
-      "google-genai-sdk"
-    ]
-  },
-  "copilot": {
-    "user_agents": [
-      "github-copilot",
-      "copilot",
-      "GithubCopilot",
-      "GitHubCopilotChat"
-    ],
-    "headers": [
-      "x-github-copilot-*",
-      "Editor-Version",
-      "Editor-Plugin-Version",
-      "Copilot-Integration-Id"
-    ]
-  },
-  "windsurf": {
-    "user_agents": [
-      "windsurf",
-      "codeium"
-    ],
-    "mcp_client_name": "windsurf"
-  },
-  "qwen_code": {
-    "user_agents": [
-      "qwen-code"
-    ]
-  },
-  "kimi_code": {
-    "user_agents": [
-      "kimi-code"
-    ]
-  },
-  "trae": {
-    "user_agents": [
-      "trae"
-    ]
-  },
-  "opencode": {
-    "mcp_client_name": "opencode"
-  },
-  "blackboxai": {
-    "user_agents": [
-      "blackboxai"
-    ]
-  },
-  "langgraph": {
-    "endpoints": [
-      "/runs",
-      "/threads",
-      "/assistants"
-    ],
-    "user_agents": [
-      "langgraph"
-    ]
-  },
-  "ag2": {
-    "endpoints": [
-      "/api/agents",
-      "/api/runs"
-    ],
-    "user_agents": [
-      "ag2"
-    ]
-  },
-  "haystack": {
-    "endpoints": [
-      "/pipeline/run"
-    ],
-    "user_agents": [
-      "haystack"
-    ]
-  },
-  "composio": {
-    "endpoints": [
-      "/api/v1/actions",
-      "/api/v1/triggers"
-    ],
-    "user_agents": [
-      "composio",
-      "composio-core"
-    ]
-  },
-  "rivet": {
-    "endpoints": [
-      "/api/graph/run"
-    ],
-    "user_agents": [
-      "rivet"
-    ]
-  },
-  "letta": {
-    "endpoints": [
-      "/api/agents",
-      "/api/memory"
-    ],
-    "user_agents": [
-      "letta",
-      "memgpt"
+      "tabby"
     ]
   },
   "taskweaver": {
@@ -413,215 +879,31 @@
       "taskweaver"
     ]
   },
-  "agno": {
-    "endpoints": [
-      "/v1/run",
-      "/v1/playground"
-    ],
-    "user_agents": [
-      "agno"
-    ]
-  },
-  "bee_agent": {
-    "endpoints": [
-      "/api/run"
-    ],
-    "user_agents": [
-      "bee-agent-framework"
-    ]
-  },
-  "camel_ai": {
-    "endpoints": [
-      "/api/chat",
-      "/api/role"
-    ],
-    "user_agents": [
-      "camel-ai"
-    ]
-  },
-  "julep": {
-    "endpoints": [
-      "/api/sessions",
-      "/api/agents"
-    ],
-    "user_agents": [
-      "julep"
-    ]
-  },
-  "openclaw": {
-    "endpoints": [
-      "/api/agents",
-      "/api/skills",
-      "/.well-known/clawhub.json"
-    ],
-    "headers": [
-      "x-openclaw-*"
-    ],
-    "user_agents": [
-      "openclaw",
-      "clawdbot",
-      "moltbot",
-      "clawhub"
-    ]
-  },
-  "strands_agents": {
-    "user_agents": [
-      "strands-agents"
-    ]
-  },
-  "google_adk": {
-    "user_agents": [
-      "google-adk"
-    ]
-  },
-  "vercel_ai_sdk": {
-    "user_agents": [
-      "ai"
-    ],
-    "headers": [
-      "x-vercel-ai-*"
-    ]
-  },
-  "e2b": {
-    "user_agents": [
-      "e2b"
-    ]
-  },
-  "langfuse": {
-    "endpoints": [
-      "/api/public/traces",
-      "/api/public/generations"
-    ],
-    "headers": [
-      "x-langfuse-*"
-    ]
-  },
-  "langsmith": {
-    "endpoints": [
-      "/api/v1/runs",
-      "/api/v1/datasets"
-    ],
-    "headers": [
-      "x-langsmith-*"
-    ]
-  },
-  "braintrust": {
-    "endpoints": [
-      "/api/project",
-      "/api/experiment"
-    ],
-    "headers": [
-      "x-bt-parent",
-      "x-bt-use-cache",
-      "x-bt-endpoint-name"
-    ],
-    "user_agents": [
-      "braintrust"
-    ]
-  },
-  "helicone": {
-    "headers": [
-      "helicone-*",
-      "helicone-auth",
-      "Helicone-Auth",
-      "Helicone-Property-*",
-      "Helicone-Session-Id",
-      "Helicone-Cache-Enabled",
-      "Helicone-User-Id",
-      "Helicone-Prompt-Id",
-      "Helicone-Target-Url"
-    ]
-  },
-  "portkey": {
-    "endpoints": [
-      "/v1/chat/completions",
-      "/v1/prompts"
-    ],
-    "headers": [
-      "x-portkey-*",
-      "x-portkey-api-key",
-      "x-portkey-provider",
-      "x-portkey-virtual-key",
-      "x-portkey-config",
-      "x-portkey-trace-id",
-      "x-portkey-metadata"
-    ]
-  },
-  "agentops": {
-    "headers": [
-      "x-agentops-*"
-    ],
-    "user_agents": [
-      "agentops"
-    ]
-  },
-  "litellm": {
-    "endpoints": [
-      "/chat/completions",
-      "/key/generate"
-    ],
-    "user_agents": [
-      "litellm"
-    ]
-  },
-  "mcp_inspector": {
-    "mcp_client_name": "mcp-inspector",
-    "user_agents": [
-      "mcp-inspector",
-      "inspector-client"
-    ]
-  },
-  "llama_cpp": {
-    "endpoints": [
-      "/completion",
-      "/v1/chat/completions"
-    ],
-    "user_agents": [
-      "llama.cpp"
-    ]
-  },
-  "tabbyml": {
-    "endpoints": [
-      "/v1/completions",
-      "/v1/health"
-    ],
-    "user_agents": [
-      "tabby"
-    ]
-  },
-  "jan": {
-    "endpoints": [
-      "/v1/chat/completions",
-      "/v1/models"
-    ],
-    "user_agents": [
-      "jan"
-    ]
-  },
   "text_generation_webui": {
     "endpoints": [
       "/api/v1/generate",
       "/api/v1/chat"
     ]
   },
-  "koboldcpp": {
-    "endpoints": [
-      "/api/v1/generate",
-      "/api/extra/generate/stream"
-    ],
+  "trae": {
     "user_agents": [
-      "koboldcpp"
+      "trae"
     ]
   },
-  "ollama": {
-    "endpoints": [
-      "/api/generate",
-      "/api/chat",
-      "/api/tags",
-      "/api/ps"
+  "v0": {
+    "endpoints": [],
+    "headers": [],
+    "user_agents": [
+      "v0.dev",
+      "vercel/v0"
+    ]
+  },
+  "vercel_ai_sdk": {
+    "headers": [
+      "x-vercel-ai-*"
     ],
     "user_agents": [
-      "ollama"
+      "ai"
     ]
   },
   "vllm": {
@@ -634,39 +916,11 @@
       "vllm"
     ]
   },
-  "lm_studio": {
-    "endpoints": [
-      "/v1/models",
-      "/v1/chat/completions"
-    ],
+  "windsurf": {
+    "mcp_client_name": "windsurf",
     "user_agents": [
-      "LM Studio",
-      "LMStudio"
-    ]
-  },
-  "gradio_agent_ui": {
-    "endpoints": [
-      "/api/predict",
-      "/queue/join"
-    ],
-    "user_agents": [
-      "gradio"
-    ]
-  },
-  "streamlit_agent_ui": {
-    "endpoints": [
-      "/_stcore/health",
-      "/_stcore/host-config"
-    ]
-  },
-  "langchain4j": {
-    "user_agents": [
-      "langchain4j"
-    ]
-  },
-  "spring_ai": {
-    "user_agents": [
-      "Spring-AI"
+      "windsurf",
+      "codeium"
     ]
   }
 }

@@ -1,0 +1,25 @@
+[package]
+name = "agentsniff-ebpf"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+aya-ebpf = "0.1"
+aya-log-ebpf = "0.1"
+agentsniff-common = { path = "../agentsniff-common", default-features = false }
+
+[[bin]]
+name = "dns"
+path = "src/dns.rs"
+
+[[bin]]
+name = "connect"
+path = "src/connect.rs"
+
+[[bin]]
+name = "tls"
+path = "src/tls.rs"
+
+[[bin]]
+name = "traffic"
+path = "src/traffic.rs"

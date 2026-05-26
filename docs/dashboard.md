@@ -43,3 +43,12 @@ Click the gear icon to configure:
 - **Webhook URL** — HTTP POST endpoint for alert notifications
 - **SMTP settings** — Email server configuration for alert emails
 - **Test Alert** — Send a test notification to verify configuration
+
+### Export & Database Management
+
+The Export dropdown writes the latest scan in JSON, CSV, or SARIF 2.1.0 format.
+
+On v2, the dashboard also exposes database administration controls backed by `GET /api/db/backup` and `POST /api/db/reset`:
+
+- **Backup Database** — downloads a snapshot of the SQLite scan history
+- **Reset Database** — wipes all stored scans (confirmation required)

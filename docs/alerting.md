@@ -71,6 +71,8 @@ smtp_to:
   - "security@example.com"
 ```
 
+Both v1 (`smtplib`) and v2 (`lettre`) support `smtp_use_tls: true` (STARTTLS on the configured port, typically 587) and `smtp_use_tls: false` (plaintext relay). The alert payload — including the JSON attachment — is byte-identical between the two implementations.
+
 Or via CLI:
 
 ```bash

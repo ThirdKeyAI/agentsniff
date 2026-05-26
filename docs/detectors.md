@@ -15,6 +15,8 @@ AgentSniff uses eight detection modules that run concurrently. Each produces sig
 
 \* Falls back to non-root alternatives automatically.
 
+In the v2 (Rust) build, the four detectors marked "Requires Root" can use kernel-level eBPF capture when the binary is built with `--features ebpf` and run with the necessary capabilities. Without eBPF (or in v1) the same detectors automatically use the same userspace fallback paths described below.
+
 ---
 
 ## DNS Monitor
@@ -86,7 +88,7 @@ Also analyzes `/proc/net/tcp` for established connections to known LLM API IP ad
 
 Detects Server-Sent Events (SSE) streaming patterns characteristic of LLM responses. Looks for long-lived HTTP connections with `text/event-stream` content from known LLM API IPs.
 
-**Requires**: Raw socket access for passive capture. No fallback.
+**Requires**: Raw socket access (or eBPF on v2 with `--features ebpf`) for passive capture.
 
 ---
 

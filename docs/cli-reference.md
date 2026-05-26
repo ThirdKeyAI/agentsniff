@@ -1,5 +1,7 @@
 # CLI Reference
 
+The CLI surface is identical between v1 (Python) and v2 (Rust). Every flag documented here is supported on both.
+
 ## Commands
 
 ```
@@ -11,6 +13,7 @@ agentsniff <command> [options]
 | `scan` | Run a network scan |
 | `serve` | Start web dashboard API server |
 | `init-config` | Generate default configuration file |
+| `update-signatures` | Download and verify detection signatures from GitHub |
 
 ## scan
 
@@ -102,8 +105,33 @@ agentsniff serve --db /var/lib/agentsniff/scans.db \
 
 ## init-config
 
-Generate a default `agentsniff.yaml` configuration file in the current directory.
+Generate a default configuration file.
 
 ```bash
-agentsniff init-config
+agentsniff init-config                          # writes ./agentsniff.yaml
+agentsniff init-config --output myconfig.yaml   # custom path (v2)
+agentsniff init-config --force                  # overwrite existing file (v2)
 ```
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `--output PATH` | Path for the generated YAML (v2 only) | `agentsniff.yaml` |
+| `--force` | Overwrite an existing file (v2 only) | `false` |
+
+## update-signatures
+
+Download and (optionally) verify the detection signature files from the official source.
+
+```bash
+agentsniff update-signatures
+agentsniff update-signatures --no-verify
+agentsniff update-signatures --url https://signatures.example.com/  # v2 only
+```
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `--verify` | Verify SchemaPin signatures after download | `true` |
+| `--no-verify` | Skip signature verification | `false` |
+| `--url BASE` | Custom base URL for signature files (v2 only) | — |
+
+The signatures are signed with ECDSA-P256 against an embedded public key; if `--verify` is on (default), any tampered file aborts the update.

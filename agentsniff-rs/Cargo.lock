@@ -4,7 +4,7 @@ version = 4
 
 [[package]]
 name = "agentsniff"
-version = "2.0.0-alpha.1"
+version = "2.0.0"
 dependencies = [
  "agentsniff-common",
  "anyhow",
@@ -39,7 +39,7 @@ dependencies = [
 
 [[package]]
 name = "agentsniff-common"
-version = "2.0.0-alpha.1"
+version = "2.0.0"
 
 [[package]]
 name = "ahash"

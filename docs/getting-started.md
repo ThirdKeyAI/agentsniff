@@ -48,8 +48,16 @@ docker compose up -d
 
 ## Installation — v2 (Rust)
 
+### crates.io
+
 ```bash
-git clone -b rust-rewrite https://github.com/ThirdKeyAI/agentsniff.git
+cargo install agentsniff
+```
+
+### From source
+
+```bash
+git clone https://github.com/ThirdKeyAI/agentsniff.git
 cd agentsniff/agentsniff-rs
 
 # Standard build — binary at ./target/release/agentsniff

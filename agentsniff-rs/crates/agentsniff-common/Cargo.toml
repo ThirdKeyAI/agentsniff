@@ -3,6 +3,14 @@ name = "agentsniff-common"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+authors.workspace = true
+description = "Shared types and event structures for AgentSniff — used by the userspace scanner and the eBPF probes."
+repository = "https://github.com/ThirdKeyAI/agentsniff"
+homepage = "https://agentsniff.org"
+documentation = "https://docs.agentsniff.org/"
+readme = "README.md"
+keywords = ["agentsniff", "ai", "security", "ebpf", "network"]
+categories = ["network-programming", "data-structures"]
 
 [features]
 default = []

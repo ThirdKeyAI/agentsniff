@@ -6,4 +6,4 @@ You almost certainly want the [`agentsniff`](https://crates.io/crates/agentsniff
 
 ## License
 
-Apache-2.0
+Apache-2.0 — Copyright Jascha Wanger / ThirdKey AI

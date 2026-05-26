@@ -16,26 +16,25 @@ AgentSniff identifies AI agents on enterprise networks using eight complementary
 
 ## Implementations
 
-AgentSniff ships in two source trees that share the same CLI surface, dashboard, REST API, signed signature files, and on-disk schema:
+AgentSniff ships in two source trees on `main`, sharing the same CLI surface, dashboard, REST API, signed signature files, and on-disk schema:
 
-| Version | Branch | Source | Status |
-|---|---|---|---|
-| **v1 (Python)** | `main` | `agentsniff/` | Released — current stable |
-| **v2 (Rust)** | `rust-rewrite` | `agentsniff-rs/` | Preview — feature-parity with v1, plus eBPF passive capture, PostgreSQL / Redis storage backends, and Zeek / Nmap integrations |
+| Version | Source | Status |
+|---|---|---|
+| **v2 (Rust)** | `agentsniff-rs/` | Current stable — adds eBPF passive capture, PostgreSQL / Redis storage backends, and Zeek / Nmap integrations |
+| **v1 (Python)** | `agentsniff/` | Legacy — still maintained for parity, but new work targets v2 |
 
 Everything in this documentation set applies to both versions unless explicitly tagged "v1 only" or "v2 only".
 
 ## Quick Start
 
 ```bash
+# v2 (Rust — recommended)
+cargo install agentsniff
+agentsniff scan 192.168.1.0/24
+
 # v1 (Python)
 pip install agentsniff
 agentsniff scan 192.168.1.0/24
-
-# v2 (Rust)
-git clone -b rust-rewrite https://github.com/ThirdKeyAI/agentsniff
-cd agentsniff/agentsniff-rs && cargo build --release
-./target/release/agentsniff scan 192.168.1.0/24
 
 # Same flags on both versions
 agentsniff scan 10.0.0.0/24 --format json --output results.json
@@ -62,4 +61,5 @@ agentsniff serve --port 9090
 
 - [GitHub](https://github.com/ThirdKeyAI/agentsniff)
 - [Website](https://agentsniff.org)
+- [crates.io](https://crates.io/crates/agentsniff)
 - [PyPI](https://pypi.org/project/agentsniff/)

@@ -11,6 +11,17 @@ documentation = "https://docs.agentsniff.org/"
 readme = "README.md"
 keywords = ["agentsniff", "ai", "security", "scanner", "agents"]
 categories = ["command-line-utilities", "network-programming"]
+# Force-include the nested agentsniff-ebpf source tree — cargo would
+# otherwise skip it because it contains its own Cargo.toml.
+include = [
+    "src/**/*",
+    "tests/**/*",
+    "assets/**/*",
+    "agentsniff-ebpf/**/*",
+    "build.rs",
+    "README.md",
+    "Cargo.toml",
+]
 
 [lib]
 name = "agentsniff"
@@ -25,7 +36,7 @@ default = []
 ebpf = ["dep:aya", "dep:aya-log", "dep:aya-build"]
 
 [dependencies]
-agentsniff-common = { path = "../agentsniff-common", version = "2.0.0", features = ["user"] }
+agentsniff-common = { path = "../agentsniff-common", version = "2.0.1", features = ["user"] }
 tokio = { version = "1", features = ["full"] }
 clap = { version = "4", features = ["derive"] }
 anyhow = "1"

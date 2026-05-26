@@ -41,7 +41,9 @@ Plus optional integrations: Zeek log ingestion (`--zeek-logs`) and Nmap enrichme
 ## Optional Features
 
 ```bash
-# eBPF passive capture (requires nightly + bpf-linker)
+# eBPF passive capture (requires a nightly Rust toolchain — the nested
+# eBPF crate pins nightly via its own rust-toolchain.toml, so cargo
+# picks it up automatically as long as nightly is installed via rustup).
 cargo install agentsniff --features ebpf
 ```
 

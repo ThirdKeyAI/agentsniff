@@ -6,7 +6,7 @@
 
 ## Overview
 
-AgentSniff identifies AI agents on enterprise networks using seven complementary detection modules:
+AgentSniff identifies AI agents on enterprise networks using eight complementary detection modules:
 
 | Detector | Method | Requires Root | Confidence |
 |---|---|---|---|
@@ -17,6 +17,7 @@ AgentSniff identifies AI agents on enterprise networks using seven complementary
 | **Endpoint Prober** | HTTP probing for agent framework signatures | No | Medium–High |
 | **TLS Fingerprint** | JA3 fingerprinting of agent HTTP clients | Yes* | High |
 | **Traffic Analyzer** | Behavioral pattern analysis (burst detection, LLM call patterns) | Yes* | Medium–High |
+| **SSE Detector** | LLM streaming connection detection (eBPF or raw-socket fallback) | Yes* | High |
 
 \* Falls back to non-root alternatives automatically.
 
@@ -43,17 +44,23 @@ The CLI subcommands (`scan`, `serve`, `init-config`, `update-signatures`) and th
 ### Standalone (Rust v2 — recommended)
 
 ```bash
-# Build from the agentsniff-rs/ workspace
-cd agentsniff-rs
-cargo build --release   # binary at ./target/release/agentsniff
+# Install from crates.io
+cargo install agentsniff
 
 # Same CLI as v1
-./target/release/agentsniff scan 192.168.1.0/24
-./target/release/agentsniff scan 192.168.1.0/24 --continuous 60
-./target/release/agentsniff serve --port 9090
+agentsniff scan 192.168.1.0/24
+agentsniff scan 192.168.1.0/24 --continuous 60
+agentsniff serve --port 9090
 
-# Optional: build with eBPF passive capture (requires nightly + bpf-linker)
-cargo build --release --features ebpf
+# With eBPF passive capture (requires nightly toolchain)
+cargo install agentsniff --features ebpf
+```
+
+Or build from source:
+
+```bash
+cd agentsniff-rs
+cargo build --release   # binary at ./target/release/agentsniff
 ```
 
 The Rust binary statically embeds the dashboard and the signed signature files, so the single `agentsniff` executable is fully self-contained.
@@ -169,6 +176,9 @@ Computes JA3 hashes from TLS ClientHello messages to identify agent HTTP client 
 
 ### Traffic Analyzer
 Profiles network hosts by behavioral patterns characteristic of AI agents: bursty tool invocation sequences interspersed with LLM API calls (the observe-reason-act loop), streaming SSE connections, and diverse API target sets. Also analyzes `/proc/net/tcp` for established connections to known LLM API IP addresses.
+
+### SSE Detector
+Identifies long-lived `text/event-stream` connections characteristic of LLM streaming responses. v2's `--features ebpf` build hooks into kernel TC programs for zero-copy passive capture; on systems without eBPF it falls back to a raw-socket sniffer.
 
 ## Storage
 
@@ -321,21 +331,22 @@ When running `agentsniff serve`:
 ## Architecture
 
 ```
-┌──────────────────────────────────────────────────┐
-│                 AgentSniff CLI                   │
-│         agentsniff scan | serve                  │
-├──────────┬───────────────────────┬───────────────┤
-│ REST API │    Scanner Engine     │  Web Dashboard│
-│ (FastAPI)│                       │  (HTML/JS/CSS)│
-├──────────┴───────────┬───────────┴───────────────┤
-│              Signal Correlator                   │
-│     Groups signals by host, calculates scores    │
-├─────┬─────┬─────┬─────┬─────┬─────┬──────────────┤
-│ DNS │Port │Agent│ MCP │ EP  │ TLS │  Traffic     │
-│ Mon │Scan │Pin  │ Det │Probe│ FP  │  Analyzer    │
-├─────┴─────┴─────┴─────┴─────┴─────┴──────────────┤
-│              Target Network                      │
-└──────────────────────────────────────────────────┘
+┌────────────────────────────────────────────────────────┐
+│                    AgentSniff CLI                      │
+│              agentsniff scan | serve                   │
+├──────────────┬─────────────────────────┬───────────────┤
+│   REST API   │     Scanner Engine      │ Web Dashboard │
+│ (FastAPI/    │                         │ (HTML/JS/CSS) │
+│  axum)       │                         │               │
+├──────────────┴───────────┬─────────────┴───────────────┤
+│                  Signal Correlator                     │
+│     Groups signals by host, calculates scores          │
+├─────┬─────┬─────┬─────┬─────┬─────┬─────────┬──────────┤
+│ DNS │Port │Agent│ MCP │ EP  │ TLS │ Traffic │   SSE    │
+│ Mon │Scan │Pin  │ Det │Probe│ FP  │Analyzer │ Detector │
+├─────┴─────┴─────┴─────┴─────┴─────┴─────────┴──────────┤
+│                    Target Network                      │
+└────────────────────────────────────────────────────────┘
 ```
 
 Signals from all detectors are correlated using noisy-OR probability combination, grouping by source host IP to produce unified `DetectedAgent` records with aggregate confidence scores.
@@ -344,7 +355,7 @@ Signals from all detectors are correlated using noisy-OR probability combination
 
 AgentSniff complements the ThirdKey trust infrastructure:
 
-- <a href="https://agentpin.org/" target="_blank"><strong>AgentPin</strong></a> — Cooperative agent discovery via cryptographic identity documents
+- <a href="https://agentpin.org/" target="_blank"><strong>AgentPin</strong></a> — Domain-anchored cryptographic identity for AI agents
 - <a href="https://schemapin.org/" target="_blank"><strong>SchemaPin</strong></a> — Verified tools detected on MCP servers can be cross-checked against SchemaPin signatures
 - <a href="https://symbiont.dev/" target="_blank"><strong>Symbiont</strong></a> — AgentSniff can run as a Symbiont agent with policy-enforced scanning boundaries
 - <a href="https://github.com/ThirdKeyAI/AgentNull" target="_blank"><strong>AgentNull</strong></a> — Detection evasion research feeds back into scanner improvements
@@ -357,14 +368,14 @@ AgentSniff complements the ThirdKey trust infrastructure:
 - Root/CAP_NET_RAW optional (enables passive DNS, TLS, and traffic monitoring)
 
 **v2 (Rust)**
-- Rust 1.75+ (stable) — `cargo build --release`
-- Linux recommended; `--features ebpf` requires nightly + `bpf-linker` and a recent kernel
+- Rust 1.75+ (stable) — `cargo install agentsniff` or `cargo build --release`
+- Linux recommended; `--features ebpf` requires a nightly toolchain and a recent kernel (cargo will pick the pinned nightly automatically)
 - Root/CAP_NET_RAW optional (same passive-capture trade-off as v1)
 - Optional external integrations: `nmap` binary on PATH for `--nmap`, Zeek log directory for `--zeek-logs`
 
 ## License
 
-Apache License 2.0 — Jascha Wanger / ThirdKey AI
+Apache License 2.0 — Copyright Jascha Wanger / ThirdKey AI
 
 ## Disclaimer
 

@@ -52,6 +52,9 @@ docker compose up -d
 
 ```bash
 cargo install agentsniff
+
+# With eBPF passive capture (nightly toolchain auto-selected by the inner crate)
+cargo install agentsniff --features ebpf
 ```
 
 ### From source
@@ -63,7 +66,7 @@ cd agentsniff/agentsniff-rs
 # Standard build — binary at ./target/release/agentsniff
 cargo build --release
 
-# With optional eBPF passive capture (requires nightly + bpf-linker)
+# With optional eBPF passive capture (requires a nightly toolchain)
 cargo build --release --features ebpf
 ```
 
@@ -79,8 +82,8 @@ To pull in the optional Zeek and Nmap integrations, just have `nmap` on `$PATH` 
 - Root/CAP_NET_RAW optional (enables passive DNS, TLS, and traffic monitoring)
 
 **v2 (Rust)**
-- Rust 1.75+ (stable) — the `rust-toolchain.toml` pins `stable`
-- Linux recommended; `--features ebpf` requires nightly + `bpf-linker` and a recent kernel
+- Rust 1.75+ (stable) — the userspace workspace pins `stable` via `rust-toolchain.toml`
+- Linux recommended; `--features ebpf` requires a nightly toolchain and a recent kernel (the embedded eBPF crate pins nightly itself, so `cargo install agentsniff --features ebpf` selects it automatically as long as nightly is installed)
 - Root/CAP_NET_RAW optional (same passive-capture trade-off as v1)
 - Optional external integrations: `nmap` binary on `$PATH` for `--nmap`, Zeek log directory for `--zeek-logs`
 

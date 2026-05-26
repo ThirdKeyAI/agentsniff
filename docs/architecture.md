@@ -140,14 +140,14 @@ v1 stores scan history in a single SQLite database at `~/.agentsniff/agentsniff.
 | `agentsniff-rs/crates/agentsniff/src/detectors/` | All eight detector modules |
 | `agentsniff-rs/crates/agentsniff/src/integrations/` | Zeek + Nmap |
 | `agentsniff-rs/crates/agentsniff/src/signatures/` | Embedded signed signature loader |
-| `agentsniff-rs/crates/agentsniff-ebpf/` | Optional kernel eBPF programs (DNS, connect, TLS, traffic) |
+| `agentsniff-rs/crates/agentsniff/agentsniff-ebpf/` | Optional kernel eBPF programs (DNS, connect, TLS, traffic) — bundled into the agentsniff crate tarball |
 | `agentsniff-rs/crates/agentsniff/assets/` | Embedded dashboard + signed signature files |
 
 ## ThirdKey Trust Stack
 
 AgentSniff complements the ThirdKey trust infrastructure:
 
-- [AgentPin](https://agentpin.org) — Cooperative agent discovery via cryptographic identity documents
+- [AgentPin](https://agentpin.org) — Domain-anchored cryptographic identity for AI agents
 - [SchemaPin](https://schemapin.org) — Verified tools detected on MCP servers can be cross-checked against SchemaPin signatures
 - [Symbiont](https://symbiont.dev) — AgentSniff can run as a Symbiont agent with policy-enforced scanning boundaries
 - [AgentNull](https://github.com/ThirdKeyAI/AgentNull) — Detection evasion research feeds back into scanner improvements

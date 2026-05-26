@@ -27,18 +27,36 @@ AgentSniff identifies AI agents on enterprise networks using seven complementary
 
 ## Implementations
 
-AgentSniff ships in two source trees:
+AgentSniff ships in two source trees, both on `main`:
 
-| Version | Branch | Source | Status |
-|---|---|---|---|
-| **v1 (Python)** | `main` | `agentsniff/` | Released — current stable |
-| **v2 (Rust)** | `rust-rewrite` | `agentsniff-rs/` | Preview — feature-parity with v1, plus eBPF passive capture, PostgreSQL / Redis storage backends, and Zeek / Nmap integrations |
+| Version | Source | Status |
+|---|---|---|
+| **v2 (Rust)** | `agentsniff-rs/` | Current stable — adds eBPF passive capture, PostgreSQL / Redis storage backends, and Zeek / Nmap integrations |
+| **v1 (Python)** | `agentsniff/` | Legacy — still maintained for parity, but new work targets v2 |
 
 Both versions share the same signed signature files (`agentsniff/signatures/` and `agentsniff-rs/crates/agentsniff/assets/signatures/`), the same dashboard HTML, and the same `Detected Agent` JSON schema, so configuration, alert payloads, SARIF exports, and database history are interchangeable.
 
 The CLI subcommands (`scan`, `serve`, `init-config`, `update-signatures`) and the dashboard REST API are identical between v1 and v2; everything in the **CLI Usage** and **API Endpoints** sections below applies to both. Where v2 adds something on top of v1 it is called out inline.
 
 ## Quick Start
+
+### Standalone (Rust v2 — recommended)
+
+```bash
+# Build from the agentsniff-rs/ workspace
+cd agentsniff-rs
+cargo build --release   # binary at ./target/release/agentsniff
+
+# Same CLI as v1
+./target/release/agentsniff scan 192.168.1.0/24
+./target/release/agentsniff scan 192.168.1.0/24 --continuous 60
+./target/release/agentsniff serve --port 9090
+
+# Optional: build with eBPF passive capture (requires nightly + bpf-linker)
+cargo build --release --features ebpf
+```
+
+The Rust binary statically embeds the dashboard and the signed signature files, so the single `agentsniff` executable is fully self-contained.
 
 ### Standalone (Python v1)
 
@@ -61,25 +79,6 @@ agentsniff scan 192.168.1.0/24 --continuous 60
 # Start web dashboard
 agentsniff serve --port 9090
 ```
-
-### Standalone (Rust v2)
-
-```bash
-# Switch to the rust-rewrite branch and build
-git checkout rust-rewrite
-cd agentsniff-rs
-cargo build --release   # binary at ./target/release/agentsniff
-
-# Same CLI as v1
-./target/release/agentsniff scan 192.168.1.0/24
-./target/release/agentsniff scan 192.168.1.0/24 --continuous 60
-./target/release/agentsniff serve --port 9090
-
-# Optional: build with eBPF passive capture (requires nightly + bpf-linker)
-cargo build --release --features ebpf
-```
-
-The Rust binary statically embeds the dashboard and the signed signature files, so the single `agentsniff` executable is fully self-contained.
 
 ### Docker
 

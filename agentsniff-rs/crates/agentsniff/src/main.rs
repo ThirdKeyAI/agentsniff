@@ -322,7 +322,7 @@ async fn main() -> anyhow::Result<()> {
                 .filter(|v| **v == VerificationStatus::Verified)
                 .count();
             let total = sigs.verification_status.len();
-            println!("agentsniff v2.0.0-alpha.1");
+            println!("agentsniff v{}", env!("CARGO_PKG_VERSION"));
 
             let (ebpf_status, ebpf_channels) =
                 try_load_ebpf(&scan_config.ebpf_interface);
@@ -446,9 +446,9 @@ fn print_banner() {
   / /| |/ __ `/ _ \\/ __ \\/ __/\\__ \\/ __ \\/ / /_/ /_
  / ___ / /_/ /  __/ / / / /_ ___/ / / / / / __/ __/
 /_/  |_\\__, /\\___/_/ /_/\\__//____/_/ /_/_/_/ /_/
-      /____/{}{}  AI Agent Network Scanner v2.0.0-alpha.1
+      /____/{}{}  AI Agent Network Scanner v{}
   Detect AI agents on your network{}",
-        ANSI_CYAN, ANSI_BOLD, ANSI_RESET, ANSI_DIM, ANSI_RESET,
+        ANSI_CYAN, ANSI_BOLD, ANSI_RESET, ANSI_DIM, env!("CARGO_PKG_VERSION"), ANSI_RESET,
     );
 }
 

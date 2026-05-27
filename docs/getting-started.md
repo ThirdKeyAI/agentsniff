@@ -1,52 +1,6 @@
 # Getting Started
 
-## Installation — v1 (Python)
-
-### PyPI
-
-```bash
-pip install agentsniff
-```
-
-### With nmap integration
-
-```bash
-pip install agentsniff[nmap]
-```
-
-### From source
-
-```bash
-git clone https://github.com/ThirdKeyAI/agentsniff.git
-cd agentsniff
-pip install -e .
-```
-
-### Docker
-
-```bash
-docker build -t agentsniff .
-
-# Web dashboard (host network for full visibility)
-docker run -d --name agentsniff \
-  --network host \
-  --cap-add NET_RAW \
-  --cap-add NET_ADMIN \
-  agentsniff
-
-# One-shot scan
-docker run --rm --network host --cap-add NET_RAW \
-  agentsniff scan 192.168.1.0/24
-```
-
-### Docker Compose
-
-```bash
-docker compose up -d
-# Dashboard at http://localhost:9090
-```
-
-## Installation — v2 (Rust)
+## Installation — v2 (Rust, recommended)
 
 ### One-liner installer (Linux / macOS)
 
@@ -109,22 +63,70 @@ The Rust binary is self-contained: it statically embeds the dashboard HTML and t
 
 To pull in the optional Zeek and Nmap integrations, just have `nmap` on `$PATH` and point `--zeek-logs` at a Zeek JSON log directory — no extra build flags needed.
 
+## Installation — v1 (Python, Legacy)
+
+> The Python implementation is maintained for parity but new work targets v2 (Rust). Prefer the Rust install above unless you specifically need the Python tree.
+
+### PyPI
+
+```bash
+pip install agentsniff
+```
+
+### With nmap integration
+
+```bash
+pip install agentsniff[nmap]
+```
+
+### From source
+
+```bash
+git clone https://github.com/ThirdKeyAI/agentsniff.git
+cd agentsniff
+pip install -e .
+```
+
+### Docker
+
+```bash
+docker build -t agentsniff .
+
+# Web dashboard (host network for full visibility)
+docker run -d --name agentsniff \
+  --network host \
+  --cap-add NET_RAW \
+  --cap-add NET_ADMIN \
+  agentsniff
+
+# One-shot scan
+docker run --rm --network host --cap-add NET_RAW \
+  agentsniff scan 192.168.1.0/24
+```
+
+### Docker Compose
+
+```bash
+docker compose up -d
+# Dashboard at http://localhost:9090
+```
+
 ## Requirements
 
-**v1 (Python)**
-- Python 3.11+
-- Linux recommended (for `/proc/net/tcp` analysis)
-- Root/CAP_NET_RAW optional (enables passive DNS, TLS, and traffic monitoring)
-
-**v2 (Rust)**
+**v2 (Rust, recommended)**
 - Rust 1.75+ (stable) — the userspace workspace pins `stable` via `rust-toolchain.toml`
 - Linux recommended; `--features ebpf` requires a nightly toolchain and a recent kernel (the embedded eBPF crate pins nightly itself, so `cargo install agentsniff --features ebpf` selects it automatically as long as nightly is installed)
-- Root/CAP_NET_RAW optional (same passive-capture trade-off as v1)
+- Root/CAP_NET_RAW optional (enables passive DNS, TLS, and traffic monitoring)
 - Optional external integrations: `nmap` binary on `$PATH` for `--nmap`, Zeek log directory for `--zeek-logs`
+
+**v1 (Python, Legacy)**
+- Python 3.11+
+- Linux recommended (for `/proc/net/tcp` analysis)
+- Root/CAP_NET_RAW optional (same passive-capture trade-off as v2)
 
 ## Your First Scan
 
-The CLI is identical on both v1 and v2. Use `agentsniff` (v1) or the path to the Rust binary (`./target/release/agentsniff` for v2).
+The CLI is identical on v2 (Rust) and v1 (Python). Use the `agentsniff` binary on your `$PATH` (after `cargo install agentsniff` or the one-liner installer) — or the path to a source build (`./target/release/agentsniff`).
 
 Scan a single host:
 

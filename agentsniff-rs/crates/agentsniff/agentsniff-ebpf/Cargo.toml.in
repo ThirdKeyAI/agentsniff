@@ -1,6 +1,6 @@
 [package]
 name = "agentsniff-ebpf"
-version = "2.0.1"
+version = "2.0.2"
 edition = "2021"
 license = "Apache-2.0"
 publish = false
@@ -12,7 +12,7 @@ publish = false
 [dependencies]
 aya-ebpf = "0.1"
 aya-log-ebpf = "0.1"
-agentsniff-common = { path = "../../agentsniff-common", version = "2.0.1", default-features = false }
+agentsniff-common = { path = "../../agentsniff-common", version = "2.0.2", default-features = false }
 
 [[bin]]
 name = "dns"

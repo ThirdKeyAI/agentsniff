@@ -12,6 +12,14 @@ cargo install agentsniff
 
 The binary statically embeds the dashboard HTML and the signed signature files, so the single `agentsniff` executable is fully self-contained.
 
+If you'd rather skip the Rust toolchain, pre-built binaries for Linux (x86_64 / aarch64), macOS (Apple Silicon / Intel), and Windows (x86_64) are attached to every [GitHub release](https://github.com/ThirdKeyAI/agentsniff/releases/latest), each signed keyless with [Sigstore cosign](https://docs.sigstore.dev/). On Linux / macOS:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/ThirdKeyAI/agentsniff/main/scripts/install.sh | bash
+```
+
+The installer auto-detects your platform, verifies the SHA256 checksum, and drops the binary at `~/.agentsniff/bin/`.
+
 ## Quick Start
 
 ```bash

@@ -5,7 +5,8 @@
 set -e
 
 VERSION="latest"
-INSTALL_DIR="${AGENTSNIFF_INSTALL_DIR:-$HOME/.agentsniff}"
+DEFAULT_INSTALL_DIR="$HOME/.agentsniff"
+INSTALL_DIR="${AGENTSNIFF_INSTALL_DIR:-$DEFAULT_INSTALL_DIR}"
 BIN_DIR="$INSTALL_DIR/bin"
 GITHUB_REPO="ThirdKeyAI/agentsniff"
 
@@ -154,6 +155,24 @@ install_binary() {
 update_path() {
     echo "• Updating PATH..."
 
+    if echo "$PATH" | grep -q "$BIN_DIR"; then
+        echo -e "${GREEN}✓ PATH already contains ${BIN_DIR}${NC}"
+        export PATH="$PATH:$BIN_DIR"
+        return
+    fi
+
+    # Only auto-edit shell rc files when installing to the default location.
+    # A custom AGENTSNIFF_INSTALL_DIR usually means the caller is scripting
+    # the install (CI, image builds, ad-hoc tests) and shouldn't have their
+    # shell config rewritten as a side effect.
+    if [ "$INSTALL_DIR" != "$DEFAULT_INSTALL_DIR" ]; then
+        echo -e "${YELLOW}  Custom AGENTSNIFF_INSTALL_DIR detected — skipping shell rc edit.${NC}"
+        echo -e "${YELLOW}  Add ${BIN_DIR} to your PATH manually:${NC}"
+        echo -e "${YELLOW}      export PATH=\"\$PATH:${BIN_DIR}\"${NC}"
+        export PATH="$PATH:$BIN_DIR"
+        return
+    fi
+
     local shell_rc=""
     if [ -n "$BASH_VERSION" ]; then
         shell_rc="$HOME/.bashrc"
@@ -163,13 +182,9 @@ update_path() {
         shell_rc="$HOME/.profile"
     fi
 
-    if ! echo "$PATH" | grep -q "$BIN_DIR"; then
-        echo "export PATH=\"\$PATH:$BIN_DIR\"" >> "$shell_rc"
-        echo -e "${GREEN}✓ Added ${BIN_DIR} to PATH in ${shell_rc}${NC}"
-        echo -e "${YELLOW}  Run: source ${shell_rc}${NC}"
-    else
-        echo -e "${GREEN}✓ PATH already contains ${BIN_DIR}${NC}"
-    fi
+    echo "export PATH=\"\$PATH:$BIN_DIR\"" >> "$shell_rc"
+    echo -e "${GREEN}✓ Added ${BIN_DIR} to PATH in ${shell_rc}${NC}"
+    echo -e "${YELLOW}  Run: source ${shell_rc}${NC}"
 
     export PATH="$PATH:$BIN_DIR"
 }

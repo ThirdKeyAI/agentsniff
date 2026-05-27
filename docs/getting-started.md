@@ -51,7 +51,7 @@ docker compose up -d
 ### One-liner installer (Linux / macOS)
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/ThirdKeyAI/agentsniff/main/scripts/install.sh | bash
+curl -fsSL https://agentsniff.org/install.sh | bash
 ```
 
 Detects the host triple, downloads the matching archive from the latest GitHub release, verifies its SHA256 checksum, drops `agentsniff` into `~/.agentsniff/bin/`, and appends the bin dir to your shell's PATH file.

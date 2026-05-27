@@ -1,6 +1,6 @@
 #!/bin/bash
 # AgentSniff One-Liner Installer
-# Usage: curl -fsSL https://raw.githubusercontent.com/ThirdKeyAI/agentsniff/main/scripts/install.sh | bash
+# Usage: curl -fsSL https://agentsniff.org/install.sh | bash
 
 set -e
 

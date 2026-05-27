@@ -46,7 +46,7 @@ The CLI subcommands (`scan`, `serve`, `init-config`, `update-signatures`) and th
 **One-liner installer (Linux / macOS):**
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/ThirdKeyAI/agentsniff/main/scripts/install.sh | bash
+curl -fsSL https://agentsniff.org/install.sh | bash
 ```
 
 The script detects your platform, downloads the matching signed archive from the latest GitHub release, verifies the SHA256 checksum, and installs `agentsniff` to `~/.agentsniff/bin/`.

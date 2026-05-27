@@ -1,0 +1,216 @@
+name: Release Binaries
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to build (e.g. v2.0.1)'
+        required: true
+
+permissions:
+  contents: write
+  id-token: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    name: Build ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+            use_cross: false
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-latest
+            use_cross: true
+          - target: aarch64-apple-darwin
+            os: macos-latest
+            use_cross: false
+          - target: x86_64-apple-darwin
+            os: macos-latest
+            use_cross: false
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+            use_cross: false
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9 # stable (pinned)
+        with:
+          toolchain: stable
+          targets: ${{ matrix.target }}
+
+      - name: Install cross (Linux aarch64 only)
+        if: matrix.use_cross
+        run: cargo install cross --locked
+
+      - name: Cache cargo
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            agentsniff-rs/target
+          key: ${{ runner.os }}-${{ matrix.target }}-cargo-release-${{ hashFiles('agentsniff-rs/Cargo.lock') }}
+
+      - name: Build binary
+        shell: bash
+        working-directory: agentsniff-rs
+        run: |
+          if [ "${{ matrix.use_cross }}" = "true" ]; then
+            # Thin LTO for cross builds to avoid OOM during linking
+            export CARGO_PROFILE_RELEASE_LTO=thin
+            export CARGO_PROFILE_RELEASE_CODEGEN_UNITS=4
+            cross build --release --target ${{ matrix.target }} -p agentsniff -j2
+          else
+            cargo build --release --target ${{ matrix.target }} -p agentsniff -j2
+          fi
+
+      - name: Determine version
+        id: version
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "version=${{ github.event.inputs.tag }}" >> $GITHUB_OUTPUT
+          else
+            echo "version=${{ github.event.release.tag_name }}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Package (Unix)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          ARCHIVE="agentsniff-${VERSION}-${{ matrix.target }}.tar.gz"
+          mkdir -p staging
+          cp agentsniff-rs/target/${{ matrix.target }}/release/agentsniff staging/
+          cp LICENSE README.md staging/
+          cd staging
+          tar czf "../${ARCHIVE}" *
+          cd ..
+          echo "ARCHIVE=${ARCHIVE}" >> $GITHUB_ENV
+
+      - name: Package (Windows)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          ARCHIVE="agentsniff-${VERSION}-${{ matrix.target }}.zip"
+          mkdir -p staging
+          cp agentsniff-rs/target/${{ matrix.target }}/release/agentsniff.exe staging/
+          cp LICENSE README.md staging/
+          cd staging
+          7z a "../${ARCHIVE}" *
+          cd ..
+          echo "ARCHIVE=${ARCHIVE}" >> $GITHUB_ENV
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: binary-${{ matrix.target }}
+          path: ${{ env.ARCHIVE }}
+
+  checksums:
+    name: Checksums, signatures, and upload
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          path: artifacts
+          pattern: binary-*
+          merge-multiple: true
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@e1523de7571e31dbe865fd2e80c5c7c23ae71eb4 # v3.4.0
+        with:
+          cosign-release: 'v2.2.3'
+
+      - name: Generate checksums
+        run: |
+          cd artifacts
+          sha256sum * > checksums.txt
+          cat checksums.txt
+
+      - name: Sign artifacts with cosign (keyless)
+        run: |
+          cd artifacts
+          for file in *.tar.gz *.zip; do
+            [ -f "$file" ] || continue
+            echo "Signing $file..."
+            cosign sign-blob --yes "$file" \
+              --output-signature "${file}.sig" \
+              --output-certificate "${file}.pem"
+          done
+          # Sign the checksums manifest too
+          cosign sign-blob --yes checksums.txt \
+            --output-signature checksums.txt.sig \
+            --output-certificate checksums.txt.pem
+        env:
+          COSIGN_EXPERIMENTAL: "1"
+
+      - name: Determine tag
+        id: tag
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "tag=${{ github.event.inputs.tag }}" >> $GITHUB_OUTPUT
+          else
+            echo "tag=${{ github.event.release.tag_name }}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Upload to GitHub Release
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
+        with:
+          tag_name: ${{ steps.tag.outputs.tag }}
+          files: artifacts/*
+          body: |
+            ## Pre-Built Binaries
+
+            > **Tip:** the most reliable install path is `cargo install agentsniff` (or `cargo install agentsniff --features ebpf` for the kernel-side passive capture). The binaries below are convenient for users without a Rust toolchain.
+
+            ### Install
+
+            **macOS / Linux — one-liner:**
+            ```bash
+            curl -fsSL https://raw.githubusercontent.com/ThirdKeyAI/agentsniff/main/scripts/install.sh | bash
+            ```
+
+            **From crates.io:**
+            ```bash
+            cargo install agentsniff
+            cargo install agentsniff --features ebpf   # optional eBPF passive capture
+            ```
+
+            **Docker:**
+            ```bash
+            docker pull ghcr.io/thirdkeyai/agentsniff
+            ```
+
+            **Manual download:** grab the matching archive for your platform from the assets below and verify the SHA256 against `checksums.txt`.
+
+            ### Cosign verification
+
+            Each archive is signed with [Sigstore cosign](https://docs.sigstore.dev/) via keyless OIDC. Verify with:
+
+            ```bash
+            cosign verify-blob \
+              --certificate agentsniff-<tag>-<target>.tar.gz.pem \
+              --signature   agentsniff-<tag>-<target>.tar.gz.sig \
+              --certificate-identity-regexp="https://github.com/ThirdKeyAI/agentsniff" \
+              --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \
+              agentsniff-<tag>-<target>.tar.gz
+            ```
+
+            `checksums.txt` is signed the same way (`checksums.txt.sig` / `checksums.txt.pem`).
+          append_body: true

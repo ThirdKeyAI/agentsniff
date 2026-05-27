@@ -183,7 +183,7 @@ jobs:
 
             **macOS / Linux — one-liner:**
             ```bash
-            curl -fsSL https://raw.githubusercontent.com/ThirdKeyAI/agentsniff/main/scripts/install.sh | bash
+            curl -fsSL https://agentsniff.org/install.sh | bash
             ```
 
             **From crates.io:**

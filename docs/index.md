@@ -29,7 +29,7 @@ Everything in this documentation set applies to both versions unless explicitly 
 
 ```bash
 # v2 (Rust — recommended). Pick any one of:
-curl -fsSL https://raw.githubusercontent.com/ThirdKeyAI/agentsniff/main/scripts/install.sh | bash
+curl -fsSL https://agentsniff.org/install.sh | bash
 cargo install agentsniff
 # or download a signed pre-built archive from:
 #   https://github.com/ThirdKeyAI/agentsniff/releases/latest

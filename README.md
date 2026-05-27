@@ -43,8 +43,38 @@ The CLI subcommands (`scan`, `serve`, `init-config`, `update-signatures`) and th
 
 ### Standalone (Rust v2 — recommended)
 
+**One-liner installer (Linux / macOS):**
+
 ```bash
-# Install from crates.io
+curl -fsSL https://raw.githubusercontent.com/ThirdKeyAI/agentsniff/main/scripts/install.sh | bash
+```
+
+The script detects your platform, downloads the matching signed archive from the latest GitHub release, verifies the SHA256 checksum, and installs `agentsniff` to `~/.agentsniff/bin/`.
+
+**Pre-built binaries:** every release ships archives for five host triples, each signed keyless with [Sigstore cosign](https://docs.sigstore.dev/) (`.sig` + `.pem` next to every `.tar.gz`/`.zip`):
+
+| OS | Architecture | Archive |
+|---|---|---|
+| Linux | x86_64 | `agentsniff-<tag>-x86_64-unknown-linux-gnu.tar.gz` |
+| Linux | aarch64 | `agentsniff-<tag>-aarch64-unknown-linux-gnu.tar.gz` |
+| macOS | Apple Silicon | `agentsniff-<tag>-aarch64-apple-darwin.tar.gz` |
+| macOS | Intel | `agentsniff-<tag>-x86_64-apple-darwin.tar.gz` |
+| Windows | x86_64 | `agentsniff-<tag>-x86_64-pc-windows-msvc.zip` |
+
+Grab the right archive from [Releases](https://github.com/ThirdKeyAI/agentsniff/releases/latest) and verify with cosign:
+
+```bash
+cosign verify-blob \
+  --certificate agentsniff-<tag>-<target>.tar.gz.pem \
+  --signature   agentsniff-<tag>-<target>.tar.gz.sig \
+  --certificate-identity-regexp="https://github.com/ThirdKeyAI/agentsniff" \
+  --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \
+  agentsniff-<tag>-<target>.tar.gz
+```
+
+**From crates.io:**
+
+```bash
 cargo install agentsniff
 
 # Same CLI as v1
@@ -56,7 +86,7 @@ agentsniff serve --port 9090
 cargo install agentsniff --features ebpf
 ```
 
-Or build from source:
+**From source:**
 
 ```bash
 cd agentsniff-rs

@@ -28,8 +28,12 @@ Everything in this documentation set applies to both versions unless explicitly 
 ## Quick Start
 
 ```bash
-# v2 (Rust — recommended)
+# v2 (Rust — recommended). Pick any one of:
+curl -fsSL https://raw.githubusercontent.com/ThirdKeyAI/agentsniff/main/scripts/install.sh | bash
 cargo install agentsniff
+# or download a signed pre-built archive from:
+#   https://github.com/ThirdKeyAI/agentsniff/releases/latest
+
 agentsniff scan 192.168.1.0/24
 
 # v1 (Python)
@@ -41,6 +45,8 @@ agentsniff scan 10.0.0.0/24 --format json --output results.json
 agentsniff scan 192.168.1.0/24 --continuous 60 --webhook-url https://hooks.example.com
 agentsniff serve --port 9090
 ```
+
+Pre-built binaries are available for Linux x86_64 / aarch64, macOS Apple Silicon / Intel, and Windows x86_64 — every archive is signed with [Sigstore cosign](https://docs.sigstore.dev/). See [Getting Started](getting-started.md) for verification commands.
 
 ## Documentation
 

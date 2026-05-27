@@ -48,6 +48,41 @@ docker compose up -d
 
 ## Installation — v2 (Rust)
 
+### One-liner installer (Linux / macOS)
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/ThirdKeyAI/agentsniff/main/scripts/install.sh | bash
+```
+
+Detects the host triple, downloads the matching archive from the latest GitHub release, verifies its SHA256 checksum, drops `agentsniff` into `~/.agentsniff/bin/`, and appends the bin dir to your shell's PATH file.
+
+Override the install path with `AGENTSNIFF_INSTALL_DIR=/usr/local`. Windows users should grab the `.zip` archive directly or use `cargo install agentsniff`.
+
+### Pre-built binaries
+
+Each release ships archives for five host triples, each signed keyless with [Sigstore cosign](https://docs.sigstore.dev/) and accompanied by a `.sig` + `.pem` certificate. Grab the right archive from [Releases](https://github.com/ThirdKeyAI/agentsniff/releases/latest):
+
+| Platform | Archive |
+|---|---|
+| Linux x86_64 | `agentsniff-<tag>-x86_64-unknown-linux-gnu.tar.gz` |
+| Linux aarch64 | `agentsniff-<tag>-aarch64-unknown-linux-gnu.tar.gz` |
+| macOS Apple Silicon | `agentsniff-<tag>-aarch64-apple-darwin.tar.gz` |
+| macOS Intel | `agentsniff-<tag>-x86_64-apple-darwin.tar.gz` |
+| Windows x86_64 | `agentsniff-<tag>-x86_64-pc-windows-msvc.zip` |
+
+Verify with cosign before unpacking:
+
+```bash
+cosign verify-blob \
+  --certificate agentsniff-<tag>-<target>.tar.gz.pem \
+  --signature   agentsniff-<tag>-<target>.tar.gz.sig \
+  --certificate-identity-regexp="https://github.com/ThirdKeyAI/agentsniff" \
+  --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \
+  agentsniff-<tag>-<target>.tar.gz
+```
+
+`checksums.txt` (and its `.sig` / `.pem`) ships in every release for SHA256 verification of the bundle as a whole.
+
 ### crates.io
 
 ```bash

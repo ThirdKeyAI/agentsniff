@@ -71,6 +71,14 @@
       "AmazonQ"
     ]
   },
+  "amp": {
+    "headers": [],
+    "user_agents": [
+      "ampcode",
+      "amp-cli",
+      "sourcegraph-amp"
+    ]
+  },
   "anthropic_sdk": {
     "headers": [
       "anthropic-version",
@@ -179,6 +187,15 @@
       "chatwoot"
     ]
   },
+  "claude_agent_sdk": {
+    "headers": [
+      "anthropic-beta"
+    ],
+    "user_agents": [
+      "claude-agent-sdk",
+      "claude-sdk"
+    ]
+  },
   "claude_code": {
     "headers": [
       "anthropic-beta"
@@ -275,6 +292,13 @@
       "crewai"
     ]
   },
+  "crush": {
+    "headers": [],
+    "user_agents": [
+      "crush",
+      "charmbracelet/crush"
+    ]
+  },
   "cursor": {
     "headers": [
       "x-cursor-client-version",
@@ -324,6 +348,14 @@
     ],
     "user_agents": [
       "eliza"
+    ]
+  },
+  "factory_droid": {
+    "headers": [],
+    "user_agents": [
+      "factory-droid",
+      "factory.ai",
+      "droid-cli"
     ]
   },
   "firecrawl": {
@@ -425,6 +457,13 @@
   "kimi_code": {
     "user_agents": [
       "kimi-code"
+    ]
+  },
+  "kilo_code": {
+    "mcp_client_name": "kilo-code",
+    "user_agents": [
+      "kilo-code",
+      "kilocode"
     ]
   },
   "koboldcpp": {
@@ -663,6 +702,16 @@
       "openwebui"
     ]
   },
+  "openai_agents_sdk": {
+    "headers": [
+      "OpenAI-Beta"
+    ],
+    "user_agents": [
+      "openai-agents",
+      "openai-agents-python",
+      "agents-sdk"
+    ]
+  },
   "openai_assistants": {
     "headers": [
       "OpenAI-Beta",
@@ -794,6 +843,15 @@
       "Semantic-Kernel"
     ]
   },
+  "skyvern": {
+    "endpoints": [
+      "/api/v1/tasks",
+      "/api/v1/workflows"
+    ],
+    "user_agents": [
+      "skyvern"
+    ]
+  },
   "smolagents": {
     "endpoints": [
       "/run/agent",
@@ -807,6 +865,12 @@
   "spring_ai": {
     "user_agents": [
       "Spring-AI"
+    ]
+  },
+  "stagehand": {
+    "user_agents": [
+      "stagehand",
+      "browserbase/stagehand"
     ]
   },
   "strands_agents": {

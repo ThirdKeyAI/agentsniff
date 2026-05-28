@@ -102,5 +102,8 @@
   "api.endpoints.huggingface.cloud",
   "codestral.mistral.ai",
   "fal.run",
-  "api.fal.ai"
+  "api.fal.ai",
+  "api.z.ai",
+  "api.parasail.io",
+  "api.inceptionlabs.ai"
 ]

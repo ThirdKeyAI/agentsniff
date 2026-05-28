@@ -88,5 +88,14 @@
   "cloud.getzep.com",
   "api.zep.us",
   "api.opik.dev",
-  "api.langtrace.ai"
+  "api.langtrace.ai",
+  "mcp.notion.com",
+  "mcp.supabase.com",
+  "mcp.sentry.dev",
+  "mcp.asana.com",
+  "mcp.paypal.com",
+  "mcp.hubspot.com",
+  "ampcode.com",
+  "app.factory.ai",
+  "augmentcode.com"
 ]

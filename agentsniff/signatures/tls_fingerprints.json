@@ -1,27 +1,27 @@
 {
   "python_requests_3_11": {
-    "ja3": "placeholder_ja3_hash",
-    "ja4": "placeholder_ja4_hash",
+    "ja3": "0149f47eabf9a20d0893e2a44e5a6323",
+    "ja4": "t12d3112_4a61687e4686_bf46f62802c6",
     "description": "Python requests library (common in LangChain, CrewAI)"
   },
   "python_httpx": {
-    "ja3": "placeholder_ja3_httpx",
-    "ja4": "placeholder_ja4_hash",
-    "description": "Python httpx (common in modern agent frameworks)"
+    "ja3": "3adacb99ecb51ed59c4f6c4ed9a7dcaa",
+    "ja4": "t12d3112_4a61687e4686_394848ed946d",
+    "description": "Python httpx (common in modern agent frameworks) - shares stdlib ssl default ClientHello with aiohttp"
   },
   "python_aiohttp": {
-    "ja3": "placeholder_ja3_aiohttp",
-    "ja4": "placeholder_ja4_hash",
-    "description": "Python aiohttp (async agent frameworks)"
+    "ja3": "3adacb99ecb51ed59c4f6c4ed9a7dcaa",
+    "ja4": "t12d3112_4a61687e4686_394848ed946d",
+    "description": "Python aiohttp (async agent frameworks) - shares stdlib ssl default ClientHello with httpx"
   },
   "node_fetch": {
-    "ja3": "placeholder_ja3_node",
-    "ja4": "placeholder_ja4_hash",
+    "ja3": "1a28e69016765d92e3b381168d68922c",
+    "ja4": "t12d5911_725a0e928180_ec498f003d9c",
     "description": "Node.js fetch/undici (JS agent frameworks)"
   },
   "rust_reqwest": {
-    "ja3": "placeholder_ja3_reqwest",
-    "ja4": "placeholder_ja4_hash",
+    "ja3": "dc793bad0c9cefd88c7d8d51ba33d07c",
+    "ja4": "t12d1011_585969ac4c3a_838d1225bfcc",
     "description": "Rust reqwest (Symbiont, custom Rust agents)"
   }
 }

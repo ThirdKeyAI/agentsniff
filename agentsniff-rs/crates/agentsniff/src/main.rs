@@ -683,7 +683,7 @@ fn render_table(result: &ScanResult, quiet: bool) -> String {
             ANSI_BOLD,
             ANSI_RESET,
             ANSI_DIM,
-            &result.scan_id.get(..8).unwrap_or(&result.scan_id),
+            result.scan_id.get(..8).unwrap_or(&result.scan_id),
             duration,
             result.detectors_run.len(),
             ANSI_RESET,

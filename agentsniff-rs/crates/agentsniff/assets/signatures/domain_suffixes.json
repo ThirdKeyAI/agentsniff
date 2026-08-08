@@ -26,5 +26,6 @@
   ".cartesia.ai",
   ".replicate.delivery",
   ".bentoml.ai",
-  ".sagemaker.amazonaws.com"
+  ".sagemaker.amazonaws.com",
+  ".mcp.cloudflare.com"
 ]

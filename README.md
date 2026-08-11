@@ -15,7 +15,7 @@ AgentSniff identifies AI agents on enterprise networks using eight complementary
 | **AgentPin Prober** | `.well-known/agent-identity.json` discovery | No | Confirmed |
 | **MCP Detector** | JSON-RPC 2.0 / SSE probing for MCP servers | No | Confirmed |
 | **Endpoint Prober** | HTTP probing for agent framework signatures | No | Medium–High |
-| **TLS Fingerprint** | JA3 fingerprinting of agent HTTP clients | Yes* | High |
+| **TLS Fingerprint** | JA3/JA4 fingerprinting of agent HTTP clients | Yes* | High |
 | **Traffic Analyzer** | Behavioral pattern analysis (burst detection, LLM call patterns) | Yes* | Medium–High |
 | **SSE Detector** | LLM streaming connection detection (eBPF or raw-socket fallback) | Yes* | High |
 
@@ -187,7 +187,7 @@ Serve Options:
 ## Detection Details
 
 ### DNS Monitor
-Passively captures DNS queries on the network and matches against 40+ known LLM API domains (OpenAI, Anthropic, Google, Mistral, Groq, Together, Cohere, etc.) plus Azure/AWS/GCP suffixes. Falls back to active DNS resolution cross-referencing if raw sockets are unavailable.
+Passively captures DNS queries on the network and matches against 110+ known LLM API domains (OpenAI, Anthropic, Google, Mistral, Groq, Together, Cohere, DeepSeek, xAI, etc.) plus 150+ agent-infrastructure domains (hosted MCP servers, coding-agent backends, observability platforms) and Azure/AWS/GCP suffixes. Falls back to active DNS resolution cross-referencing if raw sockets are unavailable.
 
 ### Port Scanner
 Async TCP scanner targeting ports associated with MCP servers (3000, 3001, 8080), LLM inference engines (11434/Ollama, 1234/LM Studio), vector databases (6333/Qdrant, 8090/Weaviate, 19530/Milvus), and agent platforms (3080/LibreChat, 8501/Streamlit). Includes banner grabbing for service identification.
@@ -202,7 +202,7 @@ Actively probes for <a href="https://modelcontextprotocol.io" target="_blank">Mo
 Probes HTTP endpoints for signatures of known agent frameworks: LangChain/LangServe, CrewAI, AutoGen, Symbiont, Dify, Flowise, n8n. Checks health endpoints, OpenAPI specs, and framework-specific paths. Analyzes response headers for agent framework fingerprints.
 
 ### TLS Fingerprint
-Computes JA3 hashes from TLS ClientHello messages to identify agent HTTP client libraries (Python requests, httpx, aiohttp, Node.js fetch, Rust reqwest). Falls back to active TLS server probing on agent-associated ports when passive capture isn't available.
+Computes JA3 and JA4 fingerprints from TLS ClientHello messages to identify agent HTTP client libraries (Python requests, httpx, aiohttp, Node.js fetch, Rust reqwest). Falls back to active TLS server probing on agent-associated ports when passive capture isn't available.
 
 ### Traffic Analyzer
 Profiles network hosts by behavioral patterns characteristic of AI agents: bursty tool invocation sequences interspersed with LLM API calls (the observe-reason-act loop), streaming SSE connections, and diverse API target sets. Also analyzes `/proc/net/tcp` for established connections to known LLM API IP addresses.

@@ -9,7 +9,7 @@ AgentSniff uses eight detection modules that run concurrently. Each produces sig
 | **AgentPin Prober** | `.well-known/agent-identity.json` discovery | No | Confirmed |
 | **MCP Detector** | JSON-RPC 2.0 / SSE probing for MCP servers | No | Confirmed |
 | **Endpoint Prober** | HTTP probing for agent framework signatures | No | Medium-High |
-| **TLS Fingerprint** | JA3 fingerprinting of agent HTTP clients | Yes* | High |
+| **TLS Fingerprint** | JA3/JA4 fingerprinting of agent HTTP clients | Yes* | High |
 | **Traffic Analyzer** | Behavioral pattern analysis (burst detection, LLM call patterns) | Yes* | Medium-High |
 | **SSE Detector** | Server-Sent Events pattern detection | Yes* | Medium |
 
@@ -21,11 +21,11 @@ In the v2 (Rust) build, the four detectors marked "Requires Root" can use kernel
 
 ## DNS Monitor
 
-Passively captures DNS queries on the network and matches against 60+ known LLM API domains including OpenAI, Anthropic, Google, Mistral, Groq, Together, Cohere, DeepSeek, and Chinese providers (DashScope, Moonshot, Zhipu, MiniMax, Baidu, ByteDance).
+Passively captures DNS queries on the network and matches against 110+ known LLM API domains including OpenAI, Anthropic, Google, Mistral, Groq, Together, Cohere, DeepSeek, xAI, and Chinese providers (DashScope, Moonshot, Zhipu, MiniMax, Baidu, ByteDance, Tencent Hunyuan).
 
 Also matches domain suffixes for Azure OpenAI (`*.openai.azure.com`), AWS Bedrock (`*.bedrock-runtime.amazonaws.com`), GCP Vertex (`*.aiplatform.googleapis.com`), and others.
 
-Additionally tracks agent infrastructure domains — skill registries (ClawHub, Smithery, Glama), agent observability platforms (Langfuse, LangSmith, Helicone), and tool connectivity services (Composio, Moltyverse).
+Additionally tracks 150+ agent infrastructure domains — skill registries (ClawHub, Smithery, Glama), agent observability platforms (Langfuse, LangSmith, Helicone), tool connectivity services (Composio, Moltyverse), AI coding-agent backends (Cursor, Devin, Zed, Cline, Warp), and vendor-hosted remote MCP servers (GitHub, Slack, Figma, Notion, Linear, Stripe, Datadog).
 
 **Fallback**: When raw sockets are unavailable, resolves the top 20 LLM API domains and cross-references their IPs against active connections in `/proc/net/tcp`.
 
@@ -69,7 +69,7 @@ Detected frameworks include: LangChain, CrewAI, AutoGen, Dify, Flowise, n8n, Pyd
 
 ## TLS Fingerprint
 
-Computes JA3 hashes from TLS ClientHello messages to identify agent HTTP client libraries (Python requests, httpx, aiohttp, Node.js fetch, Rust reqwest).
+Computes JA3 and JA4 fingerprints from TLS ClientHello messages to identify agent HTTP client libraries (Python requests, httpx, aiohttp, Node.js fetch, Rust reqwest).
 
 **Fallback**: Active TLS server probing on agent-associated ports when passive capture isn't available.
 

@@ -1,7 +1,7 @@
 # eBPF Implementation Design
 
 **Date:** 2026-03-11
-**Scope:** Full eBPF integration for agentsniff-rs — build toolchain, userspace loader, 4th kernel program, detector wiring
+**Scope:** Full eBPF integration for the AgentSniff Rust workspace — build toolchain, userspace loader, 4th kernel program, detector wiring
 
 ## Overview
 
@@ -11,7 +11,7 @@ Replace the stubbed eBPF loader with a working implementation using aya. When ru
 
 ### Feature Gate
 
-Add `ebpf` cargo feature to `agentsniff-rs/crates/agentsniff/Cargo.toml`:
+Add `ebpf` cargo feature to `crates/agentsniff/Cargo.toml`:
 
 ```toml
 [features]

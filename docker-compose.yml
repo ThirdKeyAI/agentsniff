@@ -2,42 +2,40 @@ services:
   agentsniff:
     build: .
     container_name: agentsniff
+    # The process binds non-loopback inside the container, so a strong API
+    # token is mandatory even though the published host port is loopback-only.
     ports:
-      - "9090:9090"
+      - "127.0.0.1:9090:9090"
+    command: ["serve", "--host", "0.0.0.0", "--port", "9090"]
     environment:
-      - AGENTSNIFF_TARGET_NETWORK=192.168.1.0/24
-      - AGENTSNIFF_API_ENABLED=true
-      # Alerting (uncomment to enable)
-      # - AGENTSNIFF_ALERT_ENABLED=true
-      # - AGENTSNIFF_WEBHOOK_URL=https://hooks.example.com/agentsniff
-      # - AGENTSNIFF_SMTP_HOST=smtp.example.com
-      # - AGENTSNIFF_SMTP_PORT=587
-      # - AGENTSNIFF_SMTP_USER=alerts@example.com
-      # - AGENTSNIFF_SMTP_PASSWORD=your-password
-      # - AGENTSNIFF_SMTP_FROM=agentsniff@example.com
-      # - AGENTSNIFF_SMTP_TO=admin@example.com,security@example.com
-    # Network mode: host gives full network visibility for passive monitoring
-    # Use bridge mode for active scanning only
-    network_mode: host
-    cap_add:
-      - NET_RAW      # Required for passive DNS and TLS monitoring
-      - NET_ADMIN    # Required for network interface access
+      AGENTSNIFF_API_TOKEN: ${AGENTSNIFF_API_TOKEN:?Set a 32-byte-or-longer AGENTSNIFF_API_TOKEN}
+      AGENTSNIFF_TARGET_NETWORK: 192.168.1.0/24
+      AGENTSNIFF_ENABLE_DNS_MONITOR: "false"
+      AGENTSNIFF_ENABLE_TLS_FINGERPRINT: "false"
+      AGENTSNIFF_ENABLE_TRAFFIC_ANALYZER: "false"
     restart: unless-stopped
     volumes:
-      # Optional: mount config file
-      - ./agentsniff.yaml:/app/agentsniff.yaml:ro
-      # Optional: persist scan results
-      - ./results:/app/results
+      - agentsniff-state:/home/agentsniff/.agentsniff
 
-  # Alternative: bridge network mode (active scanning only, no passive monitoring)
-  # agentsniff-bridge:
-  #   build: .
-  #   container_name: agentsniff-bridge
-  #   ports:
-  #     - "9090:9090"
-  #   environment:
-  #     - AGENTSNIFF_TARGET_NETWORK=192.168.1.0/24
-  #     - AGENTSNIFF_ENABLE_DNS_MONITOR=false
-  #     - AGENTSNIFF_ENABLE_TLS_FINGERPRINT=false
-  #     - AGENTSNIFF_ENABLE_TRAFFIC_ANALYZER=false
-  #   restart: unless-stopped
+  # Opt-in host-network profile for passive capture. The dashboard still binds
+  # only to host loopback; NET_RAW/NET_ADMIN are not granted to the default service.
+  agentsniff-passive:
+    profiles: ["passive"]
+    build: .
+    container_name: agentsniff-passive
+    network_mode: host
+    # Root is isolated to this explicit profile and receives only the two
+    # network capabilities required by passive capture.
+    user: root
+    command: ["serve", "--host", "127.0.0.1", "--port", "9090"]
+    environment:
+      AGENTSNIFF_TARGET_NETWORK: 192.168.1.0/24
+    cap_add:
+      - NET_RAW
+      - NET_ADMIN
+    restart: unless-stopped
+    volumes:
+      - agentsniff-state:/home/agentsniff/.agentsniff
+
+volumes:
+  agentsniff-state:

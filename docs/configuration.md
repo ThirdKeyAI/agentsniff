@@ -50,19 +50,18 @@ verbose: false
 
 # Web dashboard API
 api_enabled: false
-api_host: "0.0.0.0"
+api_host: "127.0.0.1"
 api_port: 9090
+api_token: ""           # required for non-loopback; prefer AGENTSNIFF_API_TOKEN
 
-# Storage (v1)
+# Storage
 db_path: ""       # default: ~/.agentsniff/agentsniff.db
 log_file: ""      # empty = console only
-
-# Storage (v2) — multi-backend block; v1 ignores this
-# storage:
-#   backend: "sqlite"          # "sqlite" | "postgres" | "redis"
-#   sqlite_path: "~/.agentsniff/agentsniff.db"
-#   postgres_url: ""           # e.g. postgres://user:pass@host/db
-#   redis_url: ""              # e.g. redis://host:6379/0
+storage:
+  backend: "sqlite"
+  sqlite_path: "~/.agentsniff/agentsniff.db"
+  postgres_url: ""
+  redis_url: ""
 
 # Custom detection signatures
 custom_llm_domains: []
@@ -104,6 +103,7 @@ All configuration options can be set via environment variables with the `AGENTSN
 
 ```bash
 export AGENTSNIFF_TARGET_NETWORK="10.0.0.0/16"
+export AGENTSNIFF_API_TOKEN="$(openssl rand -hex 32)"
 export AGENTSNIFF_ENABLE_DNS_MONITOR=true
 export AGENTSNIFF_HTTP_TIMEOUT=10.0
 export AGENTSNIFF_DB_PATH="/var/lib/agentsniff/scans.db"

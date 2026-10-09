@@ -31,3 +31,6 @@ Thumbs.db
 *.db
 *.db-shm
 *.db-wal
+
+# Rust build output
+/target/

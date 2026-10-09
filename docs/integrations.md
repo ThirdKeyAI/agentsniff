@@ -44,20 +44,17 @@ nmap integration is a post-processing step that runs after detection and correla
 
 ### Setup
 
-Both versions just need the `nmap` binary on `$PATH`:
+AgentSniff needs the `nmap` binary on `$PATH`:
 
 ```bash
 # Debian / Ubuntu
 sudo apt install nmap
 
-# v1: optional pip extra also installs the python-nmap wrapper
-pip install agentsniff[nmap]
-
-# v2: no extra build step, just have `nmap` available
+# No extra Rust build feature is required.
 ```
 
 ```bash
-# Same flags on both versions
+# Combine both integrations
 agentsniff scan 192.168.1.0/24 --nmap
 agentsniff scan 192.168.1.0/24 --nmap --nmap-args "-sV -O"
 ```

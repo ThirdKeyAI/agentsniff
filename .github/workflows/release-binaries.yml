@@ -10,8 +10,7 @@ on:
         required: true
 
 permissions:
-  contents: write
-  id-token: write
+  contents: read
 
 env:
   CARGO_TERM_COLOR: always
@@ -52,7 +51,7 @@ jobs:
 
       - name: Install cross (Linux aarch64 only)
         if: matrix.use_cross
-        run: cargo install cross --locked
+        run: cargo install cross --version 0.2.5 --locked
 
       - name: Cache cargo
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
@@ -60,12 +59,11 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-            agentsniff-rs/target
-          key: ${{ runner.os }}-${{ matrix.target }}-cargo-release-${{ hashFiles('agentsniff-rs/Cargo.lock') }}
+            target
+          key: ${{ runner.os }}-${{ matrix.target }}-cargo-release-${{ hashFiles('Cargo.lock') }}
 
       - name: Build binary
         shell: bash
-        working-directory: agentsniff-rs
         run: |
           if [ "${{ matrix.use_cross }}" = "true" ]; then
             # Thin LTO for cross builds to avoid OOM during linking
@@ -93,7 +91,7 @@ jobs:
           VERSION="${{ steps.version.outputs.version }}"
           ARCHIVE="agentsniff-${VERSION}-${{ matrix.target }}.tar.gz"
           mkdir -p staging
-          cp agentsniff-rs/target/${{ matrix.target }}/release/agentsniff staging/
+          cp target/${{ matrix.target }}/release/agentsniff staging/
           cp LICENSE README.md staging/
           cd staging
           tar czf "../${ARCHIVE}" *
@@ -107,7 +105,7 @@ jobs:
           VERSION="${{ steps.version.outputs.version }}"
           ARCHIVE="agentsniff-${VERSION}-${{ matrix.target }}.zip"
           mkdir -p staging
-          cp agentsniff-rs/target/${{ matrix.target }}/release/agentsniff.exe staging/
+          cp target/${{ matrix.target }}/release/agentsniff.exe staging/
           cp LICENSE README.md staging/
           cd staging
           7z a "../${ARCHIVE}" *
@@ -124,6 +122,9 @@ jobs:
     name: Checksums, signatures, and upload
     needs: build
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
     steps:
       - name: Download all artifacts
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
@@ -207,7 +208,7 @@ jobs:
             cosign verify-blob \
               --certificate agentsniff-<tag>-<target>.tar.gz.pem \
               --signature   agentsniff-<tag>-<target>.tar.gz.sig \
-              --certificate-identity-regexp="https://github.com/ThirdKeyAI/agentsniff" \
+              --certificate-identity="https://github.com/ThirdKeyAI/agentsniff/.github/workflows/release-binaries.yml@refs/tags/<tag>" \
               --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \
               agentsniff-<tag>-<target>.tar.gz
             ```

@@ -1,412 +1,223 @@
 # AgentSniff
 
-**AI Agent Network Scanner** — Detect AI agents operating on your network through passive monitoring, active probing, protocol detection, and behavioral analysis.
+AgentSniff is a Rust network scanner for discovering AI-agent infrastructure through active probing, passive monitoring, protocol detection, and behavioral analysis.
 
-[Documentation](https://docs.agentsniff.org/) | [Website](https://agentsniff.org) | [GitHub](https://github.com/ThirdKeyAI/agentsniff)
+[Documentation](https://docs.agentsniff.org/) · [Website](https://agentsniff.org) · [GitHub](https://github.com/ThirdKeyAI/agentsniff)
 
-## Overview
+## Detection model
 
-AgentSniff identifies AI agents on enterprise networks using eight complementary detection modules:
+| Detector | Method | Passive privileges | Typical confidence |
+|---|---|---:|---:|
+| DNS monitor | LLM and agent-infrastructure domains | Optional | High |
+| Port scanner | Agent, MCP, inference, and vector-service ports | No | Low–Medium |
+| AgentPin prober | `/.well-known/agent-identity.json` discovery | No | Medium |
+| MCP detector | JSON-RPC initialization and capability enumeration | No | High–Confirmed |
+| Endpoint prober | Framework endpoints, metadata, headers, and OpenAPI | No | Medium–High |
+| TLS fingerprint | ClientHello fingerprints and active TLS probes | Optional | High |
+| Traffic analyzer | LLM/API and burst behavior | Optional | Medium–High |
+| SSE detector | Long-lived event-stream traffic | Optional | High |
 
-| Detector | Method | Requires Root | Confidence |
-|---|---|---|---|
-| **DNS Monitor** | Passive DNS monitoring for LLM API domain queries | Yes* | High |
-| **Port Scanner** | Async TCP scanning of agent-related ports | No | Low–Medium |
-| **AgentPin Prober** | `.well-known/agent-identity.json` discovery | No | Confirmed |
-| **MCP Detector** | JSON-RPC 2.0 / SSE probing for MCP servers | No | Confirmed |
-| **Endpoint Prober** | HTTP probing for agent framework signatures | No | Medium–High |
-| **TLS Fingerprint** | JA3/JA4 fingerprinting of agent HTTP clients | Yes* | High |
-| **Traffic Analyzer** | Behavioral pattern analysis (burst detection, LLM call patterns) | Yes* | Medium–High |
-| **SSE Detector** | LLM streaming connection detection (eBPF or raw-socket fallback) | Yes* | High |
+AgentPin documents are currently treated as unsigned discovery evidence. AgentSniff validates their shape, but it does not yet implement the AgentPin signature, delegation, expiry, and revocation profile. Consequently, an AgentPin document alone is not labeled “identity verified” and cannot produce a `CONFIRMED` signal.
 
-\* Falls back to non-root alternatives automatically.
+Signals from all enabled detectors are correlated by source host using noisy-OR scoring.
 
-<p>
-  <a href="AgentSniff-Dashboard-Main.png"><img src="AgentSniff-Dashboard-Main.png" alt="AgentSniff Dashboard - Main" width="48%"></a>
-  <a href="AgentSniff-Dashboard-Settings.png"><img src="AgentSniff-Dashboard-Settings.png" alt="AgentSniff Dashboard - Settings" width="48%"></a>
-</p>
+## Install
 
-## Implementations
+### Cargo
 
-AgentSniff ships in two source trees, both on `main`:
+```bash
+cargo install agentsniff --locked
+agentsniff scan 192.168.1.0/24
+```
 
-| Version | Source | Status |
-|---|---|---|
-| **v2 (Rust)** | `agentsniff-rs/` | Current stable — adds eBPF passive capture, PostgreSQL / Redis storage backends, and Zeek / Nmap integrations |
-| **v1 (Python)** | `agentsniff/` | Legacy — still maintained for parity, but new work targets v2 |
+For optional Linux eBPF capture:
 
-Both versions share the same signed signature files (`agentsniff/signatures/` and `agentsniff-rs/crates/agentsniff/assets/signatures/`), the same dashboard HTML, and the same `Detected Agent` JSON schema, so configuration, alert payloads, SARIF exports, and database history are interchangeable.
+```bash
+cargo install agentsniff --locked --features ebpf
+```
 
-The CLI subcommands (`scan`, `serve`, `init-config`, `update-signatures`) and the dashboard REST API are identical between v1 and v2; everything in the **CLI Usage** and **API Endpoints** sections below applies to both. Where v2 adds something on top of v1 it is called out inline.
+### Release archive
 
-## Quick Start
-
-### Standalone (Rust v2 — recommended)
-
-**One-liner installer (Linux / macOS):**
+The installer requires [Cosign](https://docs.sigstore.dev/cosign/system_config/installation/) and fails closed unless the archive was signed by this repository’s release workflow for the selected tag.
 
 ```bash
 curl -fsSL https://agentsniff.org/install.sh | bash
 ```
 
-The script detects your platform, downloads the matching signed archive from the latest GitHub release, verifies the SHA256 checksum, and installs `agentsniff` to `~/.agentsniff/bin/`.
-
-**Pre-built binaries:** every release ships archives for five host triples, each signed keyless with [Sigstore cosign](https://docs.sigstore.dev/) (`.sig` + `.pem` next to every `.tar.gz`/`.zip`):
-
-| OS | Architecture | Archive |
-|---|---|---|
-| Linux | x86_64 | `agentsniff-<tag>-x86_64-unknown-linux-gnu.tar.gz` |
-| Linux | aarch64 | `agentsniff-<tag>-aarch64-unknown-linux-gnu.tar.gz` |
-| macOS | Apple Silicon | `agentsniff-<tag>-aarch64-apple-darwin.tar.gz` |
-| macOS | Intel | `agentsniff-<tag>-x86_64-apple-darwin.tar.gz` |
-| Windows | x86_64 | `agentsniff-<tag>-x86_64-pc-windows-msvc.zip` |
-
-Grab the right archive from [Releases](https://github.com/ThirdKeyAI/agentsniff/releases/latest) and verify with cosign:
+Manual verification uses the exact workflow identity and release tag:
 
 ```bash
 cosign verify-blob \
   --certificate agentsniff-<tag>-<target>.tar.gz.pem \
-  --signature   agentsniff-<tag>-<target>.tar.gz.sig \
-  --certificate-identity-regexp="https://github.com/ThirdKeyAI/agentsniff" \
+  --signature agentsniff-<tag>-<target>.tar.gz.sig \
+  --certificate-identity="https://github.com/ThirdKeyAI/agentsniff/.github/workflows/release-binaries.yml@refs/tags/<tag>" \
   --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \
   agentsniff-<tag>-<target>.tar.gz
 ```
 
-**From crates.io:**
+### From source
 
 ```bash
-cargo install agentsniff
-
-# Same CLI as v1
-agentsniff scan 192.168.1.0/24
-agentsniff scan 192.168.1.0/24 --continuous 60
-agentsniff serve --port 9090
-
-# With eBPF passive capture (requires nightly toolchain)
-cargo install agentsniff --features ebpf
+git clone https://github.com/ThirdKeyAI/agentsniff.git
+cd agentsniff
+cargo build --locked --release
+./target/release/agentsniff --help
 ```
 
-**From source:**
-
-```bash
-cd agentsniff-rs
-cargo build --release   # binary at ./target/release/agentsniff
-```
-
-The Rust binary statically embeds the dashboard and the signed signature files, so the single `agentsniff` executable is fully self-contained.
-
-### Standalone (Python v1)
-
-```bash
-# Install
-pip install -e .
-
-# Scan your local network
-agentsniff scan 192.168.1.0/24
-
-# Scan specific hosts
-agentsniff scan --hosts server1,server2,server3
-
-# JSON output
-agentsniff scan 10.0.0.0/24 --format json --output results.json
-
-# Continuous monitoring (every 60 seconds)
-agentsniff scan 192.168.1.0/24 --continuous 60
-
-# Start web dashboard
-agentsniff serve --port 9090
-```
+The workspace, lockfile, and Rust crates live at repository top level. The legacy Python implementation has been retired.
 
 ### Docker
 
-```bash
-# Build
-docker build -t agentsniff .
-
-# Run web dashboard (host network for full visibility)
-docker run -d --name agentsniff \
-  --network host \
-  --cap-add NET_RAW \
-  --cap-add NET_ADMIN \
-  agentsniff
-
-# Run one-shot scan
-docker run --rm --network host --cap-add NET_RAW \
-  agentsniff scan 192.168.1.0/24
-
-# Docker Compose
-docker compose up -d
-```
-
-### Docker Compose
+The default Compose service is active-scanning only, publishes the dashboard to host loopback, and receives no raw-network capabilities.
 
 ```bash
+export AGENTSNIFF_API_TOKEN="$(openssl rand -hex 32)"
 docker compose up -d
-# Dashboard at http://localhost:9090
+# http://127.0.0.1:9090
 ```
 
-## CLI Usage
+Passive capture is an explicit privileged profile:
 
+```bash
+docker compose --profile passive up -d agentsniff-passive
 ```
+
+The passive profile uses host networking plus `NET_RAW` and `NET_ADMIN`. Use it only on a trusted scanner host.
+
+## CLI
+
+```text
 agentsniff <command> [options]
 
 Commands:
-  scan          Run a network scan
-  serve         Start web dashboard API server
-  init-config   Generate default configuration file
-
-Scan Options:
-  network              Target network CIDR (default: 192.168.1.0/24)
-  --hosts HOST,HOST    Specific hosts to scan
-  --exclude HOST,HOST  Hosts to exclude
-  --config FILE        YAML configuration file
-  --format FORMAT      Output: table, json, csv (default: table)
-  --output FILE        Save results to file
-  --detectors D,D      Enable specific detectors only
-  --timeout SECS       HTTP timeout (default: 5.0)
-  --concurrency N      Max concurrent connections (default: 100)
-  --continuous SECS    Repeat scan every N seconds
-  --webhook-url URL    Webhook URL for alerts (auto-enables alerting)
-  --smtp-to ADDR,ADDR  Email recipients for alerts (auto-enables alerting)
-  --db PATH            SQLite database path (default: ~/.agentsniff/agentsniff.db)
-  --log-file PATH      Log file path (default: no file logging)
-  --zeek-logs PATH     Path to Zeek JSON log directory (enables Zeek integration)
-  --nmap               Enable nmap enrichment (requires nmap on PATH)
-  --nmap-args ARGS     Arguments to pass to nmap (default: -sV)
-  -v, --verbose        Debug logging
-  -q, --quiet          Minimal output
-
-Serve Options:
-  --host ADDR          Bind address (default: 0.0.0.0)
-  --port PORT          Bind port (default: 9090)
-  --network CIDR       Default scan target
-  --db PATH            SQLite database path (default: ~/.agentsniff/agentsniff.db)
-  --log-file PATH      Log file path (default: no file logging)
+  scan                 Run a network scan
+  serve                Start the dashboard and API
+  init-config          Generate a configuration file
+  update-signatures    Download a complete verified signature set
 ```
 
-## Detection Details
-
-### DNS Monitor
-Passively captures DNS queries on the network and matches against 110+ known LLM API domains (OpenAI, Anthropic, Google, Mistral, Groq, Together, Cohere, DeepSeek, xAI, etc.) plus 150+ agent-infrastructure domains (hosted MCP servers, coding-agent backends, observability platforms) and Azure/AWS/GCP suffixes. Falls back to active DNS resolution cross-referencing if raw sockets are unavailable.
-
-### Port Scanner
-Async TCP scanner targeting ports associated with MCP servers (3000, 3001, 8080), LLM inference engines (11434/Ollama, 1234/LM Studio), vector databases (6333/Qdrant, 8090/Weaviate, 19530/Milvus), and agent platforms (3080/LibreChat, 8501/Streamlit). Includes banner grabbing for service identification.
-
-### AgentPin Prober
-Probes hosts for <a href="https://agentpin.org" target="_blank">AgentPin</a> discovery documents at `/.well-known/agent-identity.json`. Valid AgentPin identities provide **confirmed** detection with full cryptographic provenance including issuer, capabilities, delegation chains, and revocation status. Follows the AgentPin spec's no-redirect security policy.
-
-### MCP Detector
-Actively probes for <a href="https://modelcontextprotocol.io" target="_blank">Model Context Protocol</a> servers by sending JSON-RPC 2.0 `initialize` requests and checking for SSE endpoints. On confirmed servers, enumerates available tools, resources, and prompts. Detects both HTTP+SSE and direct JSON-RPC transports.
-
-### Endpoint Prober
-Probes HTTP endpoints for signatures of known agent frameworks: LangChain/LangServe, CrewAI, AutoGen, Symbiont, Dify, Flowise, n8n. Checks health endpoints, OpenAPI specs, and framework-specific paths. Analyzes response headers for agent framework fingerprints.
-
-### TLS Fingerprint
-Computes JA3 and JA4 fingerprints from TLS ClientHello messages to identify agent HTTP client libraries (Python requests, httpx, aiohttp, Node.js fetch, Rust reqwest). Falls back to active TLS server probing on agent-associated ports when passive capture isn't available.
-
-### Traffic Analyzer
-Profiles network hosts by behavioral patterns characteristic of AI agents: bursty tool invocation sequences interspersed with LLM API calls (the observe-reason-act loop), streaming SSE connections, and diverse API target sets. Also analyzes `/proc/net/tcp` for established connections to known LLM API IP addresses.
-
-### SSE Detector
-Identifies long-lived `text/event-stream` connections characteristic of LLM streaming responses. v2's `--features ebpf` build hooks into kernel TC programs for zero-copy passive capture; on systems without eBPF it falls back to a raw-socket sniffer.
-
-## Storage
-
-AgentSniff persists scan history to a local SQLite database. By default the database is at `~/.agentsniff/agentsniff.db` and is created automatically on first use.
+Examples:
 
 ```bash
-# Use default database location
 agentsniff scan 192.168.1.0/24
-
-# Custom database path
-agentsniff scan 192.168.1.0/24 --db /var/lib/agentsniff/scans.db
-
-# Enable file logging alongside console output
-agentsniff scan 192.168.1.0/24 --log-file /var/log/agentsniff/scan.log
-
-# Both flags also work with the serve command
-agentsniff serve --db /var/lib/agentsniff/scans.db --log-file /var/log/agentsniff/server.log
+agentsniff scan --hosts server1,server2
+agentsniff scan 10.0.0.0/24 --format json --output results.json
+agentsniff scan 192.168.1.0/24 --continuous 300
+agentsniff serve --port 9090
 ```
 
-Storage can also be configured in `agentsniff.yaml`:
+A scan is limited to 65,536 resolved targets. Larger ranges are rejected before address materialization.
 
-```yaml
-db_path: ""       # default: ~/.agentsniff/agentsniff.db
-log_file: ""      # empty = console only
-```
+## Dashboard security
 
-Or via environment variables:
+`agentsniff serve` binds to `127.0.0.1` by default. Loopback use remains credential-free. Set `AGENTSNIFF_API_TOKEN` to enable Basic/Bearer authentication; a token of at least 32 bytes is mandatory before AgentSniff will bind to a non-loopback address.
+
+- Keep the listener on loopback for local use.
+- For remote access, use TLS and set a strong `AGENTSNIFF_API_TOKEN`; an authenticated reverse proxy can provide additional authorization and rate limiting.
+- The browser dashboard uses HTTP Basic authentication with username `agentsniff` and the configured token as its password. API clients may send the token as a Bearer credential.
+- `/api/health` remains public for health checks; every other dashboard and API route is authenticated when a token is configured.
+- Cross-origin API access is disabled, scan creation requires a JSON `POST`, and SSE is read-only.
+
+Start a scan through the API:
 
 ```bash
-export AGENTSNIFF_DB_PATH="/var/lib/agentsniff/scans.db"
-export AGENTSNIFF_LOG_FILE="/var/log/agentsniff/scan.log"
+curl --fail --request POST http://127.0.0.1:9090/api/scan \
+  --header "Authorization: Bearer ${AGENTSNIFF_API_TOKEN}" \
+  --header 'Content-Type: application/json' \
+  --data '{"network":"192.168.1.0/24"}'
 ```
 
-The database stores full scan results including detected agents and signals. The web dashboard's Scan History panel loads from the database, so history persists across server restarts.
+Core endpoints:
 
-**v2 (Rust)** additionally supports PostgreSQL and Redis backends. Select with the `storage` block in `agentsniff.yaml`:
+| Endpoint | Method | Purpose |
+|---|---:|---|
+| `/` | GET | Dashboard |
+| `/api/health` | GET | Health check |
+| `/api/scan` | POST JSON | Start a scan |
+| `/api/scan/status` | GET | Current scan status |
+| `/api/scan/results` | GET | Latest results |
+| `/api/scan/stream` | GET/SSE | Read-only live events |
+| `/api/scan/stop` | POST JSON | Stop the running scan |
+| `/api/scan/history` | GET | Scan history |
+| `/api/scan/sarif` | GET | SARIF export |
+| `/api/settings` | GET/PUT | Alert settings |
+| `/api/settings/test` | POST JSON | Send a test alert |
+| `/api/db/backup` | GET | Download a SQLite snapshot |
+| `/api/db/reset` | POST JSON | Delete scan history |
 
-```yaml
-storage:
-  backend: "sqlite"           # "sqlite" | "postgres" | "redis"
-  sqlite_path: "~/.agentsniff/agentsniff.db"
-  postgres_url: ""            # e.g. postgres://user:pass@host/db
-  redis_url: ""               # e.g. redis://host:6379/0
+## Detection signatures
+
+Detection data is embedded from `crates/agentsniff/assets/signatures/`. Every dataset is accepted only when its ECDSA P-256 signature verifies against the independently packaged `signing_key.pub`.
+
+```bash
+agentsniff update-signatures
 ```
 
-Or via env vars: `AGENTSNIFF_STORAGE_BACKEND`, `AGENTSNIFF_POSTGRES_URL`, `AGENTSNIFF_REDIS_URL`.
+Updates are downloaded as a complete set, verified against the pinned key, staged, re-verified, and atomically activated. Missing, partial, invalid, or differently signed data is rejected and the last known-good set remains active.
 
-## Configuration
+Maintainers can re-sign changed datasets with:
 
-Generate a default config file:
+```bash
+python3 scripts/resign_signatures.py --key ~/.agentsniff/keys/signing_key.pem frameworks.json
+```
+
+The helper refuses to sign when the private key does not correspond to the tracked trust anchor. The private key must never be committed.
+
+## Configuration and storage
+
+Generate a configuration:
 
 ```bash
 agentsniff init-config
-# Creates agentsniff.yaml
 ```
 
-Configuration can also be set via environment variables with the `AGENTSNIFF_` prefix:
-
-```bash
-export AGENTSNIFF_TARGET_NETWORK="10.0.0.0/16"
-export AGENTSNIFF_ENABLE_DNS_MONITOR=true
-export AGENTSNIFF_HTTP_TIMEOUT=10.0
-```
-
-## Alerting
-
-AgentSniff can send alerts when agents are detected during scans. Configure via YAML, environment variables, CLI flags, or the dashboard settings modal.
-
-### Webhook
-
-```bash
-# CLI — auto-enables alerting
-agentsniff scan 192.168.1.0/24 --webhook-url https://hooks.example.com/agentsniff
-
-# Continuous monitoring with webhook
-agentsniff scan 192.168.1.0/24 --continuous 300 --webhook-url https://hooks.example.com/agentsniff
-```
-
-Webhook payload (POST JSON):
-
-```json
-{
-  "source": "agentsniff",
-  "timestamp": "2026-03-02T12:00:00Z",
-  "scan_id": "scan-20260302-120000",
-  "target_network": "192.168.1.0/24",
-  "total_agents": 3,
-  "by_confidence": {"confirmed": 1, "high": 1, "medium": 1},
-  "agents": [...]
-}
-```
-
-### Email (SMTP)
+Important defaults:
 
 ```yaml
-# In agentsniff.yaml
-alert_enabled: true
-alert_min_agents: 1
-alert_min_confidence: medium
-alert_cooldown: 600  # no more than one alert per 10 minutes
-
-smtp_host: "smtp.example.com"
-smtp_port: 587
-smtp_user: "alerts@example.com"
-smtp_password: "your-password"
-smtp_use_tls: true
-smtp_from: "agentsniff@example.com"
-smtp_to:
-  - "admin@example.com"
-  - "security@example.com"
+target_network: "192.168.1.0/24"
+api_host: "127.0.0.1"
+api_port: 9090
+# Prefer the AGENTSNIFF_API_TOKEN environment variable for this secret.
+api_token: ""
+storage:
+  backend: "sqlite"
+  sqlite_path: "~/.agentsniff/agentsniff.db"
 ```
 
-### Cron Job Example
+SQLite is the default persistent backend. PostgreSQL and Redis implementations are available in the Rust source, but verify deployment support for your selected command path before relying on them. Full scan results can contain sensitive network inventory; protect the database and backups accordingly.
 
-Run periodic scans from cron with webhook alerts and archived JSON output:
+## Optional integrations
+
+- `--nmap` enriches detections with a locally installed `nmap` binary.
+- `--zeek-logs PATH` consumes Zeek JSON logs.
+- `--features ebpf` builds Linux eBPF passive-capture support.
+
+Raw sockets, eBPF, host networking, and network-administration capabilities expand the scanner’s trust boundary. Enable only the minimum required for the chosen detectors.
+
+## Development
 
 ```bash
-# Scan every 10 minutes, alert via webhook, save results
-*/10 * * * * agentsniff scan 192.168.1.0/24 --webhook-url https://hooks.example.com/agentsniff --format json --output /var/log/agentsniff/scan-$(date +\%Y\%m\%d-\%H\%M).json 2>&1 | logger -t agentsniff
+cargo fmt --all -- --check
+cargo test --workspace
+cargo clippy --workspace --lib --bins -- -D warnings
 ```
 
-### Dashboard Settings
+Useful paths:
 
-When running the web dashboard (`agentsniff serve`), click the ⚙ gear icon to configure alert settings interactively — including webhook URL, SMTP credentials, thresholds, and a Test Alert button.
-
-## API Endpoints
-
-When running `agentsniff serve`:
-
-| Endpoint | Method | Description |
-|---|---|---|
-| `GET /` | — | Web dashboard |
-| `GET /docs` | — | Swagger / OpenAPI docs |
-| `GET /api/health` | — | Health check |
-| `POST /api/scan` | `?network=CIDR` | Start a scan |
-| `GET /api/scan/status` | — | Current scan status |
-| `GET /api/scan/results` | — | Latest scan results |
-| `GET /api/scan/history` | `?limit=&offset=` | Previous scan results (from DB) |
-| `GET /api/scan/{scan_id}` | — | Get a specific historical scan |
-| `GET /api/agents` | — | All detected agents |
-| `GET /api/scan/stream` | SSE | Real-time scan streaming |
-| `GET /api/scan/sarif` | — | Export latest scan as SARIF 2.1.0 |
-| `POST /api/scan/stop` | — | Cancel the running scan |
-| `GET /api/settings` | — | Get alert settings |
-| `PUT /api/settings` | JSON body | Update alert settings |
-| `POST /api/settings/test` | — | Send test alert |
-| `GET /api/db/backup` | — | Download SQLite database snapshot (v2) |
-| `POST /api/db/reset` | — | Wipe scan history (v2) |
-
-## Architecture
-
-```
-┌────────────────────────────────────────────────────────┐
-│                    AgentSniff CLI                      │
-│              agentsniff scan | serve                   │
-├──────────────┬─────────────────────────┬───────────────┤
-│   REST API   │     Scanner Engine      │ Web Dashboard │
-│ (FastAPI/    │                         │ (HTML/JS/CSS) │
-│  axum)       │                         │               │
-├──────────────┴───────────┬─────────────┴───────────────┤
-│                  Signal Correlator                     │
-│     Groups signals by host, calculates scores          │
-├─────┬─────┬─────┬─────┬─────┬─────┬─────────┬──────────┤
-│ DNS │Port │Agent│ MCP │ EP  │ TLS │ Traffic │   SSE    │
-│ Mon │Scan │Pin  │ Det │Probe│ FP  │Analyzer │ Detector │
-├─────┴─────┴─────┴─────┴─────┴─────┴─────────┴──────────┤
-│                    Target Network                      │
-└────────────────────────────────────────────────────────┘
+```text
+Cargo.toml
+crates/agentsniff/                 Main library and binary
+crates/agentsniff-common/          Shared eBPF/user-space types
+crates/agentsniff/assets/          Dashboard and signed detection data
+crates/agentsniff/tests/           Integration tests
+scripts/                           Installer and maintainer signing tools
+docs/                              Documentation site
 ```
 
-Signals from all detectors are correlated using noisy-OR probability combination, grouping by source host IP to produce unified `DetectedAgent` records with aggregate confidence scores.
+## Responsible use
 
-## Integration with ThirdKey Trust Stack
-
-AgentSniff complements the ThirdKey trust infrastructure:
-
-- <a href="https://agentpin.org/" target="_blank"><strong>AgentPin</strong></a> — Domain-anchored cryptographic identity for AI agents
-- <a href="https://schemapin.org/" target="_blank"><strong>SchemaPin</strong></a> — Verified tools detected on MCP servers can be cross-checked against SchemaPin signatures
-- <a href="https://symbiont.dev/" target="_blank"><strong>Symbiont</strong></a> — AgentSniff can run as a Symbiont agent with policy-enforced scanning boundaries
-- <a href="https://github.com/ThirdKeyAI/AgentNull" target="_blank"><strong>AgentNull</strong></a> — Detection evasion research feeds back into scanner improvements
-
-## Requirements
-
-**v1 (Python)**
-- Python 3.11+
-- Linux recommended (for `/proc/net/tcp` analysis)
-- Root/CAP_NET_RAW optional (enables passive DNS, TLS, and traffic monitoring)
-
-**v2 (Rust)**
-- Rust 1.75+ (stable) — `cargo install agentsniff` or `cargo build --release`
-- Linux recommended; `--features ebpf` requires a nightly toolchain and a recent kernel (cargo will pick the pinned nightly automatically)
-- Root/CAP_NET_RAW optional (same passive-capture trade-off as v1)
-- Optional external integrations: `nmap` binary on PATH for `--nmap`, Zeek log directory for `--zeek-logs`
+AgentSniff is intended for authorized network scanning and security assessment only. Scan only systems you own or have explicit permission to test.
 
 ## License
 
 Apache License 2.0 — Copyright Jascha Wanger / ThirdKey AI
-
-## Disclaimer
-
-AgentSniff is intended for authorized network scanning and security assessment only. You must only scan networks and systems that you own or have explicit written permission to test. Unauthorized scanning of networks may violate applicable laws and regulations, including the Computer Fraud and Abuse Act (CFAA), the UK Computer Misuse Act, and similar legislation in other jurisdictions. The authors and contributors are not responsible for any misuse of this tool or any damages resulting from its use. By using AgentSniff, you agree to use it in compliance with all applicable laws and only against targets you are authorized to scan.

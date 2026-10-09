@@ -1,78 +1,60 @@
-# AgentSniff - Development Guide
+# AgentSniff Development Guide
 
-## Project Overview
+AgentSniff is a Rust workspace for authorized AI-agent network discovery.
 
-AgentSniff is an AI agent network scanner that detects AI agents on enterprise networks using passive monitoring, active probing, protocol detection, and behavioral analysis.
+## Stack
 
-## Tech Stack
+- Rust 2021 workspace with Tokio
+- Axum dashboard/API
+- Reqwest active probes
+- SQLite persistence through rusqlite
+- Single-file embedded HTML/JS/CSS dashboard
+- Optional eBPF, Zeek, and nmap integrations
 
-- **Language**: Python 3.11+
-- **Web Framework**: FastAPI + Uvicorn
-- **Async HTTP**: aiohttp
-- **Frontend**: Single-file HTML/JS/CSS dashboard (no build step)
-- **Database**: SQLite via custom storage module
-- **Testing**: pytest + pytest-asyncio
-- **Linting**: ruff
+## Layout
 
-## Project Structure
-
-```
-agentsniff/
-├── cli.py              # CLI entry point (argparse)
-├── scanner.py          # Core scan engine + signal correlator
-├── server.py           # FastAPI REST/SSE API server
-├── config.py           # ScanConfig dataclass + framework signatures
-├── models.py           # DetectedAgent, Signal, enums
-├── fusion.py           # Cross-module confidence fusion rules
-├── baseline.py         # Network baseline anomaly detection
-├── storage.py          # SQLite persistence layer
-├── notifier.py         # Webhook + SMTP alerting
-├── sarif_export.py     # SARIF format export
-├── dashboard/
-│   └── index.html      # Single-page web dashboard
-└── detectors/
-    ├── base.py              # BaseDetector abstract class
-    ├── dns_monitor.py       # Passive DNS monitoring
-    ├── port_scanner.py      # TCP port scanning + banner grab
-    ├── agentpin_prober.py   # AgentPin identity discovery
-    ├── mcp_detector.py      # MCP server detection
-    ├── endpoint_prober.py   # HTTP framework fingerprinting
-    ├── tls_fingerprint.py   # JA3/JA4+ TLS fingerprinting
-    ├── traffic_analyzer.py  # Behavioral traffic analysis
-    └── sse_detector.py      # SSE/LLM streaming detection
+```text
+Cargo.toml
+crates/agentsniff/
+  src/
+    main.rs
+    scanner.rs
+    server.rs
+    config.rs
+    models.rs
+    fusion.rs
+    storage*.rs
+    notifier.rs
+    detectors/
+    integrations/
+    signatures/
+  assets/
+    index.html
+    signatures/
+  tests/
+crates/agentsniff-common/
+scripts/
+docs/
 ```
 
-## Key Patterns
+## Invariants
 
-- **Detector Registry**: Detectors register via `DetectorRegistry` and are enabled/disabled via `ScanConfig` flags
-- **Signal Model**: Each detector emits `Signal` objects with `detector`, `signal_type`, `confidence`, and `evidence`
-- **Noisy-OR Fusion**: Signals are combined per-host using `P = 1 - ∏(1 - p_i)`
-- **Confidence Levels**: CONFIRMED > HIGH > MEDIUM > LOW (enum in models.py)
-- **SSE Streaming**: Dashboard uses Server-Sent Events for real-time scan updates
+- AgentPin shape validation is discovery only. Do not use “verified” or `CONFIRMED` without cryptographic identity validation.
+- Detection datasets must verify against `assets/signatures/signing_key.pub`; never trust a key supplied by a sidecar.
+- Signature updates are complete-set, fail-closed, and atomically activated.
+- The dashboard binds to loopback by default. A non-loopback listener requires a 32-byte-or-longer API token, and every non-health route must remain authenticated when a token is configured.
+- SSE is read-only; scan creation is a JSON POST.
+- Network-derived strings must be inert in HTML and terminal output.
+- Enforce target and response-size budgets before allocation.
 
-## Development Commands
+## Commands
 
 ```bash
-# Install in dev mode
-pip install -e ".[dev]"
-
-# Run tests (skip broken sarif test)
-pytest --ignore=tests/test_sarif_export.py -v
-
-# Lint
-ruff check agentsniff/
-
-# Run dashboard
-python -m agentsniff serve --port 9090
-
-# Run scan
-python -m agentsniff scan 192.168.0.0/24
+cargo fmt --all -- --check
+cargo test --workspace
+cargo clippy --workspace --lib --bins -- -D warnings
+cargo run -p agentsniff -- scan 192.168.1.0/24
+cargo run -p agentsniff -- serve --port 9090
 ```
 
-## Important Notes
-
-- Use `python3` not `python` (system has no `python` alias)
-- Use `.venv/bin/python` for running with dependencies installed
-- Root/CAP_NET_RAW needed for passive detectors (DNS, TLS, traffic)
-- `tests/test_sarif_export.py` has a pre-existing import issue — always skip it
-- Async tests require `pytest-asyncio` which may not be in system python
+Raw capture requires appropriate Linux capabilities. Keep privileged Docker and host-network use opt-in.

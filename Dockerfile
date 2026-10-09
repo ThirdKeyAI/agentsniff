@@ -1,41 +1,34 @@
-FROM python:3.12-slim
+FROM rust:1.99-bookworm AS builder
+
+WORKDIR /src
+COPY Cargo.toml Cargo.lock rust-toolchain.toml ./
+COPY crates ./crates
+RUN cargo build --locked --release -p agentsniff
+
+FROM debian:bookworm-slim
 
 LABEL maintainer="ThirdKey AI"
 LABEL description="AgentSniff - AI Agent Network Scanner"
-LABEL version="1.0.0"
 
-# Install system dependencies for raw socket support
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    libcap2-bin \
+    ca-certificates \
+    curl \
     iproute2 \
-    iputils-ping \
-    net-tools \
-    && rm -rf /var/lib/apt/lists/*
+    nmap \
+    && rm -rf /var/lib/apt/lists/* \
+    && useradd --create-home --shell /usr/sbin/nologin agentsniff
 
-WORKDIR /app
+COPY --from=builder /src/target/release/agentsniff /usr/local/bin/agentsniff
+RUN mkdir -p /home/agentsniff/.agentsniff \
+    && chown -R agentsniff:agentsniff /home/agentsniff
 
-# Install Python dependencies
-COPY pyproject.toml .
-RUN pip install --no-cache-dir .
-
-# Copy application
-COPY . .
-RUN pip install --no-cache-dir -e .
-
-# Grant raw socket capabilities to Python binary
-# This allows passive DNS and TLS monitoring without running as root
-RUN setcap cap_net_raw,cap_net_admin+eip $(readlink -f $(which python3))
-
-# Create non-root user
-RUN useradd -m -s /bin/bash agentsniff
 USER agentsniff
+ENV HOME=/home/agentsniff
+VOLUME ["/home/agentsniff/.agentsniff"]
 
-# Default: run web dashboard
 EXPOSE 9090
-
-# Health check
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:9090/api/health')" || exit 1
+    CMD curl --fail --silent http://127.0.0.1:9090/api/health >/dev/null || exit 1
 
-ENTRYPOINT ["python", "-m", "agentsniff"]
-CMD ["serve", "--port", "9090"]
+ENTRYPOINT ["agentsniff"]
+CMD ["serve", "--host", "127.0.0.1", "--port", "9090"]

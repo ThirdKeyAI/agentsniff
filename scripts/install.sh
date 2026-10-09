@@ -74,6 +74,13 @@ check_prerequisites() {
         exit 1
     fi
 
+    if ! command -v cosign >/dev/null 2>&1; then
+        echo -e "${RED}✗ cosign is required to authenticate release provenance.${NC}"
+        echo -e "${YELLOW}  Install cosign from https://docs.sigstore.dev/cosign/system_config/installation/${NC}"
+        echo -e "${YELLOW}  Or use: cargo install agentsniff --locked${NC}"
+        exit 1
+    fi
+
     echo -e "${GREEN}✓ Prerequisites met${NC}"
 }
 
@@ -109,12 +116,14 @@ install_binary() {
     fi
 
     local download_url="${base_url}/${archive}"
-    local checksums_url="${base_url}/checksums.txt"
+    local signature_url="${download_url}.sig"
+    local certificate_url="${download_url}.pem"
 
     local temp_dir
     temp_dir=$(mktemp -d)
     local temp_file="${temp_dir}/${archive}"
-    local temp_checksums="${temp_dir}/checksums.txt"
+    local temp_signature="${temp_file}.sig"
+    local temp_certificate="${temp_file}.pem"
 
     if command -v curl >/dev/null 2>&1; then
         curl -fsSL "$download_url" -o "$temp_file" || {
@@ -124,26 +133,36 @@ install_binary() {
             rm -rf "$temp_dir"
             exit 1
         }
-        curl -fsSL "$checksums_url" -o "$temp_checksums" 2>/dev/null || true
+        curl -fsSL "$signature_url" -o "$temp_signature"
+        curl -fsSL "$certificate_url" -o "$temp_certificate"
     else
         wget -q "$download_url" -O "$temp_file" || {
             echo -e "${RED}✗ Failed to download AgentSniff${NC}"
             rm -rf "$temp_dir"
             exit 1
         }
-        wget -q "$checksums_url" -O "$temp_checksums" 2>/dev/null || true
+        wget -q "$signature_url" -O "$temp_signature"
+        wget -q "$certificate_url" -O "$temp_certificate"
     fi
 
-    if [ -s "$temp_checksums" ] && command -v sha256sum >/dev/null 2>&1; then
-        echo "• Verifying checksum..."
-        (cd "$temp_dir" && grep "$archive" checksums.txt | sha256sum --check --quiet) && {
-            echo -e "${GREEN}✓ Checksum verified${NC}"
-        } || {
-            echo -e "${RED}✗ Checksum verification failed!${NC}"
+    local release_tag="${archive#agentsniff-}"
+    release_tag="${release_tag%-${RUST_TARGET}.tar.gz}"
+    case "$release_tag" in
+        *[!A-Za-z0-9._-]*)
+            echo -e "${RED}✗ Invalid release tag: ${release_tag}${NC}"
             rm -rf "$temp_dir"
             exit 1
-        }
-    fi
+            ;;
+    esac
+
+    echo "• Verifying Sigstore provenance..."
+    cosign verify-blob \
+        --certificate "$temp_certificate" \
+        --signature "$temp_signature" \
+        --certificate-identity "https://github.com/ThirdKeyAI/agentsniff/.github/workflows/release-binaries.yml@refs/tags/${release_tag}" \
+        --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+        "$temp_file" >/dev/null
+    echo -e "${GREEN}✓ Release provenance verified${NC}"
 
     tar -xzf "$temp_file" -C "$BIN_DIR"
     rm -rf "$temp_dir"

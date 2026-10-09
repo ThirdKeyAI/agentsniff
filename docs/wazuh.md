@@ -2,7 +2,7 @@
 
 AgentSniff logs can be ingested by [Wazuh](https://wazuh.com/) for SIEM alerting and correlation. Example rules are provided in [`docs/wazuh-rules.xml`](https://github.com/ThirdKeyAI/agentsniff/blob/main/docs/wazuh-rules.xml).
 
-The rules below match on log content, so they work identically against v1 (Python) and v2 (Rust) — same `--log-file` and `--format json --output` semantics.
+The rules below match the Rust scanner's `--log-file` and `--format json --output` records.
 
 ## Setup
 
@@ -71,7 +71,7 @@ Rules use IDs 100200-100271:
 | 100252 | 7 | Medium confidence agent detected |
 | 100253 | 5 | Low confidence agent detected |
 | 100260 | 10 | MCP server found |
-| 100261 | 10 | AgentPin identity verified |
+| 100261 | 5 | Unsigned AgentPin identity claim discovered |
 | 100262 | 7 | LLM API DNS queries detected |
 | 100263 | 8 | Agent framework endpoint found |
 | 100264 | 7 | Agent traffic patterns detected |

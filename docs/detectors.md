@@ -6,7 +6,7 @@ AgentSniff uses eight detection modules that run concurrently. Each produces sig
 |---|---|---|---|
 | **DNS Monitor** | Passive DNS monitoring for LLM API domain queries | Yes* | High |
 | **Port Scanner** | Async TCP scanning of agent-related ports | No | Low-Medium |
-| **AgentPin Prober** | `.well-known/agent-identity.json` discovery | No | Confirmed |
+| **AgentPin Prober** | `.well-known/agent-identity.json` discovery | No | Medium (unsigned) |
 | **MCP Detector** | JSON-RPC 2.0 / SSE probing for MCP servers | No | Confirmed |
 | **Endpoint Prober** | HTTP probing for agent framework signatures | No | Medium-High |
 | **TLS Fingerprint** | JA3/JA4 fingerprinting of agent HTTP clients | Yes* | High |
@@ -15,7 +15,7 @@ AgentSniff uses eight detection modules that run concurrently. Each produces sig
 
 \* Falls back to non-root alternatives automatically.
 
-In the v2 (Rust) build, the four detectors marked "Requires Root" can use kernel-level eBPF capture when the binary is built with `--features ebpf` and run with the necessary capabilities. Without eBPF (or in v1) the same detectors automatically use the same userspace fallback paths described below.
+The four detectors marked "Requires Root" can use kernel-level eBPF capture when the binary is built with `--features ebpf` and run with the necessary capabilities. Without eBPF, the detectors use userspace fallback paths where available.
 
 ---
 
@@ -44,7 +44,7 @@ Includes banner grabbing for service identification and self-corroboration.
 
 ## AgentPin Prober
 
-Probes hosts for [AgentPin](https://agentpin.org) discovery documents at `/.well-known/agent-identity.json`. Valid AgentPin identities provide **confirmed** detection with full cryptographic provenance including issuer, capabilities, delegation chains, and revocation status.
+Probes hosts for [AgentPin](https://agentpin.org) discovery documents at `/.well-known/agent-identity.json`. The current implementation validates document shape only. It does not verify the AgentPin signature, issuer key, delegation, expiry, or revocation state, so it reports an explicit **unsigned, medium-confidence discovery** rather than a verified identity.
 
 Follows the AgentPin spec's no-redirect security policy. Probes HTTPS and HTTP across common ports (443, 8443, 8080, 3000, 8000, 80).
 
@@ -88,7 +88,7 @@ Also analyzes `/proc/net/tcp` for established connections to known LLM API IP ad
 
 Detects Server-Sent Events (SSE) streaming patterns characteristic of LLM responses. Looks for long-lived HTTP connections with `text/event-stream` content from known LLM API IPs.
 
-**Requires**: Raw socket access (or eBPF on v2 with `--features ebpf`) for passive capture.
+**Requires**: Raw socket access (or eBPF with `--features ebpf`) for passive capture.
 
 ---
 

@@ -1,12 +1,9 @@
 #!/usr/bin/env python3
 """
-Re-sign all AgentSniff detection signature files and sync them to both the
-Python package and the Rust crate assets.
+Re-sign AgentSniff detection signature files in the Rust crate assets.
 
-Run this after editing any signatures/*.json file. It signs every JSON file
-with the SchemaPin private key, writes the matching .sig, and copies both the
-.json and .sig into the Rust assets dir so the two implementations stay
-byte-identical.
+Run this after editing a detection-data JSON file. The supplied private key's
+public key must match the repository's pinned signing_key.pub trust anchor.
 
 Usage:
     python3 scripts/resign_signatures.py [--key ~/.agentsniff/keys/signing_key.pem]
@@ -16,15 +13,13 @@ from __future__ import annotations
 
 import argparse
 import json
-import shutil
 from pathlib import Path
 
 from schemapin.core import SchemaPinCore
 from schemapin.crypto import KeyManager, SignatureManager
 
 REPO = Path(__file__).resolve().parent.parent
-PY_DIR = REPO / "agentsniff" / "signatures"
-RS_DIR = REPO / "agentsniff-rs" / "crates" / "agentsniff" / "assets" / "signatures"
+SIG_DIR = REPO / "crates" / "agentsniff" / "assets" / "signatures"
 
 JSON_FILES = [
     "llm_domains.json",
@@ -60,9 +55,14 @@ def main() -> None:
 
     private_key = KeyManager.load_private_key_pem(Path(args.key).read_text())
     public_key_pem = KeyManager.export_public_key_pem(private_key.public_key())
+    pinned_public_key = (SIG_DIR / "signing_key.pub").read_text().strip()
+    if public_key_pem.strip() != pinned_public_key:
+        raise SystemExit(
+            "refusing to sign: --key does not match the pinned signing_key.pub"
+        )
 
     for name in targets:
-        src = PY_DIR / name
+        src = SIG_DIR / name
         data = json.loads(src.read_text())
 
         canonical = SchemaPinCore.canonicalize_schema(data)
@@ -74,12 +74,8 @@ def main() -> None:
             {"signature": signature, "public_key": public_key_pem, "algorithm": ALGORITHM},
             indent=2,
         )
-        (PY_DIR / sig_name).write_text(sig_body + "\n")
-
-        # Mirror both files into the Rust crate assets.
-        shutil.copyfile(src, RS_DIR / name)
-        shutil.copyfile(PY_DIR / sig_name, RS_DIR / sig_name)
-        print(f"signed + synced {name}")
+        (SIG_DIR / sig_name).write_text(sig_body + "\n")
+        print(f"signed {name}")
 
     print(f"\nDone. Public key: {public_key_pem.splitlines()[1][:40]}...")
 

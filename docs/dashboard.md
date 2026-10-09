@@ -14,6 +14,8 @@ agentsniff serve --port 9090
 # Open http://localhost:9090
 ```
 
+Loopback use is credential-free. When `AGENTSNIFF_API_TOKEN` is configured, the dashboard is protected with HTTP Basic authentication: enter `agentsniff` as the username and the token as the password. AgentSniff refuses non-loopback binding without a token; use TLS for any remote listener.
+
 ## Features
 
 ### Live Scanning

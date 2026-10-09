@@ -1,16 +1,17 @@
 # API Reference
 
-When running `agentsniff serve`, a REST API is available with the following endpoints. The endpoint set is identical between v1 and v2 except where tagged.
+When running `agentsniff serve`, a REST API is available on `127.0.0.1:9090` by default. Loopback use is credential-free. Set a 32-byte-or-longer `AGENTSNIFF_API_TOKEN` to enable Basic/Bearer authentication; the server refuses non-loopback binding without one. `/api/health` remains public.
+
+For API clients, send the token as a Bearer credential. Browsers can use HTTP Basic authentication with username `agentsniff` and the token as the password. Always use TLS when the listener is remotely reachable. Every state-changing request must use `Content-Type: application/json`, including endpoints whose body is `{}`; this also protects credential-free loopback deployments from cross-origin form posts.
 
 ## Endpoints
 
 | Endpoint | Method | Description |
 |---|---|---|
 | `GET /` | — | Web dashboard |
-| `GET /docs` | — | Swagger / OpenAPI docs (v1 only) |
 | `GET /api/health` | — | Health check |
-| `POST /api/scan` | `?network=CIDR&detectors=...` or JSON body | Start a scan |
-| `POST /api/scan/stop` | — | Stop running scan |
+| `POST /api/scan` | JSON body | Start a scan |
+| `POST /api/scan/stop` | JSON `{}` | Stop running scan |
 | `GET /api/scan/status` | — | Current scan status |
 | `GET /api/scan/results` | — | Latest scan results |
 | `GET /api/scan/history` | `?limit=&offset=` | Previous scan results |
@@ -20,16 +21,25 @@ When running `agentsniff serve`, a REST API is available with the following endp
 | `GET /api/scan/stream` | SSE | Real-time scan streaming |
 | `GET /api/settings` | — | Get alert settings |
 | `PUT /api/settings` | JSON body | Update alert settings |
-| `POST /api/settings/test` | — | Send test alert |
-| `GET /api/db/backup` | — | Download SQLite database snapshot (v2 only) |
-| `POST /api/db/reset` | — | Wipe scan history (v2 only) |
+| `POST /api/settings/test` | JSON `{}` | Send test alert |
+| `GET /api/db/backup` | — | Download SQLite database snapshot |
+| `POST /api/db/reset` | JSON `{}` | Wipe scan history |
+
+Start a scan with an explicit JSON request:
+
+```bash
+curl --request POST http://127.0.0.1:9090/api/scan \
+  --header "Authorization: Bearer ${AGENTSNIFF_API_TOKEN}" \
+  --header 'Content-Type: application/json' \
+  --data '{"network":"192.168.1.0/24","detectors":"port_scanner,endpoint_prober"}'
+```
 
 ## SSE Streaming
 
 The `/api/scan/stream` endpoint provides real-time scan updates via Server-Sent Events:
 
 ```
-GET /api/scan/stream?network=192.168.1.0/24&detectors=port_scanner,endpoint_prober
+GET /api/scan/stream
 ```
 
 ### Event Types
@@ -40,14 +50,20 @@ The event tag is carried inside each JSON payload's `event` field (the SSE strea
 |-------|------|-------------|
 | `scan_started` | `{scan_id, network, host_count, detectors}` | Scan has begun |
 | `agent_detected` | `{agent: <DetectedAgent>}` | New agent found or updated |
-| `scan_progress` | `{message}` | Free-form progress update (v2 only) |
+| `scan_progress` | `{message}` | Free-form progress update |
 | `scan_completed` | `{scan_id, agent_count, summary}` | Scan finished |
 | `scan_error` | `{message}` | Scan failed |
 
 ### Example
 
 ```javascript
-const source = new EventSource('/api/scan/stream?network=192.168.1.0/24');
+const source = new EventSource('/api/scan/stream');
+
+await fetch('/api/scan', {
+  method: 'POST',
+  headers: {'Content-Type': 'application/json'},
+  body: JSON.stringify({network: '192.168.1.0/24'})
+});
 
 source.onmessage = (e) => {
   const payload = JSON.parse(e.data);

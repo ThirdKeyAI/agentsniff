@@ -1,5 +1,7 @@
 use agentsniff::config::ScanConfig;
-use agentsniff::models::{Confidence, DetectedAgent, DetectorType, ScanResult, Signal};
+use agentsniff::models::{
+    AssetChangeStatus, Confidence, DetectedAgent, DetectorType, RemovedAsset, ScanResult, Signal,
+};
 use agentsniff::notifier::Notifier;
 
 fn make_config_disabled() -> ScanConfig {
@@ -12,6 +14,7 @@ fn make_config_disabled() -> ScanConfig {
 fn make_config_enabled(min_agents: usize, min_confidence: f64) -> ScanConfig {
     ScanConfig {
         alert_enabled: true,
+        alert_changes_only: false,
         alert_min_agents: min_agents,
         alert_min_confidence: min_confidence,
         alert_cooldown: 300,
@@ -92,4 +95,48 @@ async fn test_notifier_skips_below_confidence() {
 
     let res = notifier.check_and_notify(&result).await;
     assert!(res.is_ok());
+}
+
+#[test]
+fn test_change_only_notifier_ignores_unchanged_assets() {
+    let mut config = make_config_enabled(1, 0.3);
+    config.alert_changes_only = true;
+    let notifier = Notifier::new(&config);
+    let mut result = ScanResult::new();
+    let mut agent = DetectedAgent::new("host1".into(), "10.0.0.1".parse().unwrap());
+    agent.add_signal(Signal::new(
+        DetectorType::EndpointProber,
+        "framework_match".into(),
+        "Ollama endpoint".into(),
+        Confidence::High,
+        serde_json::json!({}),
+    ));
+    agent.change_status = AssetChangeStatus::Unchanged;
+    result.agents.push(agent);
+
+    assert!(!notifier.should_notify(&result));
+    result.agents[0].change_status = AssetChangeStatus::New;
+    assert!(notifier.should_notify(&result));
+}
+
+#[test]
+fn test_change_only_notifier_includes_removed_assets() {
+    let mut config = make_config_enabled(1, 0.9);
+    config.alert_changes_only = true;
+    let notifier = Notifier::new(&config);
+    let mut result = ScanResult::new();
+    result.diff.removed_assets.push(RemovedAsset {
+        id: "asset-removed".into(),
+        host: "host1".into(),
+        ip_address: "10.0.0.1".parse().unwrap(),
+        port: Some(6274),
+        framework: Some("mcp".into()),
+    });
+
+    assert!(notifier.should_notify(&result));
+    result.cancelled = true;
+    assert!(!notifier.should_notify(&result));
+    result.cancelled = false;
+    result.errors.push("detector failed".into());
+    assert!(!notifier.should_notify(&result));
 }

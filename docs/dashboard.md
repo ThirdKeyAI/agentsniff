@@ -22,26 +22,28 @@ Loopback use is credential-free. When `AGENTSNIFF_API_TOKEN` is configured, the 
 
 - Select target network and detectors from the UI
 - Real-time agent detection via Server-Sent Events (SSE)
-- Confidence counters update as agents are found
+- Presence and trusted-identity counters update as assets are found
 - Stop button cancels the scan immediately
 
 ### Scan Results
 
-- Agents displayed with confidence level, framework, host, port, and signal count
+- Service assets displayed with framework, host, port, presence, identity assurance, risk, and change state
 - Expandable signal details for each detected agent
-- Color-coded confidence levels: Confirmed, High, Medium, Low
+- Presence confirmation is visually separate from cryptographic identity verification
 
 ### Scan History
 
 - Previous scans stored in SQLite database
-- Browse past results with timestamps, agent counts, and status
+- Browse past results with timestamps, asset counts, and new/changed/removed totals
+- Stable service IDs and first-seen timestamps carry across scans of the same target
 - Cancelled and incomplete scans are preserved
 
 ### Settings
 
 Click the gear icon to configure:
 
-- **Alert thresholds** — Minimum agents and confidence level to trigger alerts
+- **Changes only** — Notify only for new, changed, or removed assets (enabled by default)
+- **Alert thresholds** — Minimum assets and presence confidence needed to trigger alerts
 - **Webhook URL** — HTTP POST endpoint for alert notifications
 - **SMTP settings** — Email server configuration for alert emails
 - **Test Alert** — Send a test notification to verify configuration

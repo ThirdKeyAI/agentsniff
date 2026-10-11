@@ -10,11 +10,11 @@ use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::Layer;
 
-use agentsniff::baseline::BaselineTracker;
+use agentsniff::baseline::apply_scan_diff;
 use agentsniff::config::ScanConfig;
 use agentsniff::ebpf::try_load_ebpf;
 use agentsniff::models::ScanResult;
-use agentsniff::notifier::send_alerts;
+use agentsniff::notifier::Notifier;
 use agentsniff::sarif_export::to_sarif;
 use agentsniff::scanner::run_scan;
 use agentsniff::server::run_server;
@@ -490,12 +490,14 @@ async fn run_oneshot_scan(
     format: OutputFormat,
     storage: Arc<dyn StorageBackend>,
 ) -> anyhow::Result<()> {
-    let result = run_scan(config, None, None, None).await?;
+    let mut result = run_scan(config, None, None, None).await?;
+    classify_scan(&mut result, storage.as_ref()).await;
     output_result(&result, config, format)?;
     if let Err(e) = storage.save_scan(&result).await {
         tracing::warn!("Failed to persist scan: {}", e);
     }
-    maybe_alert(&result, config).await;
+    let mut notifier = Notifier::new(config);
+    notifier.check_and_notify(&result).await?;
     Ok(())
 }
 
@@ -513,14 +515,14 @@ async fn run_continuous_scans(
         });
     }
 
-    let mut baseline = BaselineTracker::new();
+    let mut notifier = Notifier::new(config);
     let mut scan_num: u64 = 0;
 
     loop {
         scan_num += 1;
         tracing::info!("Starting scan #{}", scan_num);
 
-        let result = tokio::select! {
+        let mut result = tokio::select! {
             r = run_scan(config, None, Some(cancel.clone()), None) => r?,
             _ = cancel.cancelled() => {
                 println!("\n{}Scan stopped by user{}", ANSI_YELLOW, ANSI_RESET);
@@ -528,16 +530,13 @@ async fn run_continuous_scans(
             }
         };
 
-        let anomalies = baseline.process(&result);
-        if !anomalies.is_empty() {
-            tracing::info!("Baseline: {} anomaly(ies) detected", anomalies.len());
-        }
+        classify_scan(&mut result, storage.as_ref()).await;
 
         output_result(&result, config, format)?;
         if let Err(e) = storage.save_scan(&result).await {
             tracing::warn!("Failed to persist scan: {}", e);
         }
-        maybe_alert(&result, config).await;
+        notifier.check_and_notify(&result).await?;
 
         tracing::info!("Next scan in {}s...", config.scan_interval);
         tokio::select! {
@@ -550,27 +549,15 @@ async fn run_continuous_scans(
     }
 }
 
-async fn maybe_alert(result: &ScanResult, config: &ScanConfig) {
-    if !config.alert_enabled {
-        return;
-    }
-    if config.webhook_url.is_empty() && config.smtp_to.is_empty() {
-        return;
-    }
-
-    let qualifying: usize = result
-        .agents
-        .iter()
-        .filter(|a| a.confidence_score >= config.alert_min_confidence)
-        .count();
-    if qualifying < config.alert_min_agents {
-        return;
-    }
-
-    let outcomes = send_alerts(result, config).await;
-    for outcome in outcomes {
-        tracing::info!("Alert: {}", outcome);
-    }
+async fn classify_scan(result: &mut ScanResult, storage: &dyn StorageBackend) {
+    let previous = match storage.get_latest_scan(&result.scope_id).await {
+        Ok(previous) => previous,
+        Err(error) => {
+            tracing::warn!("Failed to load persisted scan baseline: {}", error);
+            None
+        }
+    };
+    apply_scan_diff(result, previous.as_ref());
 }
 
 fn output_result(
@@ -607,26 +594,20 @@ fn output_result(
 
 fn render_csv(result: &ScanResult) -> String {
     let mut out = String::from(
-        "host,ip_address,port,agent_type,framework,confidence_score,confidence_level,status,signal_count,first_seen,last_seen\n",
+        "host,ip_address,port,agent_type,framework,confidence_score,confidence_level,status,signal_count,first_seen,last_seen,transport,presence_status,identity_assurance,risk_level,change_status,fingerprint\n",
     );
     for agent in &result.agents {
         let port_str = agent.port.map(|p| p.to_string()).unwrap_or_default();
         let agent_type = agent.agent_type.as_deref().unwrap_or("unknown");
         let framework = agent.framework.as_deref().unwrap_or("unknown");
         let status_str = format!("{:?}", agent.status).to_lowercase();
-        let first_seen = agent
-            .signals
-            .first()
-            .map(|s| s.timestamp.to_rfc3339())
-            .unwrap_or_else(|| result.started_at.to_rfc3339());
-        let last_seen = agent
-            .signals
-            .last()
-            .map(|s| s.timestamp.to_rfc3339())
-            .unwrap_or_else(|| result.started_at.to_rfc3339());
+        let presence_status = format!("{:?}", agent.presence_status).to_lowercase();
+        let identity_assurance = format!("{:?}", agent.identity_assurance).to_lowercase();
+        let risk_level = format!("{:?}", agent.risk_level).to_lowercase();
+        let change_status = format!("{:?}", agent.change_status).to_lowercase();
 
         out.push_str(&format!(
-            "{},{},{},{},{},{},{},{},{},{},{}\n",
+            "{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{}\n",
             agent.host,
             agent.ip_address,
             port_str,
@@ -636,8 +617,14 @@ fn render_csv(result: &ScanResult) -> String {
             agent.confidence_level,
             status_str,
             agent.signal_count,
-            first_seen,
-            last_seen,
+            agent.first_seen.to_rfc3339(),
+            agent.last_seen.to_rfc3339(),
+            agent.transport,
+            presence_status,
+            identity_assurance,
+            risk_level,
+            change_status,
+            agent.fingerprint,
         ));
     }
     out.trim_end_matches('\n').to_string()
@@ -727,13 +714,33 @@ fn render_table(result: &ScanResult, quiet: bool, escape_terminal_controls: bool
         out.push_str(&format!("{}{}{}\n", ANSI_BOLD, "═".repeat(78), ANSI_RESET));
     }
 
+    out.push_str(&format!(
+        "\n  Changes: {} new, {} changed, {} unchanged, {} removed\n",
+        result.diff.new_assets.len(),
+        result.diff.changed_assets.len(),
+        result.diff.unchanged_assets.len(),
+        result.diff.removed_assets.len(),
+    ));
+
     if agents.is_empty() {
         out.push_str(&format!(
-            "\n  {}No AI agents detected on {}{}\n",
+            "\n  {}No current AI-agent assets detected on {}{}\n",
             ANSI_DIM,
             display_text(&result.target_network, escape_terminal_controls),
             ANSI_RESET
         ));
+        for removed in &result.diff.removed_assets {
+            let endpoint = removed
+                .port
+                .map(|port| format!("{}:{port}", removed.ip_address))
+                .unwrap_or_else(|| removed.ip_address.to_string());
+            out.push_str(&format!(
+                "  {}Removed: {}{}\n",
+                ANSI_YELLOW,
+                display_text(&endpoint, escape_terminal_controls),
+                ANSI_RESET
+            ));
+        }
         return out;
     }
 
@@ -760,32 +767,36 @@ fn render_table(result: &ScanResult, quiet: bool, escape_terminal_controls: bool
         ));
     }
     out.push('\n');
-
     // Table header
     out.push_str(&format!(
-        "\n  {:<20} {:<7} {:<18} {:<14} {:<14} {:<8} {}\n",
-        "Host", "Port", "Type", "Framework", "Confidence", "Signals", "Status"
+        "\n  {:<20} {:<7} {:<16} {:<14} {:<18} {:<18} {:<10} {}\n",
+        "Host", "Port", "Type", "Framework", "Presence", "Identity", "Risk", "Change"
     ));
     out.push_str(&format!(
-        "  {} {} {} {} {} {} {}\n",
+        "  {} {} {} {} {} {} {} {}\n",
         "─".repeat(20),
         "─".repeat(7),
+        "─".repeat(16),
+        "─".repeat(14),
         "─".repeat(18),
-        "─".repeat(14),
-        "─".repeat(14),
-        "─".repeat(8),
-        "─".repeat(10)
+        "─".repeat(18),
+        "─".repeat(10),
+        "─".repeat(10),
     ));
 
     for agent in agents {
         let level = agent.confidence_level.as_str();
         let color = confidence_color(level);
-        let status_str = format!("{:?}", agent.status).to_lowercase();
-        let icon = status_icon(&status_str);
+        let presence = format!("{:?}", agent.presence_status).to_lowercase();
+        let identity = format!("{:?}", agent.identity_assurance).to_lowercase();
+        let risk = format!("{:?}", agent.risk_level).to_lowercase();
+        let change = format!("{:?}", agent.change_status).to_lowercase();
+        let icon = status_icon(&format!("{:?}", agent.status).to_lowercase());
         let conf_display = format!(
-            "{:.0}% ({})",
+            "{} {:.0}% {}",
+            icon,
             agent.confidence_score * 100.0,
-            display_text(level, escape_terminal_controls)
+            presence,
         );
         let port_display = agent
             .port
@@ -793,7 +804,7 @@ fn render_table(result: &ScanResult, quiet: bool, escape_terminal_controls: bool
             .unwrap_or_else(|| "—".to_string());
 
         out.push_str(&format!(
-            "  {}{:<20}{} {:<7} {:<18} {:<14} {}{:<14}{} {:<8} {}{} {}{}\n",
+            "  {}{:<20}{} {:<7} {:<16} {:<14} {}{:<18}{} {:<18} {:<10} {}\n",
             ANSI_BOLD,
             agent.ip_address.to_string(),
             ANSI_RESET,
@@ -809,11 +820,9 @@ fn render_table(result: &ScanResult, quiet: bool, escape_terminal_controls: bool
             color,
             conf_display,
             ANSI_RESET,
-            agent.signals.len(),
-            color,
-            icon,
-            status_str,
-            ANSI_RESET,
+            display_text(&identity, escape_terminal_controls),
+            display_text(&risk, escape_terminal_controls),
+            display_text(&change, escape_terminal_controls),
         ));
     }
 

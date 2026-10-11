@@ -95,11 +95,102 @@ fn test_protocol_signal_populates_protocol_summary() {
 
 #[test]
 fn test_agent_status_from_score() {
-    assert_eq!(AgentStatus::from_score(0.95, true), AgentStatus::Verified);
+    assert_eq!(AgentStatus::from_score(0.95, true), AgentStatus::Detected);
     assert_eq!(AgentStatus::from_score(0.95, false), AgentStatus::Detected);
     assert_eq!(AgentStatus::from_score(0.6, false), AgentStatus::Detected);
     assert_eq!(AgentStatus::from_score(0.3, false), AgentStatus::Suspected);
     assert_eq!(AgentStatus::from_score(0.1, false), AgentStatus::Unknown);
+}
+
+#[test]
+fn test_presence_does_not_imply_verified_identity() {
+    let mut agent = DetectedAgent::for_endpoint(
+        "test-host".into(),
+        "192.168.1.1".parse().unwrap(),
+        Some(6274),
+        "tcp",
+    );
+    agent.add_signal(Signal::new(
+        DetectorType::McpDetector,
+        "mcp_server_confirmed".into(),
+        "MCP initialize succeeded".into(),
+        Confidence::Confirmed,
+        serde_json::json!({"port": 6274}),
+    ));
+
+    assert_eq!(agent.presence_status, PresenceStatus::Confirmed);
+    assert_eq!(agent.identity_assurance, IdentityAssurance::Unknown);
+    assert_eq!(agent.status, AgentStatus::Detected);
+}
+
+#[test]
+fn test_unsigned_agentpin_is_self_asserted() {
+    let mut agent = DetectedAgent::new("test-host".into(), "192.168.1.2".parse().unwrap());
+    agent.add_signal(Signal::new(
+        DetectorType::AgentpinProber,
+        "agentpin_unsigned_document".into(),
+        "Unsigned AgentPin discovery document".into(),
+        Confidence::Medium,
+        serde_json::json!({"identity_verified": false}),
+    ));
+
+    assert_eq!(agent.identity_assurance, IdentityAssurance::SelfAsserted);
+    assert_ne!(agent.status, AgentStatus::Verified);
+}
+
+#[test]
+fn test_trusted_signature_is_verified_identity() {
+    let mut agent = DetectedAgent::new("test-host".into(), "192.168.1.3".parse().unwrap());
+    agent.add_signal(Signal::new(
+        DetectorType::A2aDetector,
+        "a2a_agent_card_identity_verified".into(),
+        "Trusted A2A identity".into(),
+        Confidence::Confirmed,
+        serde_json::json!({"signature_status": "trusted_verified"}),
+    ));
+
+    assert_eq!(agent.identity_assurance, IdentityAssurance::TrustedVerified);
+    assert_eq!(agent.status, AgentStatus::Verified);
+}
+
+#[test]
+fn test_invalid_trusted_signature_is_identity_failure_and_high_risk() {
+    let mut agent = DetectedAgent::new("test-host".into(), "192.168.1.6".parse().unwrap());
+    agent.add_signal(Signal::new(
+        DetectorType::A2aDetector,
+        "a2a_agent_card_signature_invalid".into(),
+        "Invalid trusted signature".into(),
+        Confidence::Medium,
+        serde_json::json!({"signature_status": "invalid_trusted_signature"}),
+    ));
+
+    assert_eq!(agent.identity_assurance, IdentityAssurance::Invalid);
+    assert_eq!(agent.risk_level, RiskLevel::High);
+    assert_ne!(agent.status, AgentStatus::Verified);
+}
+
+#[test]
+fn test_stable_asset_ids_are_service_scoped() {
+    let ip = "192.168.1.4".parse().unwrap();
+    let first = stable_asset_id(ip, Some(3000), "tcp");
+    assert_eq!(first, stable_asset_id(ip, Some(3000), "tcp"));
+    assert_ne!(first, stable_asset_id(ip, Some(8080), "tcp"));
+    assert_ne!(first, stable_asset_id(ip, None, "network"));
+}
+
+#[test]
+fn test_passive_destination_port_does_not_become_local_service() {
+    let mut agent = DetectedAgent::new("test-host".into(), "192.168.1.5".parse().unwrap());
+    agent.add_signal(Signal::new(
+        DetectorType::TlsFingerprint,
+        "tls_fingerprint".into(),
+        "Outbound TLS fingerprint".into(),
+        Confidence::Low,
+        serde_json::json!({"dst_port": 443, "ja3": "example"}),
+    ));
+
+    assert_eq!(agent.port, None);
+    assert_eq!(agent.transport, "network");
 }
 
 #[test]

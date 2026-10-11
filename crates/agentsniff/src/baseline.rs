@@ -1,6 +1,79 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
-use crate::models::ScanResult;
+use crate::models::{AssetChangeStatus, RemovedAsset, ScanDiff, ScanResult};
+
+/// Classify a completed scan against the most recent persisted scan for the
+/// same target scope. This is the durable baseline used by the API, alerts,
+/// and dashboard; the in-memory `BaselineTracker` below remains as a small
+/// signal-level helper for callers that do not use storage.
+pub fn apply_scan_diff(current: &mut ScanResult, previous: Option<&ScanResult>) {
+    if current.cancelled || !current.errors.is_empty() {
+        current.diff = ScanDiff {
+            baseline_scan_id: previous.map(|scan| scan.scan_id.clone()),
+            ..ScanDiff::default()
+        };
+        return;
+    }
+    let observed_at = current.completed_at.unwrap_or(current.started_at);
+    let mut diff = ScanDiff {
+        baseline_scan_id: previous.map(|scan| scan.scan_id.clone()),
+        ..ScanDiff::default()
+    };
+    let previous_by_id: HashMap<&str, _> = previous
+        .into_iter()
+        .flat_map(|scan| scan.agents.iter())
+        .map(|agent| (agent.id.as_str(), agent))
+        .collect();
+
+    for agent in &mut current.agents {
+        agent.update_status();
+        agent.last_seen = observed_at;
+        if let Some(prior) = previous_by_id.get(agent.id.as_str()) {
+            agent.first_seen = prior.first_seen;
+            let prior_fingerprint = if prior.fingerprint.is_empty() {
+                prior.compute_fingerprint()
+            } else {
+                prior.fingerprint.clone()
+            };
+            if agent.fingerprint == prior_fingerprint {
+                agent.change_status = AssetChangeStatus::Unchanged;
+                diff.unchanged_assets.push(agent.id.clone());
+            } else {
+                agent.change_status = AssetChangeStatus::Changed;
+                diff.changed_assets.push(agent.id.clone());
+            }
+        } else {
+            agent.change_status = AssetChangeStatus::New;
+            diff.new_assets.push(agent.id.clone());
+        }
+    }
+
+    if let Some(previous) = previous {
+        let current_ids: HashSet<&str> = current
+            .agents
+            .iter()
+            .map(|agent| agent.id.as_str())
+            .collect();
+        for agent in &previous.agents {
+            if !current_ids.contains(agent.id.as_str()) {
+                diff.removed_assets.push(RemovedAsset {
+                    id: agent.id.clone(),
+                    host: agent.host.clone(),
+                    ip_address: agent.ip_address,
+                    port: agent.port,
+                    framework: agent.framework.clone(),
+                });
+            }
+        }
+    }
+
+    diff.new_assets.sort();
+    diff.changed_assets.sort();
+    diff.unchanged_assets.sort();
+    diff.removed_assets
+        .sort_by(|left, right| left.id.cmp(&right.id));
+    current.diff = diff;
+}
 
 /// A new (host, signal_type) pair detected that was not in the baseline.
 #[derive(Debug, Clone)]

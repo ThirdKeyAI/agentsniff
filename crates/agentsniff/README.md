@@ -46,6 +46,8 @@ agentsniff serve --port 9090
 
 Plus optional integrations: Zeek log ingestion (`--zeek-logs`) and Nmap enrichment (`--nmap`).
 
+Signals are correlated into deterministic `(IP, port, transport)` service assets. Presence confidence, cryptographic identity assurance, and risk are reported separately. Completed scans are compared with the latest persisted scan of the same target/detector scope, and alerts default to new, changed, or removed assets only.
+
 ## Optional Features
 
 ```bash

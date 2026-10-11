@@ -10,7 +10,7 @@ pub fn to_sarif(result: &ScanResult) -> Value {
         "tool": {
             "driver": {
                 "name": "agentsniff",
-                "version": "2.0.0",
+                "version": env!("CARGO_PKG_VERSION"),
                 "informationUri": "https://agentsniff.org",
                 "rules": build_rules(&result.agents),
             }
@@ -54,6 +54,15 @@ fn build_results(agents: &[DetectedAgent]) -> Vec<Value> {
                 "message": {
                     "text": signal.description,
                 },
+                "properties": {
+                    "assetId": agent.id,
+                    "port": agent.port,
+                    "transport": agent.transport,
+                    "presenceStatus": agent.presence_status,
+                    "identityAssurance": agent.identity_assurance,
+                    "riskLevel": agent.risk_level,
+                    "changeStatus": agent.change_status,
+                },
                 "locations": [{
                     "physicalLocation": {
                         "address": {
@@ -62,7 +71,7 @@ fn build_results(agents: &[DetectedAgent]) -> Vec<Value> {
                     },
                     "logicalLocations": [{
                         "name": agent.ip_address.to_string(),
-                        "kind": "host",
+                        "kind": if agent.port.is_some() { "service" } else { "host" },
                     }],
                 }],
             }));

@@ -22,7 +22,9 @@ AgentPin documents are currently treated as unsigned discovery evidence. AgentSn
 
 A2A Agent Cards are likewise self-asserted at `HIGH` confidence unless an ES256 JWS verifies against an out-of-band `a2a_trusted_keys` entry. Self-advertised keys never establish identity.
 
-Signals from all enabled detectors are correlated by source host using noisy-OR scoring.
+Signals from all enabled detectors are correlated into deterministic service assets keyed by IP, port, and transport (with a separate host-level asset for passive observations). Multiple services on one host remain distinct. Presence confidence, identity assurance, and security risk are reported independently: only a signature verified against an out-of-band trust anchor can produce `trusted_verified` identity assurance or the legacy `verified` status.
+
+Completed scans are compared with the latest persisted scan of the same target scope. Assets are marked `new`, `changed`, or `unchanged`, removals are recorded in the scan diff, and `first_seen` survives across scans. Alerts default to new, changed, and removed assets only.
 
 ## Install
 

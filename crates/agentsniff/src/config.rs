@@ -87,6 +87,9 @@ pub struct ScanConfig {
 
     // ── Alerting ─────────────────────────────────────────────────────
     pub alert_enabled: bool,
+    /// Notify only for new, changed, or removed assets. Disable to retain the
+    /// legacy behavior of alerting on every qualifying observation.
+    pub alert_changes_only: bool,
     pub alert_min_agents: usize,
     pub alert_min_confidence: f64,
     pub alert_cooldown: u64,
@@ -168,6 +171,7 @@ impl Default for ScanConfig {
 
             // Alerting
             alert_enabled: false,
+            alert_changes_only: true,
             alert_min_agents: 1,
             alert_min_confidence: 0.5,
             alert_cooldown: 300,
@@ -258,6 +262,9 @@ impl ScanConfig {
         if let Ok(v) = std::env::var("AGENTSNIFF_VERBOSE") {
             config.verbose = v == "1" || v.eq_ignore_ascii_case("true");
         }
+        if let Ok(v) = std::env::var("AGENTSNIFF_ALERT_CHANGES_ONLY") {
+            config.alert_changes_only = v == "1" || v.eq_ignore_ascii_case("true");
+        }
         config
     }
 }
@@ -340,6 +347,7 @@ dns_monitor_duration: 60      # seconds to monitor DNS
 
 # ── Alerting ────────────────────────────────────────────────────────
 # alert_enabled: false
+# alert_changes_only: true    # alert only on new, changed, or removed assets
 # alert_min_agents: 1
 # alert_min_confidence: 0.5
 # alert_cooldown: 300         # seconds between alerts

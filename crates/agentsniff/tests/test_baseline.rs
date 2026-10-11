@@ -1,5 +1,7 @@
-use agentsniff::baseline::BaselineTracker;
-use agentsniff::models::{Confidence, DetectedAgent, DetectorType, ScanResult, Signal};
+use agentsniff::baseline::{apply_scan_diff, BaselineTracker};
+use agentsniff::models::{
+    AssetChangeStatus, Confidence, DetectedAgent, DetectorType, ScanResult, Signal,
+};
 
 fn make_agent_with_signal(host: &str, ip: &str, signal_type: &str) -> DetectedAgent {
     let mut agent = DetectedAgent::new(host.into(), ip.parse().unwrap());
@@ -160,4 +162,93 @@ fn test_baseline_multiple_signals_per_agent() {
 
     assert_eq!(anomalies.len(), 1);
     assert_eq!(anomalies[0].signal_type, "llm_api_domain");
+}
+
+#[test]
+fn test_persisted_scan_diff_classifies_new_changed_unchanged_and_removed() {
+    let mut previous = ScanResult::new();
+    previous.scan_id = "baseline".into();
+    previous.target_network = "10.0.0.0/24".into();
+    previous
+        .agents
+        .push(make_agent_with_signal("unchanged", "10.0.0.1", "open_port"));
+    previous
+        .agents
+        .push(make_agent_with_signal("changed", "10.0.0.2", "open_port"));
+    previous
+        .agents
+        .push(make_agent_with_signal("removed", "10.0.0.3", "open_port"));
+    apply_scan_diff(&mut previous, None);
+
+    let prior_first_seen = previous.agents[0].first_seen;
+    let mut current = ScanResult::new();
+    current.target_network = previous.target_network.clone();
+    current
+        .agents
+        .push(make_agent_with_signal("unchanged", "10.0.0.1", "open_port"));
+    let mut changed = make_agent_with_signal("changed", "10.0.0.2", "open_port");
+    changed.add_signal(Signal::new(
+        DetectorType::McpDetector,
+        "mcp_server_confirmed".into(),
+        "MCP server".into(),
+        Confidence::Confirmed,
+        serde_json::json!({}),
+    ));
+    current.agents.push(changed);
+    current
+        .agents
+        .push(make_agent_with_signal("new", "10.0.0.4", "framework_match"));
+
+    apply_scan_diff(&mut current, Some(&previous));
+
+    assert_eq!(current.diff.baseline_scan_id.as_deref(), Some("baseline"));
+    assert_eq!(current.diff.new_assets.len(), 1);
+    assert_eq!(current.diff.changed_assets.len(), 1);
+    assert_eq!(current.diff.unchanged_assets.len(), 1);
+    assert_eq!(current.diff.removed_assets.len(), 1);
+    assert_eq!(
+        current.agents[0].change_status,
+        AssetChangeStatus::Unchanged
+    );
+    assert_eq!(current.agents[0].first_seen, prior_first_seen);
+    assert_eq!(current.agents[1].change_status, AssetChangeStatus::Changed);
+    assert_eq!(current.agents[2].change_status, AssetChangeStatus::New);
+    assert_eq!(
+        current.diff.removed_assets[0].ip_address.to_string(),
+        "10.0.0.3"
+    );
+}
+
+#[test]
+fn test_cancelled_scan_never_produces_a_diff() {
+    let mut current = ScanResult::new();
+    current.cancelled = true;
+    current
+        .agents
+        .push(make_agent_with_signal("partial", "10.0.0.9", "open_port"));
+
+    apply_scan_diff(&mut current, None);
+
+    assert_eq!(
+        current.agents[0].change_status,
+        AssetChangeStatus::Unclassified
+    );
+    assert_eq!(current.diff.actionable_count(), 0);
+}
+
+#[test]
+fn test_degraded_scan_never_produces_actionable_changes() {
+    let mut previous = ScanResult::new();
+    previous.scan_id = "baseline".into();
+    previous
+        .agents
+        .push(make_agent_with_signal("known", "10.0.0.1", "open_port"));
+    apply_scan_diff(&mut previous, None);
+
+    let mut current = ScanResult::new();
+    current.errors.push("MCP detector failed".into());
+    apply_scan_diff(&mut current, Some(&previous));
+
+    assert_eq!(current.diff.baseline_scan_id.as_deref(), Some("baseline"));
+    assert_eq!(current.diff.actionable_count(), 0);
 }

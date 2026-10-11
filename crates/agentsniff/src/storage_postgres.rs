@@ -42,6 +42,14 @@ impl StorageBackend for PostgresBackend {
         anyhow::bail!("PostgreSQL backend not yet implemented")
     }
 
+    async fn get_scan(&self, _scan_id: &str) -> anyhow::Result<Option<ScanResult>> {
+        anyhow::bail!("PostgreSQL backend not yet implemented")
+    }
+
+    async fn get_latest_scan(&self, _scope_id: &str) -> anyhow::Result<Option<ScanResult>> {
+        anyhow::bail!("PostgreSQL backend not yet implemented")
+    }
+
     async fn backup(&self) -> anyhow::Result<Vec<u8>> {
         anyhow::bail!("PostgreSQL backend not yet implemented")
     }

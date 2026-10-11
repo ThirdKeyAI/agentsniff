@@ -195,6 +195,10 @@
   .badge.verified { background: rgba(64, 208, 128, 0.15); color: var(--green); }
   .badge.detected { background: rgba(240, 192, 64, 0.15); color: var(--yellow); }
   .badge.suspected { background: rgba(64, 160, 240, 0.15); color: var(--blue); }
+  .badge.trusted_verified, .badge.new { background: rgba(64, 208, 128, 0.15); color: var(--green); }
+  .badge.invalid, .badge.critical, .badge.high-risk { background: rgba(232, 80, 96, 0.15); color: var(--red); }
+  .badge.self_asserted, .badge.signed_untrusted, .badge.changed { background: rgba(240, 192, 64, 0.15); color: var(--yellow); }
+  .badge.unknown, .badge.unclassified, .badge.unchanged, .badge.informational { background: rgba(106, 122, 138, 0.15); color: var(--text-dim); }
 
   .progress-bar {
     width: 80px;
@@ -691,8 +695,7 @@
   </div>
   <div class="controls">
     <input type="text" id="networkInput" placeholder="192.168.1.0/24" value="192.168.1.0/24">
-    <button id="scanBtn" onclick="startScan()">⟐ Scan Network</button>
-    <button id="stopBtn" class="secondary" onclick="stopScan()" style="display:none;background:var(--red);color:#fff;border:none">■ Stop</button>
+    <button id="scanBtn" onclick="toggleScan()" aria-pressed="false">⟐ Scan Network</button>
     <div class="export-dropdown">
       <button class="secondary" onclick="toggleExportMenu()">↓ Export</button>
       <div class="export-menu" id="exportMenu">
@@ -722,19 +725,19 @@
 <div class="main">
   <div class="stats-row">
     <div class="stat-card">
-      <div class="label">Agents Found</div>
+      <div class="label">Assets Found</div>
       <div class="value green" id="statTotal">—</div>
     </div>
     <div class="stat-card">
-      <div class="label">Confirmed</div>
+      <div class="label">Presence Confirmed</div>
       <div class="value green" id="statConfirmed">—</div>
     </div>
     <div class="stat-card">
-      <div class="label">High Confidence</div>
+      <div class="label">Trusted Identities</div>
       <div class="value yellow" id="statHigh">—</div>
     </div>
     <div class="stat-card">
-      <div class="label">Suspected</div>
+      <div class="label">Changes</div>
       <div class="value blue" id="statSuspected">—</div>
     </div>
     <div class="stat-card">
@@ -791,6 +794,13 @@
           <div class="toggle-row">
             <label class="toggle"><input type="checkbox" id="setAlertEnabled"><span class="slider"></span></label>
             <span style="font-size:12px;color:var(--text-dim)">Enable alert notifications</span>
+          </div>
+        </div>
+        <div class="field-row">
+          <label>Changes Only</label>
+          <div class="toggle-row">
+            <label class="toggle"><input type="checkbox" id="setChangesOnly" checked><span class="slider"></span></label>
+            <span style="font-size:12px;color:var(--text-dim)">Notify only for new, changed, or removed assets</span>
           </div>
         </div>
         <div class="field-row">
@@ -919,10 +929,7 @@ async function init() {
     if (status.status === 'running') {
       log('Reconnecting to running scan...');
       scanning = true;
-      const btn = document.getElementById('scanBtn');
-      btn.disabled = true;
-      btn.innerHTML = '<span class="spinner"></span> Scanning...';
-      document.getElementById('stopBtn').style.display = '';
+      setScanControl('scanning');
 
       const net = (status.config && status.config.network) || '...';
       showScanProgress(net, null, null);
@@ -940,14 +947,16 @@ async function init() {
         if (s.status === 'completed' || s.status === 'cancelled' || s.status === 'failed') {
           clearInterval(poll);
           if (s.status === 'completed') {
-            lastResult = s;
-            updateStats(s.summary || {});
-            renderAgents(s.agents || []);
-            log('Scan complete: ' + (s.agents || []).length + ' agents found');
+            const resultResp = await fetch('/api/scan/results');
+            lastResult = await resultResp.json();
+            updateResultStats(lastResult);
+            renderAgents(lastResult.agents || [], lastResult.diff);
+            log('Scan complete: ' + (lastResult.agents || []).length + ' assets found');
           } else if (s.status === 'cancelled') {
-            lastResult = s;
-            if (s.summary) updateStats(s.summary);
-            renderAgents(s.agents || []);
+            const resultResp = await fetch('/api/scan/results');
+            lastResult = await resultResp.json();
+            updateResultStats(lastResult);
+            renderAgents(lastResult.agents || [], lastResult.diff);
             log('Scan was cancelled');
           } else {
             log('Scan failed: ' + (s.error || 'unknown error'));
@@ -957,9 +966,10 @@ async function init() {
       }, 2000);
 
     } else if (status.status === 'completed') {
-      lastResult = status;
-      updateStats(status.summary || {});
-      renderAgents(status.agents || []);
+      const resultResp = await fetch('/api/scan/results');
+      lastResult = await resultResp.json();
+      updateResultStats(lastResult);
+      renderAgents(lastResult.agents || [], lastResult.diff);
       log('Loaded previous scan results');
     }
   } catch (e) {
@@ -990,39 +1000,66 @@ function confColor(score) {
 
 function updateLiveStats(agents) {
   const bc = { confirmed: 0, high: 0, medium: 0, low: 0 };
+  let trustedIdentities = 0;
   agents.forEach(a => {
     const lvl = (a.confidence_level || '').toLowerCase();
     if (lvl === 'confirmed') bc.confirmed++;
     else if (lvl === 'high') bc.high++;
     else if (lvl === 'medium') bc.medium++;
     else if (lvl === 'low') bc.low++;
+    if (a.identity_assurance === 'trusted_verified') trustedIdentities++;
   });
   document.getElementById('statTotal').textContent = agents.length;
   document.getElementById('statConfirmed').textContent = bc.confirmed;
-  document.getElementById('statHigh').textContent = bc.high;
-  document.getElementById('statSuspected').textContent = bc.medium + bc.low;
+  document.getElementById('statHigh').textContent = trustedIdentities;
+  document.getElementById('statSuspected').textContent = '—';
 }
 
 function updateStats(summary) {
   const bc = summary.by_confidence || {};
   document.getElementById('statTotal').textContent = summary.total_agents || 0;
   document.getElementById('statConfirmed').textContent = bc.confirmed || 0;
-  document.getElementById('statHigh').textContent = bc.high || 0;
-  document.getElementById('statSuspected').textContent = (bc.medium || 0) + (bc.low || 0);
+  document.getElementById('statHigh').textContent = summary.trusted_identities || 0;
+  document.getElementById('statSuspected').textContent =
+    (summary.new_assets || 0) + (summary.changed_assets || 0) + (summary.removed_assets || 0);
   document.getElementById('statDuration').textContent =
     summary.duration_seconds ? summary.duration_seconds.toFixed(1) + 's' : '—';
   document.getElementById('statDetectors').textContent =
     summary.detectors_run ? summary.detectors_run.length : '—';
 }
 
-function renderAgents(agents) {
+function updateResultStats(result) {
+  const agents = result.agents || [];
+  updateLiveStats(agents);
+  const diff = result.diff || {};
+  document.getElementById('statSuspected').textContent =
+    (diff.new_assets || []).length + (diff.changed_assets || []).length + (diff.removed_assets || []).length;
+  if (result.started_at && result.completed_at) {
+    const duration = (new Date(result.completed_at) - new Date(result.started_at)) / 1000;
+    document.getElementById('statDuration').textContent = Number.isFinite(duration) ? duration.toFixed(1) + 's' : '—';
+  }
+  document.getElementById('statDetectors').textContent = (result.detectors_run || []).length || '—';
+}
+
+function renderAgents(agents, diff = null) {
   const container = document.getElementById('agentsTable');
+  const removed = (diff && Array.isArray(diff.removed_assets)) ? diff.removed_assets : [];
+  const changeSummary = diff ? `<div style="padding:10px 16px;background:var(--surface2);border-bottom:1px solid var(--border);font-size:12px">
+    <span class="badge new">${(diff.new_assets || []).length} new</span>
+    <span class="badge changed">${(diff.changed_assets || []).length} changed</span>
+    <span class="badge unchanged">${(diff.unchanged_assets || []).length} unchanged</span>
+    <span class="badge invalid">${removed.length} removed</span>
+  </div>` : '';
 
   if (!agents || agents.length === 0) {
-    container.innerHTML = `<div class="empty-state">
+    const removedDetails = removed.length ? `<div style="margin-top:12px;color:var(--text-dim)">${removed.slice(0, 8).map(asset =>
+      `Removed: ${escHtml(asset.ip_address || asset.host || '')}${asset.port ? ':' + escHtml(String(asset.port)) : ''}`
+    ).join('<br>')}</div>` : '';
+    container.innerHTML = changeSummary + `<div class="empty-state">
       <div class="icon">✓</div>
       <h3>Scan Complete</h3>
-      <p>No AI agents detected on this network</p>
+      <p>No current AI-agent assets detected on this network</p>
+      ${removedDetails}
     </div>`;
     return;
   }
@@ -1030,16 +1067,20 @@ function renderAgents(agents) {
   let html = `<table>
     <thead><tr>
       <th>Host</th><th>Port</th><th>Type</th><th>Framework</th>
-      <th>Confidence</th><th>Signals</th><th>Status</th>
+      <th>Presence</th><th>Identity</th><th>Risk</th><th>Change</th>
     </tr></thead><tbody>`;
 
   agents.forEach((agent, idx) => {
     const score = Number.isFinite(Number(agent.confidence_score))
       ? Math.max(0, Math.min(1, Number(agent.confidence_score))) : 0;
-    const rawLevel = String(agent.confidence_level || 'low').toLowerCase();
-    const level = ['confirmed','high','medium','low'].includes(rawLevel) ? rawLevel : 'low';
-    const rawStatus = String(agent.status || 'unknown').toLowerCase();
-    const status = ['verified','detected','suspected','unknown'].includes(rawStatus) ? rawStatus : 'unknown';
+    const rawPresence = String(agent.presence_status || 'unknown').toLowerCase();
+    const presence = ['confirmed','detected','suspected','unknown'].includes(rawPresence) ? rawPresence : 'unknown';
+    const rawIdentity = String(agent.identity_assurance || 'unknown').toLowerCase();
+    const identity = ['trusted_verified','signed_untrusted','self_asserted','invalid','unknown'].includes(rawIdentity) ? rawIdentity : 'unknown';
+    const rawRisk = String(agent.risk_level || 'unknown').toLowerCase();
+    const risk = ['critical','high','medium','low','informational','unknown'].includes(rawRisk) ? rawRisk : 'unknown';
+    const rawChange = String(agent.change_status || 'unclassified').toLowerCase();
+    const change = ['new','changed','unchanged','unclassified'].includes(rawChange) ? rawChange : 'unclassified';
     const color = confColor(score);
     const pct = Math.round(score * 100);
 
@@ -1050,13 +1091,15 @@ function renderAgents(agents) {
       <td>${escHtml(agent.framework || 'unknown')}</td>
       <td>
         <div class="progress-bar"><div class="fill" style="width:${pct}%;background:${color}"></div></div>
-        ${pct}% <span class="badge ${level}">${level}</span>
+        ${pct}% <span class="badge ${presence}">${presence}</span>
       </td>
-      <td>${Number.isFinite(Number(agent.signal_count)) ? Number(agent.signal_count) : 0}</td>
-      <td><span class="badge ${status}">${escHtml(status)}</span></td>
+      <td><span class="badge ${identity}">${escHtml(identity.replaceAll('_', ' '))}</span></td>
+      <td><span class="badge ${risk === 'high' ? 'high-risk' : risk}">${escHtml(risk)}</span></td>
+      <td><span class="badge ${change}">${escHtml(change)}</span></td>
     </tr>
     <tr class="detail-row" id="detail-${idx}">
-      <td colspan="7"><div class="detail-content">
+      <td colspan="8"><div class="detail-content">
+        <div style="color:var(--text-dim);margin-bottom:6px">Asset ${escHtml(agent.id || '')} · ${Number.isFinite(Number(agent.signal_count)) ? Number(agent.signal_count) : 0} signal(s)</div>
         <ul class="signal-list">
           ${(agent.signals || []).slice(0, 8).map(s =>
             `<li><strong>[${escHtml(s.detector || '')}]</strong>${detInfoIcon(s.detector)} ${escHtml(s.description || '')}</li>`
@@ -1064,7 +1107,7 @@ function renderAgents(agents) {
           ${(agent.signals || []).length > 8 ? `<li>... and ${agent.signals.length - 8} more</li>` : ''}
         </ul>
         ${agent.agentpin_identity ? `<div style="margin-top:8px;color:var(--green)">
-          ⚿ AgentPin (unverified): ${escHtml(agent.agentpin_identity.agent_id || (agent.agentpin_identity.agent_ids || []).join(', '))} (${escHtml(agent.agentpin_identity.entity || agent.agentpin_identity.issuer || '')})</div>` : ''}
+          ⚿ AgentPin (${escHtml(identity.replaceAll('_', ' '))}): ${escHtml(agent.agentpin_identity.agent_id || (agent.agentpin_identity.agent_ids || []).join(', '))} (${escHtml(agent.agentpin_identity.entity || agent.agentpin_identity.issuer || '')})</div>` : ''}
         ${agent.mcp_capabilities ? `<div style="margin-top:4px;color:var(--purple)">
           ⚡ MCP Server: ${escHtml(JSON.stringify(agent.mcp_capabilities.server_info || {}))}</div>` : ''}
       </div></td>
@@ -1072,7 +1115,7 @@ function renderAgents(agents) {
   });
 
   html += '</tbody></table>';
-  container.innerHTML = html;
+  container.innerHTML = changeSummary + html;
   _renderedAgents = agents;
   wireTooltips();
 }
@@ -1150,6 +1193,30 @@ function setDetectorTogglesDisabled(disabled) {
   });
 }
 
+function setScanControl(state) {
+  const btn = document.getElementById('scanBtn');
+  const active = state !== 'idle';
+  btn.classList.toggle('danger', active);
+  btn.setAttribute('aria-pressed', active ? 'true' : 'false');
+
+  if (state === 'stopping') {
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner"></span> Stopping...';
+  } else if (state === 'scanning') {
+    // Keep the primary control enabled so the active scan can be cancelled.
+    btn.disabled = false;
+    btn.textContent = '■ Stop Scan';
+  } else {
+    btn.disabled = false;
+    btn.textContent = '⟐ Scan Network';
+  }
+}
+
+function toggleScan() {
+  if (scanning) stopScan();
+  else startScan();
+}
+
 function resetScanUI() {
   scanning = false;
   activeEventSource = null;
@@ -1157,10 +1224,7 @@ function resetScanUI() {
   if (scanTimer) { clearInterval(scanTimer); scanTimer = null; }
   scanStartTime = null;
   hideScanProgress();
-  const btn = document.getElementById('scanBtn');
-  btn.disabled = false;
-  btn.innerHTML = '⟐ Scan Network';
-  document.getElementById('stopBtn').style.display = 'none';
+  setScanControl('idle');
   setDetectorTogglesDisabled(false);
   // Refresh history if panel is open
   if (document.getElementById('historyBody').classList.contains('open')) {
@@ -1250,15 +1314,13 @@ function returnToLiveScan() {
     // Scan finished while viewing history — restore completed results
     hideScanProgress();
     if (lastResult.summary) updateStats(lastResult.summary);
-    renderAgents(lastResult.agents || []);
+    renderAgents(lastResult.agents || [], lastResult.diff);
     log('Restored completed scan results');
   }
 }
 
 async function stopScan() {
-  const stopBtn = document.getElementById('stopBtn');
-  stopBtn.disabled = true;
-  stopBtn.textContent = 'Stopping...';
+  setScanControl('stopping');
   log('Stopping scan...');
   try {
     // Send stop request BEFORE closing SSE so the server sets the cancel event
@@ -1287,14 +1349,14 @@ async function stopScan() {
     try {
       const r = await fetch('/api/scan/status');
       const s = await r.json();
-      // Wait for background task to finish and populate results (agents key present)
-      if (s.status !== 'running' && s.agents !== undefined) {
+      if (s.status !== 'running') {
         clearInterval(poll);
         if (s.status === 'cancelled' || s.status === 'completed') {
-          lastResult = s;
-          if (s.summary) updateStats(s.summary);
-          renderAgents(s.agents || []);
-          log(`Scan stopped — ${(s.agents || []).length} agent(s) found`);
+          const resultResp = await fetch('/api/scan/results');
+          lastResult = await resultResp.json();
+          updateResultStats(lastResult);
+          renderAgents(lastResult.agents || [], lastResult.diff);
+          log(`Scan stopped — ${(lastResult.agents || []).length} asset(s) found`);
         }
         resetScanUI();
       }
@@ -1307,12 +1369,14 @@ async function stopScan() {
 
 async function startScan() {
   if (scanning) return;
-  scanning = true;
 
-  const btn = document.getElementById('scanBtn');
-  btn.disabled = true;
-  btn.innerHTML = '<span class="spinner"></span> Scanning...';
-  document.getElementById('stopBtn').style.display = '';
+  if (window.location.protocol === 'file:') {
+    log('Scan unavailable from the file preview. Open the dashboard from the running AgentSniff server (http://127.0.0.1:9090/).');
+    return;
+  }
+
+  scanning = true;
+  setScanControl('scanning');
 
   const network = document.getElementById('networkInput').value || '192.168.1.0/24';
 
@@ -1366,7 +1430,7 @@ async function startScan() {
       });
     };
 
-    evtSource.onmessage = (event) => {
+    evtSource.onmessage = async (event) => {
       const data = JSON.parse(event.data);
 
       if (data.event === 'scan_started') {
@@ -1379,7 +1443,7 @@ async function startScan() {
       }
 
       if (data.event === 'agent_detected') {
-        const idx = agents.findIndex(a => a.ip_address === data.agent.ip_address);
+        const idx = agents.findIndex(a => a.id === data.agent.id);
         if (idx >= 0) {
           agents[idx] = data.agent;
         } else {
@@ -1393,17 +1457,30 @@ async function startScan() {
 
       if (data.event === 'scan_completed') {
         evtSource.close();
-        lastResult = { agents, summary: data.summary };
+        try {
+          const resultResp = await fetch('/api/scan/results');
+          lastResult = resultResp.ok ? await resultResp.json() : { agents, summary: data.summary };
+        } catch (_) {
+          lastResult = { agents, summary: data.summary };
+        }
         updateStats(data.summary);
-        log(`Scan complete: ${agents.length} agents found`);
+        renderAgents(lastResult.agents || agents, lastResult.diff);
+        log(`Scan complete: ${(lastResult.agents || agents).length} assets found`);
         resetScanUI();
       }
 
       if (data.event === 'scan_cancelled') {
         evtSource.close();
-        lastResult = { agents, summary: data.summary };
-        if (data.summary) updateStats(data.summary);
-        log(`Scan cancelled — ${agents.length} agent(s) found before stop`);
+        try {
+          const resultResp = await fetch('/api/scan/results');
+          lastResult = resultResp.ok ? await resultResp.json() : { agents, summary: data.summary };
+        } catch (_) {
+          lastResult = { agents, summary: data.summary };
+        }
+        if (lastResult.diff) updateResultStats(lastResult);
+        else if (data.summary) updateStats(data.summary);
+        renderAgents(lastResult.agents || agents, lastResult.diff);
+        log(`Scan cancelled — ${(lastResult.agents || agents).length} asset(s) found before stop`);
         resetScanUI();
       }
 
@@ -1428,9 +1505,10 @@ async function startScan() {
 
           if (status.status === 'completed' || status.status === 'cancelled') {
             clearInterval(poll);
-            lastResult = status;
-            updateStats(status.summary || {});
-            renderAgents(status.agents || []);
+            const resultResp = await fetch('/api/scan/results');
+            lastResult = await resultResp.json();
+            updateResultStats(lastResult);
+            renderAgents(lastResult.agents || [], lastResult.diff);
             log(status.status === 'cancelled' ? 'Scan cancelled' : 'Scan complete');
             resetScanUI();
           }
@@ -1475,13 +1553,14 @@ function exportCSV() {
   const agents = lastResult.agents || [];
   if (!agents.length) { log('No agents to export'); return; }
 
-  const headers = ['host','ip_address','port','agent_type','framework','confidence_score','confidence_level','status','signal_count'];
+  const headers = ['id','host','ip_address','port','transport','agent_type','framework','confidence_score','presence_status','identity_assurance','risk_level','change_status','signal_count','first_seen','last_seen'];
   const rows = [headers.join(',')];
   for (const a of agents) {
     rows.push([
-      a.host || '', a.ip_address || '', a.port || '', a.agent_type || '',
-      a.framework || '', a.confidence_score || 0, a.confidence_level || '',
-      a.status || '', a.signal_count || 0
+      a.id || '', a.host || '', a.ip_address || '', a.port || '', a.transport || '',
+      a.agent_type || '', a.framework || '', a.confidence_score || 0,
+      a.presence_status || '', a.identity_assurance || '', a.risk_level || '',
+      a.change_status || '', a.signal_count || 0, a.first_seen || '', a.last_seen || ''
     ].join(','));
   }
 
@@ -1537,6 +1616,7 @@ async function openSettings() {
     const s = await resp.json();
 
     document.getElementById('setAlertEnabled').checked = s.alert_enabled || false;
+    document.getElementById('setChangesOnly').checked = s.alert_changes_only !== false;
     document.getElementById('setMinAgents').value = s.alert_min_agents || 1;
     document.getElementById('setMinConfidence').value = s.alert_min_confidence || 'low';
     document.getElementById('setCooldown').value = s.alert_cooldown || 0;
@@ -1564,6 +1644,7 @@ async function saveSettings() {
 
   const body = {
     alert_enabled: document.getElementById('setAlertEnabled').checked,
+    alert_changes_only: document.getElementById('setChangesOnly').checked,
     alert_min_agents: parseInt(document.getElementById('setMinAgents').value) || 1,
     alert_min_confidence: document.getElementById('setMinConfidence').value,
     alert_cooldown: parseInt(document.getElementById('setCooldown').value) || 0,
@@ -1700,7 +1781,7 @@ function renderHistory(scans) {
 
   let html = `<table>
     <thead><tr>
-      <th>Time</th><th>Network</th><th>Agents</th><th>Status</th><th>Duration</th>
+      <th>Time</th><th>Network</th><th>Assets</th><th>Changes</th><th>Status</th><th>Duration</th>
     </tr></thead><tbody>`;
 
   for (const scan of scans) {
@@ -1708,9 +1789,8 @@ function renderHistory(scans) {
     const network = String(scan.target_network || '—');
     const agents = Number.isFinite(Number(scan.agent_count)) ? Number(scan.agent_count) : '—';
     const status = String(scan.status || '—');
-    const summary = scan.summary || {};
-    const duration = summary.duration_seconds
-      ? summary.duration_seconds.toFixed(1) + 's'
+    const duration = scan.duration_seconds
+      ? Number(scan.duration_seconds).toFixed(1) + 's'
       : '—';
     const statusClass = status === 'completed' ? 'verified' : (status === 'failed' ? 'low' : 'detected');
     const scanId = String(scan.scan_id || '');
@@ -1719,6 +1799,7 @@ function renderHistory(scans) {
       <td>${escHtml(time)}</td>
       <td>${escHtml(network)}</td>
       <td>${agents}</td>
+      <td><span class="badge new">+${Number(scan.new_assets || 0)}</span> <span class="badge changed">~${Number(scan.changed_assets || 0)}</span> <span class="badge invalid">-${Number(scan.removed_assets || 0)}</span></td>
       <td><span class="badge ${statusClass}">${escHtml(status)}</span></td>
       <td>${escHtml(duration)}</td>
     </tr>`;
@@ -1739,7 +1820,7 @@ async function loadHistoryScan(scanId) {
     const data = await resp.json();
     lastResult = data;
     if (data.summary) updateStats(data.summary);
-    renderAgents(data.agents || []);
+    renderAgents(data.agents || [], data.diff);
     // Show "back" banner if viewing history while a scan is running or results exist
     if (scanning || lastResult) {
       const container = document.getElementById('agentsTable');

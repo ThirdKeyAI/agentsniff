@@ -46,6 +46,8 @@ fn test_sarif_with_agents() {
     // Should have 2 results (one per signal).
     let results = sarif["runs"][0]["results"].as_array().unwrap();
     assert_eq!(results.len(), 2);
+    assert_eq!(results[0]["properties"]["presenceStatus"], "confirmed");
+    assert_eq!(results[0]["properties"]["identityAssurance"], "unknown");
 
     // Should have 2 deduplicated rules.
     let rules = sarif["runs"][0]["tool"]["driver"]["rules"]

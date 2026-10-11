@@ -72,9 +72,10 @@ a2a_trusted_keys: {}
 
 # Alerting
 alert_enabled: false
+alert_changes_only: true     # only new, changed, and removed assets
 alert_min_agents: 1
-alert_min_confidence: low    # low, medium, high, confirmed
-alert_cooldown: 0            # seconds between repeated alerts
+alert_min_confidence: 0.5    # fused presence score from 0.0 to 1.0
+alert_cooldown: 300          # seconds between repeated alerts
 
 # Webhook
 webhook_url: ""

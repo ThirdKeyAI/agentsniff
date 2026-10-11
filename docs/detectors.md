@@ -1,6 +1,6 @@
 # Detectors
 
-AgentSniff uses nine detection modules that run concurrently. Each produces signals with confidence levels that are fused into a single score per host.
+AgentSniff uses nine detection modules that run concurrently. Each produces signals with confidence levels that are fused into a single score per service asset. Presence confidence does not imply verified identity.
 
 | Detector | Method | Requires Root | Confidence |
 |---|---|---|---|
@@ -55,7 +55,7 @@ AgentPin itself is a discovery and identity layer rather than an MCP server. The
 
 Fetches the permanent `/.well-known/agent-card.json` discovery resource and validates the required Agent Card fields. The legacy `/.well-known/agent.json` path is accepted as compatibility evidence and identified as such.
 
-Unsigned cards and cards with unknown signers report A2A presence without claiming verified identity. A card reaches `CONFIRMED` only when an ES256 JWS verifies against an out-of-band public key configured in `a2a_trusted_keys`. Keys advertised by the scanned host are never trust anchors.
+Unsigned cards and cards with unknown signers report A2A presence without claiming verified identity. A valid ES256 JWS against an out-of-band public key configured in `a2a_trusted_keys` produces `trusted_verified` identity assurance and a confirmed-presence signal. Keys advertised by the scanned host are never trust anchors.
 
 ## MCP Detector
 

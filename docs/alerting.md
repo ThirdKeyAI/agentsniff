@@ -1,6 +1,6 @@
 # Alerting
 
-AgentSniff sends alerts when agents are detected during scans. Configure via YAML, environment variables, CLI flags, or the dashboard settings modal.
+AgentSniff sends alerts after a scan is compared with its persisted baseline. By default, only new, changed, or removed assets are included. Configure via YAML, environment variables, CLI flags, or the dashboard settings modal.
 
 ## Webhook
 
@@ -25,18 +25,29 @@ POST JSON:
   "scan_id": "scan-20260302-120000",
   "target_network": "192.168.1.0/24",
   "total_agents": 3,
-  "by_confidence": {"confirmed": 1, "high": 1, "medium": 1},
+  "alert_asset_count": 1,
+  "changes_only": true,
   "duration_seconds": 4.2,
+  "diff": {
+    "baseline_scan_id": "previous-scan",
+    "new_assets": ["asset-0123"],
+    "changed_assets": [],
+    "unchanged_count": 1,
+    "removed_assets": []
+  },
   "agents": [
     {
+      "id": "asset-0123",
       "ip_address": "192.168.1.50",
       "host": "agent-server",
       "port": 8000,
       "agent_type": "framework",
       "framework": "langchain",
       "confidence_score": 0.95,
-      "confidence_level": "confirmed",
-      "status": "verified",
+      "presence_status": "confirmed",
+      "identity_assurance": "unknown",
+      "risk_level": "unknown",
+      "change_status": "new",
       "signal_count": 4
     }
   ]
@@ -56,8 +67,9 @@ webhook_headers:
 
 ```yaml
 alert_enabled: true
+alert_changes_only: true
 alert_min_agents: 1
-alert_min_confidence: medium
+alert_min_confidence: 0.5
 alert_cooldown: 600  # no more than one alert per 10 minutes
 
 smtp_host: "smtp.example.com"
@@ -71,7 +83,7 @@ smtp_to:
   - "security@example.com"
 ```
 
-Both v1 (`smtplib`) and v2 (`lettre`) support `smtp_use_tls: true` (STARTTLS on the configured port, typically 587) and `smtp_use_tls: false` (plaintext relay). The alert payload — including the JSON attachment — is byte-identical between the two implementations.
+SMTP supports `smtp_use_tls: true` (STARTTLS on the configured port, typically 587) and `smtp_use_tls: false` (plaintext relay). The JSON attachment contains the same change-focused payload sent to webhooks.
 
 Or via CLI:
 
@@ -83,9 +95,16 @@ agentsniff scan 192.168.1.0/24 --smtp-to admin@example.com,security@example.com
 
 | Setting | Description | Default |
 |---------|-------------|---------|
-| `alert_min_agents` | Minimum agents to trigger alert | `1` |
-| `alert_min_confidence` | Minimum confidence level | `low` |
-| `alert_cooldown` | Seconds between repeated alerts (0 = every scan) | `0` |
+| `alert_changes_only` | Include only new/changed assets plus removals | `true` |
+| `alert_min_agents` | Minimum actionable assets to trigger alert | `1` |
+| `alert_min_confidence` | Minimum presence confidence for current assets | `medium` (`0.5`) |
+| `alert_cooldown` | Seconds between repeated alerts | `300` |
+
+The first scan has no baseline, so every qualifying asset is `new`. Removed assets count toward `alert_min_agents`; the confidence threshold applies to current new or changed assets.
+
+Databases created before scope-aware baselines do not contain a `scope_id`. The first scan after upgrading therefore establishes a fresh baseline and may notify on all qualifying assets as new.
+
+If a scan is cancelled or any enabled detector reports an error, AgentSniff stores the partial result as cancelled or degraded but suppresses its diff and alerts. This prevents incomplete observations from generating false removals or replacing the last known-good baseline.
 
 ## Cron Job
 
@@ -102,4 +121,4 @@ Run periodic scans from cron with alerts and archived output:
 
 ## Dashboard Settings
 
-When running the web dashboard (`agentsniff serve`), click the gear icon to configure alert settings interactively — including webhook URL, SMTP credentials, thresholds, and a Test Alert button.
+When running the web dashboard (`agentsniff serve`), click the gear icon to configure alert settings interactively — including change-only mode, webhook URL, SMTP credentials, thresholds, and a Test Alert button.

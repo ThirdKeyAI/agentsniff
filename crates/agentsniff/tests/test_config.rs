@@ -10,6 +10,7 @@ fn test_default_config() {
     assert_eq!(config.api_port, 9090);
     assert_eq!(config.port_scan_timeout, 2.0);
     assert_eq!(config.port_scan_concurrency, 100);
+    assert!(config.alert_changes_only);
 }
 
 #[test]
@@ -104,6 +105,7 @@ fn test_default_config_yaml_contains_sections() {
     assert!(yaml.contains("nmap_enabled"));
     assert!(yaml.contains("ebpf_interface"));
     assert!(yaml.contains("alert_enabled"));
+    assert!(yaml.contains("alert_changes_only"));
 }
 
 #[test]

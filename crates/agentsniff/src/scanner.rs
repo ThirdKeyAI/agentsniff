@@ -3,6 +3,7 @@ use std::net::{IpAddr, Ipv4Addr};
 use std::sync::Arc;
 
 use chrono::Utc;
+use sha2::{Digest, Sha256};
 use tokio::task::JoinSet;
 use tokio_util::sync::CancellationToken;
 
@@ -29,6 +30,44 @@ pub type OnAgentCallback = Box<dyn Fn(&DetectedAgent) + Send + Sync>;
 
 /// Maximum number of resolved targets accepted for one scan.
 pub const MAX_SCAN_TARGETS: usize = 65_536;
+
+fn scan_scope_id(config: &ScanConfig, targets: &[IpAddr], detectors: &[DetectorType]) -> String {
+    let mut targets: Vec<String> = targets.iter().map(ToString::to_string).collect();
+    targets.sort();
+    let mut detectors: Vec<String> = detectors
+        .iter()
+        .filter_map(|detector| {
+            serde_json::to_value(detector)
+                .ok()?
+                .as_str()
+                .map(str::to_string)
+        })
+        .collect();
+    if config.zeek_enabled && !config.zeek_log_path.is_empty() {
+        detectors.push(format!(
+            "zeek:{}:{}",
+            config.zeek_log_path, config.zeek_time_window
+        ));
+    }
+    if config.nmap_enabled {
+        detectors.push(format!("nmap:{}", config.nmap_scan_args));
+    }
+    detectors.sort();
+    let material = serde_json::to_vec(&serde_json::json!({
+        "targets": targets,
+        "detectors": detectors,
+        "dns_interface": config.dns_interface,
+        "ebpf_interface": config.ebpf_interface,
+    }))
+    .unwrap_or_default();
+    let digest = Sha256::digest(material);
+    let encoded = digest
+        .iter()
+        .take(16)
+        .map(|byte| format!("{byte:02x}"))
+        .collect::<String>();
+    format!("scope-{encoded}")
+}
 
 /// Parse a CIDR notation string and enumerate usable IPv4 addresses.
 ///
@@ -211,15 +250,15 @@ pub fn build_registry() -> DetectorRegistry {
     registry
 }
 
-/// Correlate signals into agents by host IP, calling `on_agent` for each
-/// new or updated agent.
+/// Correlate signals into stable host/service assets. A signal with a local
+/// `port` belongs to that service endpoint; passive signals without a local
+/// port remain attached to the host-level asset.
 fn correlate_signals(
     signals: Vec<Signal>,
-    agents_by_host: &mut HashMap<String, DetectedAgent>,
+    agents_by_asset: &mut HashMap<String, DetectedAgent>,
     on_agent: &Option<OnAgentCallback>,
 ) {
-    // Track which hosts got new signals so we can notify
-    let mut updated_hosts = Vec::new();
+    let mut updated_assets = Vec::new();
 
     for signal in signals {
         let ip_str = signal
@@ -231,28 +270,36 @@ fn correlate_signals(
         if ip_str.is_empty() {
             continue;
         }
+        let ip: IpAddr = ip_str.parse().unwrap_or(IpAddr::V4(Ipv4Addr::UNSPECIFIED));
+        let port = signal
+            .evidence
+            .get("port")
+            .and_then(|value| value.as_u64())
+            .and_then(|value| u16::try_from(value).ok());
+        // These active service detectors all ride over TCP. Keeping the key at
+        // the transport layer lets a port probe, HTTP probe, MCP probe, and
+        // A2A probe for the same endpoint corroborate one another.
+        let transport = if port.is_some() { "tcp" } else { "network" };
+        let asset_id = crate::models::stable_asset_id(ip, port, transport);
 
-        let prev_count = agents_by_host
-            .get(&ip_str)
+        let prev_count = agents_by_asset
+            .get(&asset_id)
             .map(|a| a.signal_count)
             .unwrap_or(0);
 
-        let agent = agents_by_host.entry(ip_str.clone()).or_insert_with(|| {
-            let ip: IpAddr = ip_str.parse().unwrap_or(IpAddr::V4(Ipv4Addr::UNSPECIFIED));
-            DetectedAgent::new(ip_str.clone(), ip)
-        });
+        let agent = agents_by_asset
+            .entry(asset_id.clone())
+            .or_insert_with(|| DetectedAgent::for_endpoint(ip_str.clone(), ip, port, transport));
         agent.add_signal(signal);
 
-        // Only notify if the agent actually gained new signals
-        if agent.signal_count > prev_count && !updated_hosts.contains(&ip_str) {
-            updated_hosts.push(ip_str);
+        if agent.signal_count > prev_count && !updated_assets.contains(&asset_id) {
+            updated_assets.push(asset_id);
         }
     }
 
-    // Notify for each updated agent
     if let Some(ref cb) = on_agent {
-        for host in updated_hosts {
-            if let Some(agent) = agents_by_host.get(&host) {
+        for asset_id in updated_assets {
+            if let Some(agent) = agents_by_asset.get(&asset_id) {
                 cb(agent);
             }
         }
@@ -281,6 +328,7 @@ pub async fn run_scan(
     if let Some(ref token) = cancel {
         if token.is_cancelled() {
             result.completed_at = Some(Utc::now());
+            result.cancelled = true;
             return Ok(result);
         }
     }
@@ -288,6 +336,11 @@ pub async fn run_scan(
     // 2. Build registry and create enabled detectors
     let registry = build_registry();
     let mut detectors = registry.create_enabled(config, ebpf_channels);
+    let detector_scope: Vec<DetectorType> = detectors
+        .iter()
+        .map(|detector| detector.detector_type())
+        .collect();
+    result.scope_id = scan_scope_id(config, &targets, &detector_scope);
     tracing::info!("Enabled {} detector(s)", detectors.len());
 
     // 3. Setup each detector (log errors, continue)
@@ -303,6 +356,7 @@ pub async fn run_scan(
     if let Some(ref token) = cancel {
         if token.is_cancelled() {
             result.completed_at = Some(Utc::now());
+            result.cancelled = true;
             return Ok(result);
         }
     }
@@ -316,44 +370,40 @@ pub async fn run_scan(
         let detector_type = detector.detector_type();
         let detector: Arc<dyn Detector> = Arc::from(detector);
 
-        join_set.spawn(async move {
-            let signals = match detector.scan(&targets).await {
-                Ok(signals) => {
-                    tracing::info!(
-                        "Detector {:?} produced {} signal(s)",
-                        detector_type,
-                        signals.len()
-                    );
-                    signals
-                }
-                Err(e) => {
-                    tracing::error!("Detector {:?} failed: {}", detector_type, e);
-                    Vec::new()
-                }
-            };
-            (detector_type, signals)
-        });
+        join_set.spawn(async move { (detector_type, detector.scan(&targets).await) });
     }
 
     // 5. Process results incrementally as each detector completes
-    let mut agents_by_host: HashMap<String, DetectedAgent> = HashMap::new();
+    let mut agents_by_asset: HashMap<String, DetectedAgent> = HashMap::new();
 
     while let Some(task_result) = join_set.join_next().await {
         // Check cancellation between detectors
         if let Some(ref token) = cancel {
             if token.is_cancelled() {
                 result.completed_at = Some(Utc::now());
+                result.cancelled = true;
                 // Return whatever we have so far
-                result.agents = agents_by_host.into_values().collect();
+                result.agents = agents_by_asset.into_values().collect();
                 return Ok(result);
             }
         }
 
         match task_result {
-            Ok((detector_type, signals)) => {
+            Ok((detector_type, Ok(signals))) => {
                 result.detectors_run.push(detector_type);
+                tracing::info!(
+                    "Detector {:?} produced {} signal(s)",
+                    detector_type,
+                    signals.len()
+                );
                 // Incrementally correlate and stream to dashboard
-                correlate_signals(signals, &mut agents_by_host, &on_agent);
+                correlate_signals(signals, &mut agents_by_asset, &on_agent);
+            }
+            Ok((detector_type, Err(error))) => {
+                result.detectors_run.push(detector_type);
+                let message = format!("Detector {detector_type:?} failed: {error}");
+                tracing::error!("{message}");
+                result.errors.push(message);
             }
             Err(e) => {
                 let msg = format!("Detector task panicked: {}", e);
@@ -418,7 +468,7 @@ pub async fn run_scan(
                         zeek_signals.len()
                     );
                     result.detectors_run.push(DetectorType::Zeek);
-                    correlate_signals(zeek_signals, &mut agents_by_host, &on_agent);
+                    correlate_signals(zeek_signals, &mut agents_by_asset, &on_agent);
                 }
             }
             Err(error) => {
@@ -478,7 +528,7 @@ pub async fn run_scan(
                     }
                 }
                 if !zeek_tls_signals.is_empty() {
-                    correlate_signals(zeek_tls_signals, &mut agents_by_host, &on_agent);
+                    correlate_signals(zeek_tls_signals, &mut agents_by_asset, &on_agent);
                 }
             }
             Err(error) => {
@@ -490,7 +540,7 @@ pub async fn run_scan(
     }
 
     // 6. Apply fusion rules to the final set
-    let agents: Vec<DetectedAgent> = agents_by_host.into_values().collect();
+    let agents: Vec<DetectedAgent> = agents_by_asset.into_values().collect();
     let mut agents = apply_fusion_rules(agents);
 
     // 6b. Nmap enrichment (post-fusion, pre-final-status)
@@ -524,4 +574,73 @@ pub async fn run_scan(
     result.completed_at = Some(Utc::now());
 
     Ok(result)
+}
+
+#[cfg(test)]
+mod correlation_tests {
+    use super::*;
+
+    fn signal(port: u16, detector: DetectorType, signal_type: &str) -> Signal {
+        Signal::new(
+            detector,
+            signal_type.to_string(),
+            signal_type.to_string(),
+            Confidence::High,
+            serde_json::json!({"ip": "10.0.0.8", "port": port}),
+        )
+    }
+
+    #[test]
+    fn separates_services_on_the_same_host() {
+        let mut assets = HashMap::new();
+        correlate_signals(
+            vec![
+                signal(3000, DetectorType::PortScanner, "open_agent_port"),
+                signal(8080, DetectorType::PortScanner, "open_agent_port"),
+            ],
+            &mut assets,
+            &None,
+        );
+
+        assert_eq!(assets.len(), 2);
+        assert!(assets.values().any(|agent| agent.port == Some(3000)));
+        assert!(assets.values().any(|agent| agent.port == Some(8080)));
+    }
+
+    #[test]
+    fn merges_detectors_for_the_same_service() {
+        let mut assets = HashMap::new();
+        correlate_signals(
+            vec![
+                signal(6274, DetectorType::PortScanner, "open_agent_port"),
+                signal(6274, DetectorType::McpDetector, "mcp_server_confirmed"),
+            ],
+            &mut assets,
+            &None,
+        );
+
+        assert_eq!(assets.len(), 1);
+        let asset = assets.values().next().unwrap();
+        assert_eq!(asset.port, Some(6274));
+        assert_eq!(asset.signal_count, 2);
+    }
+
+    #[test]
+    fn scan_scope_is_order_independent_and_detector_specific() {
+        let config = ScanConfig::default();
+        let first_targets = vec!["10.0.0.2".parse().unwrap(), "10.0.0.1".parse().unwrap()];
+        let second_targets = vec!["10.0.0.1".parse().unwrap(), "10.0.0.2".parse().unwrap()];
+        let first_detectors = vec![DetectorType::McpDetector, DetectorType::PortScanner];
+        let second_detectors = vec![DetectorType::PortScanner, DetectorType::McpDetector];
+
+        let scope = scan_scope_id(&config, &first_targets, &first_detectors);
+        assert_eq!(
+            scope,
+            scan_scope_id(&config, &second_targets, &second_detectors)
+        );
+        assert_ne!(
+            scope,
+            scan_scope_id(&config, &second_targets, &[DetectorType::PortScanner])
+        );
+    }
 }

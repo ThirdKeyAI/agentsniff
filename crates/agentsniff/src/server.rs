@@ -18,10 +18,11 @@ use tokio_stream::wrappers::BroadcastStream;
 use tokio_stream::StreamExt;
 use tokio_util::sync::CancellationToken;
 
+use crate::baseline::apply_scan_diff;
 use crate::config::ScanConfig;
 use crate::ebpf::EbpfChannels;
-use crate::models::{DetectedAgent, ScanResult};
-use crate::notifier::send_alerts;
+use crate::models::{DetectedAgent, IdentityAssurance, ScanResult};
+use crate::notifier::{send_alerts, Notifier};
 use crate::scanner::{resolve_targets, run_scan};
 use crate::storage::{SqliteBackend, StorageBackend};
 
@@ -40,6 +41,7 @@ pub enum ScanStatus {
     Idle,
     Running { scan_id: String },
     Completed { scan_id: String },
+    Cancelled { scan_id: String },
 }
 
 // ─── SSE events ─────────────────────────────────────────────────────────────
@@ -64,6 +66,11 @@ pub enum SseEvent {
         agent_count: usize,
         summary: ScanSummary,
     },
+    ScanCancelled {
+        scan_id: String,
+        agent_count: usize,
+        summary: ScanSummary,
+    },
     ScanError {
         message: String,
     },
@@ -73,6 +80,11 @@ pub enum SseEvent {
 pub struct ScanSummary {
     pub total_agents: usize,
     pub by_confidence: ConfidenceCounts,
+    pub trusted_identities: usize,
+    pub invalid_identities: usize,
+    pub new_assets: usize,
+    pub changed_assets: usize,
+    pub removed_assets: usize,
     pub duration_seconds: Option<f64>,
     pub detectors_run: Vec<String>,
 }
@@ -104,6 +116,19 @@ impl ScanSummary {
         ScanSummary {
             total_agents: result.agents.len(),
             by_confidence: counts,
+            trusted_identities: result
+                .agents
+                .iter()
+                .filter(|agent| agent.identity_assurance == IdentityAssurance::TrustedVerified)
+                .count(),
+            invalid_identities: result
+                .agents
+                .iter()
+                .filter(|agent| agent.identity_assurance == IdentityAssurance::Invalid)
+                .count(),
+            new_assets: result.diff.new_assets.len(),
+            changed_assets: result.diff.changed_assets.len(),
+            removed_assets: result.diff.removed_assets.len(),
             duration_seconds: result.duration_seconds(),
             detectors_run: result
                 .detectors_run
@@ -121,6 +146,7 @@ pub struct AppState {
     pub storage: Box<dyn StorageBackend>,
     pub scan_status: Mutex<ScanStatus>,
     pub latest_result: Mutex<Option<ScanResult>>,
+    pub notifier: Mutex<Notifier>,
     pub cancel_token: Mutex<Option<CancellationToken>>,
     pub sse_tx: broadcast::Sender<SseEvent>,
     pub ebpf_channels: Arc<EbpfChannels>,
@@ -163,7 +189,7 @@ pub struct HistoryQuery {
 async fn health_handler() -> Json<HealthResponse> {
     Json(HealthResponse {
         status: "ok".to_string(),
-        version: "2.0.0".to_string(),
+        version: env!("CARGO_PKG_VERSION").to_string(),
     })
 }
 
@@ -384,12 +410,32 @@ fn spawn_scan(
                 // run_scan creates its own scan_id; overwrite so it matches
                 // the one we returned to the API caller and announced via SSE.
                 result.scan_id = scan_id_clone.clone();
+                let was_cancelled = result.cancelled;
+                if !was_cancelled {
+                    let previous = match state.storage.get_latest_scan(&result.scope_id).await {
+                        Ok(previous) => previous,
+                        Err(error) => {
+                            tracing::warn!("Failed to load persisted scan baseline: {}", error);
+                            None
+                        }
+                    };
+                    apply_scan_diff(&mut result, previous.as_ref());
+                }
                 let agent_count = result.agents.len();
                 let summary = ScanSummary::from_result(&result);
 
                 // Save to storage
                 if let Err(e) = state.storage.save_scan(&result).await {
                     tracing::error!("Failed to save scan result: {}", e);
+                }
+
+                if !was_cancelled {
+                    let alert_config = state.config.lock().await.clone();
+                    let mut notifier = state.notifier.lock().await;
+                    notifier.set_config(&alert_config);
+                    if let Err(error) = notifier.check_and_notify(&result).await {
+                        tracing::error!("Failed to dispatch scan alert: {}", error);
+                    }
                 }
 
                 // Update state
@@ -399,8 +445,14 @@ fn spawn_scan(
                 }
                 {
                     let mut status = state.scan_status.lock().await;
-                    *status = ScanStatus::Completed {
-                        scan_id: scan_id_clone.clone(),
+                    *status = if was_cancelled {
+                        ScanStatus::Cancelled {
+                            scan_id: scan_id_clone.clone(),
+                        }
+                    } else {
+                        ScanStatus::Completed {
+                            scan_id: scan_id_clone.clone(),
+                        }
                     };
                 }
                 {
@@ -408,11 +460,20 @@ fn spawn_scan(
                     *token = None;
                 }
 
-                let _ = sse_tx.send(SseEvent::ScanCompleted {
-                    scan_id: scan_id_clone,
-                    agent_count,
-                    summary,
-                });
+                let event = if was_cancelled {
+                    SseEvent::ScanCancelled {
+                        scan_id: scan_id_clone,
+                        agent_count,
+                        summary,
+                    }
+                } else {
+                    SseEvent::ScanCompleted {
+                        scan_id: scan_id_clone,
+                        agent_count,
+                        summary,
+                    }
+                };
+                let _ = sse_tx.send(event);
             }
             Err(e) => {
                 let msg = format!("Scan failed: {}", e);
@@ -560,32 +621,23 @@ async fn get_scan_handler(
     State(state): State<Arc<AppState>>,
     Path(scan_id): Path<String>,
 ) -> Result<impl IntoResponse, StatusCode> {
-    match state.storage.get_agents(&scan_id).await {
-        Ok(agents) => {
-            let mut by_confidence = serde_json::Map::new();
-            let (mut confirmed, mut high, mut medium, mut low) = (0usize, 0, 0, 0);
-            for a in &agents {
-                match a.confidence_level.as_str() {
-                    "confirmed" => confirmed += 1,
-                    "high" => high += 1,
-                    "medium" => medium += 1,
-                    _ => low += 1,
-                }
-            }
-            by_confidence.insert("confirmed".into(), confirmed.into());
-            by_confidence.insert("high".into(), high.into());
-            by_confidence.insert("medium".into(), medium.into());
-            by_confidence.insert("low".into(), low.into());
-
+    match state.storage.get_scan(&scan_id).await {
+        Ok(Some(scan)) => {
+            let summary = ScanSummary::from_result(&scan);
             Ok(Json(serde_json::json!({
-                "scan_id": scan_id,
-                "agents": agents,
-                "summary": {
-                    "total_agents": agents.len(),
-                    "by_confidence": by_confidence,
-                }
+                "scan_id": scan.scan_id,
+                "scope_id": scan.scope_id,
+                "target_network": scan.target_network,
+                "agents": scan.agents,
+                "diff": scan.diff,
+                "started_at": scan.started_at,
+                "completed_at": scan.completed_at,
+                "cancelled": scan.cancelled,
+                "detectors_run": scan.detectors_run,
+                "summary": summary,
             })))
         }
+        Ok(None) => Err(StatusCode::NOT_FOUND),
         Err(e) => {
             tracing::error!("Failed to load scan {}: {}", scan_id, e);
             Err(StatusCode::NOT_FOUND)
@@ -607,8 +659,9 @@ async fn agents_handler(State(state): State<Arc<AppState>>) -> Json<Vec<Detected
 #[derive(Debug, Serialize, Deserialize)]
 struct AlertSettings {
     alert_enabled: bool,
+    alert_changes_only: bool,
     alert_min_agents: usize,
-    alert_min_confidence: f64,
+    alert_min_confidence: String,
     alert_cooldown: u64,
     webhook_url: String,
     smtp_host: String,
@@ -624,8 +677,18 @@ impl AlertSettings {
     fn from_config(config: &ScanConfig) -> Self {
         Self {
             alert_enabled: config.alert_enabled,
+            alert_changes_only: config.alert_changes_only,
             alert_min_agents: config.alert_min_agents,
-            alert_min_confidence: config.alert_min_confidence,
+            alert_min_confidence: if config.alert_min_confidence >= 0.9 {
+                "confirmed"
+            } else if config.alert_min_confidence >= 0.7 {
+                "high"
+            } else if config.alert_min_confidence >= 0.4 {
+                "medium"
+            } else {
+                "low"
+            }
+            .to_string(),
             alert_cooldown: config.alert_cooldown,
             webhook_url: config.webhook_url.clone(),
             smtp_host: config.smtp_host.clone(),
@@ -652,6 +715,7 @@ async fn get_settings_handler(State(state): State<Arc<AppState>>) -> Json<AlertS
 #[derive(Debug, Deserialize)]
 struct UpdateSettingsRequest {
     alert_enabled: Option<bool>,
+    alert_changes_only: Option<bool>,
     alert_min_agents: Option<usize>,
     alert_min_confidence: Option<String>,
     alert_cooldown: Option<u64>,
@@ -699,6 +763,10 @@ async fn update_settings_handler(
     if let Some(v) = body.alert_enabled {
         config.alert_enabled = v;
         updated.push("alert_enabled");
+    }
+    if let Some(v) = body.alert_changes_only {
+        config.alert_changes_only = v;
+        updated.push("alert_changes_only");
     }
     if let Some(v) = body.alert_min_agents {
         config.alert_min_agents = v;
@@ -756,6 +824,10 @@ async fn update_settings_handler(
         config.smtp_to = v.clone();
         updated.push("smtp_to");
     }
+
+    let refreshed_config = config.clone();
+    drop(config);
+    state.notifier.lock().await.set_config(&refreshed_config);
 
     let count = updated.len();
     Json(serde_json::json!({
@@ -851,12 +923,14 @@ pub fn create_router_with_storage(
     ebpf_channels: Arc<EbpfChannels>,
 ) -> Router {
     let (sse_tx, _rx) = broadcast::channel::<SseEvent>(256);
+    let notifier = Notifier::new(&config);
 
     let state = Arc::new(AppState {
         config: Mutex::new(config),
         storage,
         scan_status: Mutex::new(ScanStatus::Idle),
         latest_result: Mutex::new(None),
+        notifier: Mutex::new(notifier),
         cancel_token: Mutex::new(None),
         sse_tx,
         ebpf_channels,

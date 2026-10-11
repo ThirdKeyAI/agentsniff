@@ -50,6 +50,14 @@ impl StorageBackend for RedisOverlay {
         self.inner.get_agents(scan_id).await
     }
 
+    async fn get_scan(&self, scan_id: &str) -> anyhow::Result<Option<ScanResult>> {
+        self.inner.get_scan(scan_id).await
+    }
+
+    async fn get_latest_scan(&self, scope_id: &str) -> anyhow::Result<Option<ScanResult>> {
+        self.inner.get_latest_scan(scope_id).await
+    }
+
     async fn backup(&self) -> anyhow::Result<Vec<u8>> {
         self.inner.backup().await
     }

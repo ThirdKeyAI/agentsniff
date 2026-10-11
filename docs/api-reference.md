@@ -52,6 +52,7 @@ The event tag is carried inside each JSON payload's `event` field (the SSE strea
 | `agent_detected` | `{agent: <DetectedAgent>}` | New agent found or updated |
 | `scan_progress` | `{message}` | Free-form progress update |
 | `scan_completed` | `{scan_id, agent_count, summary}` | Scan finished |
+| `scan_cancelled` | `{scan_id, agent_count, summary}` | Partial scan stopped; never used as a baseline |
 | `scan_error` | `{message}` | Scan failed |
 
 ### Example
@@ -83,32 +84,42 @@ source.onmessage = (e) => {
 
 ```json
 {
-  "scan_id": "uuid",
+  "scan_id": "a1b2c3d4",
+  "scope_id": "scope-0123456789abcdef0123456789abcdef",
   "started_at": "ISO8601",
   "completed_at": "ISO8601",
   "target_network": "CIDR",
-  "summary": {
-    "total_agents": 3,
-    "by_confidence": {"low": 0, "medium": 1, "high": 1, "confirmed": 1},
-    "by_status": {"detected": 1, "suspected": 0, "verified": 2},
-    "detectors_run": ["port_scanner", "endpoint_prober", "mcp_detector"],
-    "duration_seconds": 4.2
-  },
-  "agents": [...]
+  "agents": [],
+  "detectors_run": ["port_scanner", "endpoint_prober", "mcp_detector"],
+  "errors": [],
+  "diff": {
+    "baseline_scan_id": "prior123",
+    "new_assets": ["asset-0123"],
+    "changed_assets": [],
+    "unchanged_assets": ["asset-4567"],
+    "removed_assets": []
+  }
 }
 ```
+
+The completed SSE event and historical-scan response also include a summary with presence-confidence counts, trusted and invalid identity counts, and new/changed/removed totals.
 
 ## Agent Schema
 
 ```json
 {
-  "id": "uuid",
+  "id": "asset-0123456789abcdef0123456789abcdef",
   "host": "hostname",
   "ip_address": "192.168.1.50",
   "port": 8000,
+  "transport": "tcp",
   "agent_type": "framework",
   "framework": "langchain",
-  "status": "verified",
+  "status": "detected",
+  "presence_status": "confirmed",
+  "identity_assurance": "unknown",
+  "risk_level": "unknown",
+  "change_status": "new",
   "confidence_score": 0.95,
   "confidence_level": "confirmed",
   "signal_count": 4,
@@ -121,6 +132,8 @@ source.onmessage = (e) => {
   "metadata": {}
 }
 ```
+
+Asset IDs are deterministic for `(IP, port, transport)`; host-level passive observations omit the port. `presence_status` is `unknown`, `suspected`, `detected`, or `confirmed`. `identity_assurance` is independently `unknown`, `self_asserted`, `signed_untrusted`, `invalid`, or `trusted_verified`. The compatibility `status` value `verified` is emitted only for `trusted_verified` identity assurance. `change_status` is `new`, `changed`, `unchanged`, or `unclassified`.
 
 ## Detection Signal Schema
 

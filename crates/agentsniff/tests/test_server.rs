@@ -98,6 +98,14 @@ async fn test_dashboard_serves() {
         .await
         .unwrap();
     assert_eq!(response.status(), StatusCode::OK);
+
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let html = std::str::from_utf8(&body).unwrap();
+    assert!(html.contains("onclick=\"toggleScan()\""));
+    assert!(html.contains("btn.textContent = '■ Stop Scan'"));
+    assert!(!html.contains("id=\"stopBtn\""));
 }
 
 #[tokio::test]

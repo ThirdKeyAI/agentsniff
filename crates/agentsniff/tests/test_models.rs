@@ -43,6 +43,57 @@ fn test_noisy_or_multiple_signals() {
 }
 
 #[test]
+fn test_signal_metadata_populates_dashboard_summary_fields() {
+    let mut agent = DetectedAgent::new("test-host".into(), "192.168.1.1".parse().unwrap());
+    agent.add_signal(Signal::new(
+        DetectorType::PortScanner,
+        "open_agent_port".into(),
+        "Ambiguous HTTP port".into(),
+        Confidence::Low,
+        serde_json::json!({
+            "port": 8080,
+            "service_candidates": ["generic_http", "mcp"]
+        }),
+    ));
+    agent.add_signal(Signal::new(
+        DetectorType::EndpointProber,
+        "framework_endpoint_match".into(),
+        "Ollama endpoint".into(),
+        Confidence::High,
+        serde_json::json!({"port": 11434, "framework": "ollama"}),
+    ));
+
+    assert_eq!(agent.port, Some(11434));
+    assert_eq!(agent.agent_type.as_deref(), Some("framework"));
+    assert_eq!(agent.framework.as_deref(), Some("ollama"));
+}
+
+#[test]
+fn test_protocol_signal_populates_protocol_summary() {
+    let mut agent = DetectedAgent::new("test-host".into(), "192.168.1.1".parse().unwrap());
+    agent.add_signal(Signal::new(
+        DetectorType::McpDetector,
+        "mcp_server_confirmed".into(),
+        "MCP server".into(),
+        Confidence::Confirmed,
+        serde_json::json!({
+            "port": 6274,
+            "server_info": {"name": "example"},
+            "capabilities": {"tools": {}},
+            "protocol_version": "2026-07-28"
+        }),
+    ));
+
+    assert_eq!(agent.agent_type.as_deref(), Some("mcp_server"));
+    assert_eq!(agent.framework.as_deref(), Some("mcp"));
+    assert_eq!(agent.port, Some(6274));
+    assert_eq!(
+        agent.mcp_capabilities.as_ref().unwrap()["server_info"]["name"],
+        "example"
+    );
+}
+
+#[test]
 fn test_agent_status_from_score() {
     assert_eq!(AgentStatus::from_score(0.95, true), AgentStatus::Verified);
     assert_eq!(AgentStatus::from_score(0.95, false), AgentStatus::Detected);

@@ -141,10 +141,108 @@ impl DetectedAgent {
         }
     }
 
-    /// Add a signal and update the agent's status.
+    /// Add a signal, promote its structured metadata into the agent summary,
+    /// and update aggregate status.
     pub fn add_signal(&mut self, signal: Signal) {
+        self.enrich_from_signal(&signal);
         self.signals.push(signal);
         self.update_status();
+    }
+
+    fn enrich_from_signal(&mut self, signal: &Signal) {
+        let evidence = &signal.evidence;
+        let signal_port = evidence
+            .get("port")
+            .or_else(|| evidence.get("dst_port"))
+            .and_then(Value::as_u64)
+            .and_then(|port| u16::try_from(port).ok());
+
+        // Framework names produced by the endpoint detector come from the
+        // signed catalog and are more specific than port-only candidates.
+        if let Some(framework) = evidence
+            .get("framework")
+            .and_then(Value::as_str)
+            .filter(|value| !value.is_empty())
+        {
+            self.framework = Some(framework.to_string());
+            if let Some(port) = signal_port {
+                self.port = Some(port);
+            }
+        } else if self.framework.is_none() {
+            let framework = match signal.detector {
+                DetectorType::McpDetector => Some("mcp"),
+                DetectorType::AgentpinProber => Some("agentpin"),
+                DetectorType::A2aDetector => Some("a2a"),
+                DetectorType::PortScanner => evidence
+                    .get("service_candidates")
+                    .and_then(Value::as_array)
+                    .filter(|candidates| candidates.len() == 1)
+                    .and_then(|candidates| candidates.first())
+                    .and_then(Value::as_str),
+                _ => None,
+            };
+            if let Some(framework) = framework.filter(|value| !value.is_empty()) {
+                self.framework = Some(framework.to_string());
+            }
+        }
+
+        let inferred_type = match signal.detector {
+            DetectorType::AgentpinProber => Some("agent_identity"),
+            DetectorType::A2aDetector => Some("a2a_agent"),
+            DetectorType::McpDetector => Some("mcp_server"),
+            DetectorType::EndpointProber => Some("framework"),
+            DetectorType::PortScanner | DetectorType::NmapEnricher => Some("agent_service"),
+            DetectorType::DnsMonitor
+            | DetectorType::TlsFingerprint
+            | DetectorType::TrafficAnalyzer
+            | DetectorType::Zeek => Some("ai_client"),
+            DetectorType::SseDetector => Some("streaming_agent"),
+        };
+        if let Some(candidate) = inferred_type {
+            let current_priority = self
+                .agent_type
+                .as_deref()
+                .map(agent_type_priority)
+                .unwrap_or(0);
+            if agent_type_priority(candidate) > current_priority {
+                self.agent_type = Some(candidate.to_string());
+                if let Some(port) = signal_port {
+                    self.port = Some(port);
+                }
+            }
+        }
+
+        if self.port.is_none() {
+            self.port = signal_port;
+        }
+
+        match signal.detector {
+            DetectorType::AgentpinProber => {
+                self.agentpin_identity = Some(evidence.clone());
+            }
+            DetectorType::McpDetector if signal.signal_type == "mcp_server_confirmed" => {
+                self.mcp_capabilities = Some(serde_json::json!({
+                    "server_info": evidence.get("server_info"),
+                    "capabilities": evidence.get("capabilities"),
+                    "protocol_version": evidence.get("protocol_version"),
+                }));
+            }
+            DetectorType::TlsFingerprint | DetectorType::Zeek => {
+                self.tls_fingerprint = evidence
+                    .get("ja3")
+                    .or_else(|| evidence.get("ja3_string"))
+                    .and_then(Value::as_str)
+                    .map(String::from)
+                    .or_else(|| {
+                        evidence
+                            .get("fingerprint_profile")
+                            .and_then(|profile| profile.get("id"))
+                            .and_then(Value::as_str)
+                            .map(String::from)
+                    });
+            }
+            _ => {}
+        }
     }
 
     /// Compute aggregate confidence using Noisy-OR fusion:
@@ -180,6 +278,18 @@ impl DetectedAgent {
             AgentStatus::Unknown => "low",
         }
         .to_string();
+    }
+}
+
+fn agent_type_priority(agent_type: &str) -> u8 {
+    match agent_type {
+        "agent_identity" | "a2a_agent" => 6,
+        "mcp_server" => 5,
+        "framework" => 4,
+        "agent_service" => 3,
+        "streaming_agent" => 2,
+        "ai_client" => 1,
+        _ => 0,
     }
 }
 

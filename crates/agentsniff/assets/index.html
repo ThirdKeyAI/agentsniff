@@ -1039,7 +1039,7 @@ function renderAgents(agents) {
     const rawLevel = String(agent.confidence_level || 'low').toLowerCase();
     const level = ['confirmed','high','medium','low'].includes(rawLevel) ? rawLevel : 'low';
     const rawStatus = String(agent.status || 'unknown').toLowerCase();
-    const status = ['verified','suspected','unknown'].includes(rawStatus) ? rawStatus : 'unknown';
+    const status = ['verified','detected','suspected','unknown'].includes(rawStatus) ? rawStatus : 'unknown';
     const color = confColor(score);
     const pct = Math.round(score * 100);
 

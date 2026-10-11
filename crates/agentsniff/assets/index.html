@@ -711,6 +711,7 @@
   <label class="detector-toggle"><input type="checkbox" id="det_dns_monitor" checked><span>DNS</span></label>
   <label class="detector-toggle"><input type="checkbox" id="det_port_scanner" checked><span>Ports</span></label>
   <label class="detector-toggle"><input type="checkbox" id="det_agentpin_prober" checked><span>AgentPin</span></label>
+  <label class="detector-toggle"><input type="checkbox" id="det_a2a_detector" checked><span>A2A</span></label>
   <label class="detector-toggle"><input type="checkbox" id="det_mcp_detector" checked><span>MCP</span></label>
   <label class="detector-toggle"><input type="checkbox" id="det_endpoint_prober" checked><span>Endpoints</span></label>
   <label class="detector-toggle"><input type="checkbox" id="det_tls_fingerprint" checked><span>TLS</span></label>
@@ -1063,7 +1064,7 @@ function renderAgents(agents) {
           ${(agent.signals || []).length > 8 ? `<li>... and ${agent.signals.length - 8} more</li>` : ''}
         </ul>
         ${agent.agentpin_identity ? `<div style="margin-top:8px;color:var(--green)">
-          ⚿ AgentPin (unverified): ${escHtml(agent.agentpin_identity.agent_id || '')} (${escHtml(agent.agentpin_identity.issuer || '')})</div>` : ''}
+          ⚿ AgentPin (unverified): ${escHtml(agent.agentpin_identity.agent_id || (agent.agentpin_identity.agent_ids || []).join(', '))} (${escHtml(agent.agentpin_identity.entity || agent.agentpin_identity.issuer || '')})</div>` : ''}
         ${agent.mcp_capabilities ? `<div style="margin-top:4px;color:var(--purple)">
           ⚡ MCP Server: ${escHtml(JSON.stringify(agent.mcp_capabilities.server_info || {}))}</div>` : ''}
       </div></td>
@@ -1122,8 +1123,9 @@ function escHtml(s) {
 const DETECTOR_INFO = {
   dns_monitor: 'Passive DNS monitoring — detects hosts querying known LLM API domains (OpenAI, Anthropic, Google, etc.)',
   port_scanner: 'TCP port scanning — identifies open ports associated with agent frameworks, MCP servers, and LLM inference engines',
-  agentpin_prober: 'AgentPin discovery — probes for /.well-known/agent-identity.json cryptographic identity documents',
-  mcp_detector: 'MCP protocol detection — sends JSON-RPC initialize requests and enumerates tools, resources, and prompts',
+  agentpin_prober: 'AgentPin discovery — probes for unsigned /.well-known/agent-identity.json documents',
+  a2a_detector: 'A2A discovery — validates Agent Cards and verifies signatures against configured trusted keys',
+  mcp_detector: 'MCP protocol detection — negotiates current and legacy versions, then enumerates tools, resources, and prompts',
   endpoint_prober: 'HTTP endpoint probing — checks for agent framework signatures (LangChain, CrewAI, Dify, n8n, etc.)',
   tls_fingerprint: 'TLS fingerprinting — computes JA3 hashes to identify agent HTTP client libraries by their TLS handshake',
   traffic_analyzer: 'Traffic analysis — detects agent behavioral patterns like bursty tool calls, LLM API connections, and streaming SSE',
@@ -1141,7 +1143,7 @@ function toggleDetail(idx) {
 }
 
 function setDetectorTogglesDisabled(disabled) {
-  const allDetectors = ['dns_monitor','port_scanner','agentpin_prober','mcp_detector','endpoint_prober','tls_fingerprint','traffic_analyzer','sse_detector'];
+  const allDetectors = ['dns_monitor','port_scanner','agentpin_prober','a2a_detector','mcp_detector','endpoint_prober','tls_fingerprint','traffic_analyzer','sse_detector'];
   allDetectors.forEach(d => {
     const el = document.getElementById('det_' + d);
     if (el) el.disabled = disabled;
@@ -1190,6 +1192,7 @@ function estimateScanTime(hostCount, detectors) {
   // HTTP probers: hosts × ports × timeout, but concurrent (20 at a time)
   let probeRequests = 0;
   if (detectors.includes('agentpin_prober')) probeRequests += hostCount * 6;
+  if (detectors.includes('a2a_detector')) probeRequests += hostCount * 9 * 2;
   if (detectors.includes('mcp_detector')) probeRequests += hostCount * 7;
   if (detectors.includes('endpoint_prober')) probeRequests += hostCount * 4;
   if (detectors.includes('tls_fingerprint')) probeRequests += hostCount * 5;
@@ -1314,7 +1317,7 @@ async function startScan() {
   const network = document.getElementById('networkInput').value || '192.168.1.0/24';
 
   // Collect enabled detectors (before disabling checkboxes)
-  const allDetectors = ['dns_monitor','port_scanner','agentpin_prober','mcp_detector','endpoint_prober','tls_fingerprint','traffic_analyzer','sse_detector'];
+  const allDetectors = ['dns_monitor','port_scanner','agentpin_prober','a2a_detector','mcp_detector','endpoint_prober','tls_fingerprint','traffic_analyzer','sse_detector'];
   const enabledDetectors = allDetectors.filter(d => document.getElementById('det_' + d).checked);
   const scanRequest = {
     network,

@@ -21,35 +21,77 @@ const AGENTPIN_PATH: &str = "/.well-known/agent-identity.json";
 /// headroom while preventing concurrent probes from buffering arbitrary data.
 const MAX_AGENTPIN_RESPONSE_BYTES: usize = 256 * 1024;
 
-/// Validates that an AgentPin document has the required structure.
-///
-/// Required top-level fields: "issuer" (string), "agents" (array).
-/// Each agent must have "agent_id" (string) and "capabilities" (array).
-pub fn validate_agentpin_document(doc: &Value) -> bool {
-    // Check issuer is a string
-    let issuer = match doc.get("issuer") {
-        Some(v) if v.is_string() => true,
-        _ => return false,
+fn nonempty_string(object: &serde_json::Map<String, Value>, key: &str) -> bool {
+    object
+        .get(key)
+        .and_then(Value::as_str)
+        .is_some_and(|value| !value.trim().is_empty())
+}
+
+fn valid_public_key(key: &Value) -> bool {
+    let Some(key) = key.as_object() else {
+        return false;
     };
-    if !issuer {
+    nonempty_string(key, "kid")
+        && key.get("kty").and_then(Value::as_str) == Some("EC")
+        && key.get("crv").and_then(Value::as_str) == Some("P-256")
+        && nonempty_string(key, "x")
+        && nonempty_string(key, "y")
+        && key.get("use").and_then(Value::as_str) == Some("sig")
+}
+
+/// Validate the required AgentPin v0.1 discovery-document shape.
+///
+/// This intentionally establishes only protocol discovery. Public-key
+/// presence is not signature, delegation, revocation, or domain validation.
+pub fn validate_agentpin_document(doc: &Value) -> bool {
+    let Some(doc) = doc.as_object() else {
+        return false;
+    };
+    if doc.get("agentpin_version").and_then(Value::as_str) != Some("0.1")
+        || !nonempty_string(doc, "entity")
+        || !matches!(
+            doc.get("entity_type").and_then(Value::as_str),
+            Some("maker" | "deployer" | "both")
+        )
+        || !nonempty_string(doc, "updated_at")
+        || !doc
+            .get("max_delegation_depth")
+            .and_then(Value::as_u64)
+            .is_some_and(|depth| depth <= 3)
+    {
         return false;
     }
 
-    // Check agents is an array
+    let Some(public_keys) = doc.get("public_keys").and_then(Value::as_array) else {
+        return false;
+    };
+    if public_keys.is_empty() || !public_keys.iter().all(valid_public_key) {
+        return false;
+    }
+
     let agents = match doc.get("agents") {
         Some(Value::Array(arr)) => arr,
         _ => return false,
     };
 
-    // Validate each agent entry
     for agent in agents {
-        match agent.get("agent_id") {
-            Some(v) if v.is_string() => {}
-            _ => return false,
-        }
-        match agent.get("capabilities") {
-            Some(Value::Array(_)) => {}
-            _ => return false,
+        let Some(agent) = agent.as_object() else {
+            return false;
+        };
+        if !nonempty_string(agent, "agent_id")
+            || !nonempty_string(agent, "name")
+            || !agent.get("capabilities").is_some_and(|capabilities| {
+                capabilities
+                    .as_array()
+                    .is_some_and(|items| items.iter().all(Value::is_string))
+            })
+            || !matches!(
+                agent.get("status").and_then(Value::as_str),
+                Some("active" | "suspended" | "deprecated")
+            )
+        {
+            return false;
         }
     }
 
@@ -77,7 +119,7 @@ impl AgentpinProber {
         Self { timeout, client }
     }
 
-    /// Build discovery signals from a structurally valid, unsigned AgentPin document.
+    /// Build a discovery signal from a structurally valid, unsigned AgentPin document.
     ///
     /// AgentSniff does not yet implement AgentPin's cryptographic verification
     /// profile. Document shape therefore proves protocol presence, not identity.
@@ -88,49 +130,53 @@ impl AgentpinProber {
         scheme: &str,
         doc: &Value,
     ) -> Vec<Signal> {
-        let mut signals = Vec::new();
-
-        let issuer = doc["issuer"].as_str().unwrap_or("unknown");
+        let entity = doc["entity"].as_str().unwrap_or("unknown");
         let agents = match doc.get("agents") {
             Some(Value::Array(arr)) => arr,
-            _ => return signals,
+            _ => return Vec::new(),
         };
+        let key_ids: Vec<&str> = doc
+            .get("public_keys")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .filter_map(|key| key.get("kid").and_then(Value::as_str))
+            .collect();
+        let agent_ids: Vec<&str> = agents
+            .iter()
+            .filter_map(|agent| agent.get("agent_id").and_then(Value::as_str))
+            .collect();
 
-        for agent in agents {
-            let agent_id = agent["agent_id"].as_str().unwrap_or("unknown");
-            let capabilities = &agent["capabilities"];
-            let protocol_version = agent.get("protocol_version");
-
-            let description = format!(
-                "Unsigned AgentPin identity document discovered for agent '{}' claiming issuer '{}' at {}://{}:{}",
-                agent_id, issuer, scheme, ip, port
-            );
-
-            let mut evidence = serde_json::json!({
+        vec![Signal::new(
+            DetectorType::AgentpinProber,
+            "agentpin_unsigned_document".to_string(),
+            format!(
+                "Unsigned AgentPin discovery document for entity '{}' found at {}://{}:{} ({} agent declaration(s))",
+                entity,
+                scheme,
+                ip,
+                port,
+                agents.len()
+            ),
+            Confidence::Medium,
+            serde_json::json!({
                 "ip": ip.to_string(),
                 "port": port,
                 "scheme": scheme,
-                "issuer": issuer,
-                "agent_id": agent_id,
-                "capabilities": capabilities,
+                "agentpin_version": doc.get("agentpin_version"),
+                "entity": entity,
+                "entity_type": doc.get("entity_type"),
+                "key_ids": key_ids,
+                "agent_ids": agent_ids,
+                "agent_count": agents.len(),
+                "a2a_endpoint": doc.get("a2a_endpoint"),
                 "identity_verified": false,
-                "verification_status": "unsigned",
-            });
-
-            if let Some(pv) = protocol_version {
-                evidence["protocol_version"] = pv.clone();
-            }
-
-            signals.push(Signal::new(
-                DetectorType::AgentpinProber,
-                "agentpin_unsigned_agent".to_string(),
-                description,
-                Confidence::Medium,
-                evidence,
-            ));
-        }
-
-        signals
+                "entity_domain_verified": false,
+                "credential_observed": false,
+                "verification_status": "not_performed",
+                "transport_compliant": scheme == "https",
+            }),
+        )]
     }
 }
 
@@ -219,8 +265,25 @@ mod tests {
     fn unsigned_document_never_claims_verified_identity() {
         let detector = AgentpinProber::new(&ScanConfig::default());
         let doc = serde_json::json!({
-            "issuer": "attacker.example",
-            "agents": [{"agent_id": "forged", "capabilities": ["admin"]}]
+            "agentpin_version": "0.1",
+            "entity": "attacker.example",
+            "entity_type": "maker",
+            "public_keys": [{
+                "kid": "attacker-2026-01",
+                "kty": "EC",
+                "crv": "P-256",
+                "x": "attacker-controlled-x",
+                "y": "attacker-controlled-y",
+                "use": "sig"
+            }],
+            "agents": [{
+                "agent_id": "urn:agentpin:attacker.example:forged",
+                "name": "Forged",
+                "capabilities": ["admin:*"],
+                "status": "active"
+            }],
+            "max_delegation_depth": 0,
+            "updated_at": "2026-10-10T00:00:00Z"
         });
 
         let signals =
@@ -228,7 +291,7 @@ mod tests {
 
         assert_eq!(signals.len(), 1);
         assert_eq!(signals[0].confidence, Confidence::Medium);
-        assert_eq!(signals[0].signal_type, "agentpin_unsigned_agent");
+        assert_eq!(signals[0].signal_type, "agentpin_unsigned_document");
         assert!(!signals[0].description.to_lowercase().contains("verified"));
         assert_eq!(signals[0].evidence["identity_verified"], false);
     }

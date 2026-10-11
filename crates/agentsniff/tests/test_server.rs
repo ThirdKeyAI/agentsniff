@@ -159,8 +159,10 @@ async fn test_local_mutations_reject_simple_cross_origin_forms() {
 #[tokio::test]
 async fn test_api_token_protects_every_non_health_route_class() {
     let token = "0123456789abcdef0123456789abcdef";
-    let mut config = ScanConfig::default();
-    config.api_token = token.to_string();
+    let config = ScanConfig {
+        api_token: token.to_string(),
+        ..ScanConfig::default()
+    };
 
     let public_health = test_router_with_config(config.clone())
         .oneshot(
@@ -223,8 +225,10 @@ async fn test_api_token_protects_every_non_health_route_class() {
 
 #[tokio::test]
 async fn test_api_token_rejects_malformed_or_wrong_credentials() {
-    let mut config = ScanConfig::default();
-    config.api_token = "0123456789abcdef0123456789abcdef".to_string();
+    let config = ScanConfig {
+        api_token: "0123456789abcdef0123456789abcdef".to_string(),
+        ..ScanConfig::default()
+    };
 
     for authorization in [
         "Bearer wrong",

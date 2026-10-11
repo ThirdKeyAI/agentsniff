@@ -84,19 +84,19 @@ fn test_timing_confidence_capped_at_095() {
 
 #[test]
 fn test_compute_median_odd() {
-    let median = compute_median(&mut vec![3.0, 1.0, 2.0]);
+    let median = compute_median(&mut [3.0, 1.0, 2.0]);
     assert!((median - 2.0).abs() < 1e-10);
 }
 
 #[test]
 fn test_compute_median_even() {
-    let median = compute_median(&mut vec![1.0, 2.0, 3.0, 4.0]);
+    let median = compute_median(&mut [1.0, 2.0, 3.0, 4.0]);
     assert!((median - 2.5).abs() < 1e-10);
 }
 
 #[test]
 fn test_compute_median_empty() {
-    let median = compute_median(&mut vec![]);
+    let median = compute_median(&mut []);
     assert!((median - 0.0).abs() < 1e-10);
 }
 

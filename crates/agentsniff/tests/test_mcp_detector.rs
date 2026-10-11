@@ -9,6 +9,14 @@ fn test_mcp_detector_name() {
     let detector = McpDetector::new(&config);
     assert_eq!(detector.name(), "mcp_detector");
     assert_eq!(detector.detector_type(), DetectorType::McpDetector);
+    assert_eq!(detector.supported_protocols().first(), Some(&"2026-07-28"));
+}
+
+#[test]
+fn test_parse_sse_jsonrpc_response() {
+    let body = b"event: message\ndata: {\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{}}\n\n";
+    let parsed = parse_json_or_sse(body).unwrap();
+    assert!(is_valid_jsonrpc_response(&parsed));
 }
 
 #[test]
@@ -35,10 +43,25 @@ fn test_valid_jsonrpc_response() {
     assert!(!is_valid_jsonrpc_response(&invalid));
 }
 
+#[test]
+fn test_agentpin_capability_is_discovery_not_identity_verification() {
+    let result = serde_json::json!({
+        "capabilities": {
+            "agentpin": {"version": "0.1", "required": false}
+        }
+    });
+    let capability = agentpin_capability(&result, "capabilities.agentpin").unwrap();
+    assert_eq!(capability["version"], "0.1");
+    assert_eq!(capability["required"], false);
+    assert!(agentpin_capability(&result, "capabilities.missing").is_none());
+}
+
 #[tokio::test]
 async fn test_scan_unreachable_host() {
-    let mut config = ScanConfig::default();
-    config.http_timeout = 1.0; // Short timeout for test speed
+    let config = ScanConfig {
+        http_timeout: 1.0, // Short timeout for test speed
+        ..ScanConfig::default()
+    };
     let detector = McpDetector::new(&config);
     let targets = vec!["192.0.2.1".parse().unwrap()];
     let signals = detector.scan(&targets).await.unwrap();

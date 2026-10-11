@@ -376,6 +376,7 @@ fn apply_detector_filter(config: &mut ScanConfig, names: &str) {
     config.enable_dns_monitor = enabled.contains("dns_monitor");
     config.enable_port_scanner = enabled.contains("port_scanner");
     config.enable_agentpin_prober = enabled.contains("agentpin_prober");
+    config.enable_a2a_detector = enabled.contains("a2a_detector");
     config.enable_mcp_detector = enabled.contains("mcp_detector");
     config.enable_endpoint_prober = enabled.contains("endpoint_prober");
     config.enable_tls_fingerprint = enabled.contains("tls_fingerprint");
@@ -850,17 +851,24 @@ fn render_table(result: &ScanResult, quiet: bool, escape_terminal_controls: bool
             let agent_id = ap
                 .get("agent_id")
                 .and_then(|v| v.as_str())
+                .or_else(|| {
+                    ap.get("agent_ids")
+                        .and_then(|v| v.as_array())
+                        .and_then(|ids| ids.first())
+                        .and_then(|v| v.as_str())
+                })
                 .unwrap_or("unknown");
-            let issuer = ap
-                .get("issuer")
+            let entity = ap
+                .get("entity")
+                .or_else(|| ap.get("issuer"))
                 .and_then(|v| v.as_str())
                 .unwrap_or("unknown");
             out.push_str(&format!(
-                "    {}\u{26bf} AgentPin:{} {} (issuer: {})\n",
+                "    {}\u{26bf} AgentPin:{} {} (entity: {})\n",
                 ANSI_GREEN,
                 ANSI_RESET,
                 display_text(agent_id, escape_terminal_controls),
-                display_text(issuer, escape_terminal_controls),
+                display_text(entity, escape_terminal_controls),
             ));
             if let Some(caps) = ap.get("capabilities").and_then(|v| v.as_array()) {
                 let cap_strs: Vec<String> = caps

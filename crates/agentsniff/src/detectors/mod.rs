@@ -1,3 +1,4 @@
+pub mod a2a_detector;
 pub mod agentpin_prober;
 pub mod dns_monitor;
 pub mod endpoint_prober;
@@ -68,6 +69,7 @@ impl DetectorRegistry {
                 "enable_dns_monitor" => config.enable_dns_monitor,
                 "enable_port_scanner" => config.enable_port_scanner,
                 "enable_agentpin_prober" => config.enable_agentpin_prober,
+                "enable_a2a_detector" => config.enable_a2a_detector,
                 "enable_mcp_detector" => config.enable_mcp_detector,
                 "enable_endpoint_prober" => config.enable_endpoint_prober,
                 "enable_tls_fingerprint" => config.enable_tls_fingerprint,

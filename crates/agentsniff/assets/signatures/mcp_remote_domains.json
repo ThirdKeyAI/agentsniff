@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "source": "https://registry.modelcontextprotocol.io/v0/servers",
+  "generated_at": null,
+  "policy": {
+    "maximum_entries": 500,
+    "require_active": true,
+    "require_publisher_allowlist": true
+  },
+  "entries": []
+}

@@ -114,7 +114,7 @@
     <description>AgentSniff scan found $(summary.total_agents) agent(s).</description>
   </rule>
 
-  <!-- ── Confirmed agent (AgentPin or MCP verified) ─────────────── -->
+  <!-- ── Confirmed agent (protocol-confirmed MCP or trusted A2A) ── -->
   <rule id="100250" level="10">
     <if_sid>100240</if_sid>
     <field name="agents.confidence_level">confirmed</field>

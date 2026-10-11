@@ -70,6 +70,7 @@ const CORROBORATING_DETECTORS: &[DetectorType] = &[
     DetectorType::EndpointProber,
     DetectorType::McpDetector,
     DetectorType::AgentpinProber,
+    DetectorType::A2aDetector,
     DetectorType::DnsMonitor,
     DetectorType::TrafficAnalyzer,
     DetectorType::TlsFingerprint,

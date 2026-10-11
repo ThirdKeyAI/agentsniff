@@ -73,6 +73,22 @@ pub fn compute_ja3_string(tls_version: u16, cipher_suites: &[u16], extensions: &
     format!("{},{},{}", tls_version, ciphers, exts)
 }
 
+/// Match a JA3 or JA4 hash against the signed fingerprint catalog. Catalog
+/// entries are descriptive, low-confidence client-library hints rather than
+/// agent identities.
+pub fn match_tls_fingerprint(catalog: &serde_json::Value, hash: &str) -> Option<serde_json::Value> {
+    catalog
+        .get("fingerprints")
+        .and_then(serde_json::Value::as_array)
+        .into_iter()
+        .flatten()
+        .find(|entry| {
+            entry.get("ja3").and_then(serde_json::Value::as_str) == Some(hash)
+                || entry.get("ja4").and_then(serde_json::Value::as_str) == Some(hash)
+        })
+        .cloned()
+}
+
 /// Result of a TLS probe attempt.
 struct TlsProbeResult {
     tls_version: Option<String>,

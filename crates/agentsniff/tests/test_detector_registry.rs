@@ -69,8 +69,10 @@ fn test_detector_registry_respects_disabled() {
         Box::new(MockDetector)
     });
 
-    let mut config = ScanConfig::default();
-    config.enable_port_scanner = false;
+    let config = ScanConfig {
+        enable_port_scanner: false,
+        ..ScanConfig::default()
+    };
     let detectors = registry.create_enabled(&config, None);
     assert!(detectors.is_empty());
 }

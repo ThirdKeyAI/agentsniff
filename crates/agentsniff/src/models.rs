@@ -59,6 +59,7 @@ pub enum DetectorType {
     DnsMonitor,
     PortScanner,
     AgentpinProber,
+    A2aDetector,
     McpDetector,
     EndpointProber,
     TlsFingerprint,

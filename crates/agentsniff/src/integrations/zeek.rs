@@ -569,7 +569,7 @@ mod bounded_reader_tests {
 
     #[tokio::test]
     async fn rejects_oversized_lines_and_record_sets() {
-        let long_path = temp_log(&vec![b'x'; 33]);
+        let long_path = temp_log(&[b'x'; 33]);
         let line_error = read_log_file_with_limits(
             &long_path,
             &HashSet::new(),

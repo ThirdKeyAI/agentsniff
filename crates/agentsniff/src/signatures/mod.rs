@@ -38,9 +38,10 @@ pub struct SignatureData {
     pub agent_infra_domains: Vec<String>,
     pub domain_suffixes: Vec<String>,
     pub frameworks: serde_json::Value,
-    pub ports: HashMap<u16, String>,
+    pub ports: HashMap<u16, Vec<String>>,
     pub tls_fingerprints: serde_json::Value,
-    pub mcp_methods: Vec<String>,
+    pub mcp_methods: serde_json::Value,
+    pub mcp_remote_domains: serde_json::Value,
     pub verification_status: HashMap<String, VerificationStatus>,
 }
 
@@ -65,12 +66,17 @@ pub(crate) const SIGNATURE_FILES: &[(&str, &str, &str)] = &[
         "tls_fingerprints.sig",
     ),
     ("mcp_methods", "mcp_methods.json", "mcp_methods.sig"),
+    (
+        "mcp_remote_domains",
+        "mcp_remote_domains.json",
+        "mcp_remote_domains.sig",
+    ),
 ];
 
 /// Canonicalize a JSON value by sorting object keys recursively and
 /// serializing with no whitespace, matching Python's
 /// `json.dumps(data, ensure_ascii=False, separators=(',', ':'), sort_keys=True)`.
-fn canonicalize_json(value: &serde_json::Value) -> String {
+pub(crate) fn canonicalize_json(value: &serde_json::Value) -> String {
     match value {
         serde_json::Value::Object(map) => {
             let mut keys: Vec<&String> = map.keys().collect();
@@ -163,7 +169,7 @@ pub fn verify_signature(
 }
 
 /// Load an ECDSA P-256 verifying key from a PEM-encoded public key string.
-fn load_verifying_key_from_pem(pem: &str) -> Option<VerifyingKey> {
+pub(crate) fn load_verifying_key_from_pem(pem: &str) -> Option<VerifyingKey> {
     // Extract the base64 content between the PEM headers
     let pem = pem.trim();
     let b64: String = pem
@@ -350,7 +356,14 @@ impl SignatureData {
         let llm_domains = extract_string_vec(data_map.remove("llm_domains"));
         let agent_infra_domains = extract_string_vec(data_map.remove("agent_infra_domains"));
         let domain_suffixes = extract_string_vec(data_map.remove("domain_suffixes"));
-        let mcp_methods = extract_string_vec(data_map.remove("mcp_methods"));
+
+        let mcp_methods = data_map
+            .remove("mcp_methods")
+            .unwrap_or_else(|| serde_json::json!({"protocols": {}}));
+
+        let mcp_remote_domains = data_map
+            .remove("mcp_remote_domains")
+            .unwrap_or_else(|| serde_json::json!({"entries": []}));
 
         let frameworks = data_map
             .remove("frameworks")
@@ -366,8 +379,16 @@ impl SignatureData {
                 let mut ports = HashMap::new();
                 for (k, v) in map {
                     if let Ok(port) = k.parse::<u16>() {
-                        if let Some(name) = v.as_str() {
-                            ports.insert(port, name.to_string());
+                        let services = match v {
+                            serde_json::Value::String(name) => vec![name],
+                            serde_json::Value::Array(values) => values
+                                .into_iter()
+                                .filter_map(|value| value.as_str().map(String::from))
+                                .collect(),
+                            _ => Vec::new(),
+                        };
+                        if !services.is_empty() {
+                            ports.insert(port, services);
                         }
                     }
                 }
@@ -384,8 +405,38 @@ impl SignatureData {
             ports,
             tls_fingerprints,
             mcp_methods,
+            mcp_remote_domains,
             verification_status,
         }
+    }
+
+    /// Return active MCP Registry domains whose publisher was explicitly
+    /// approved by the registry import policy. Community entries are kept in
+    /// the signed dataset for provenance but never become DNS indicators
+    /// unless this flag is true.
+    pub fn verified_mcp_remote_domains(&self) -> Vec<String> {
+        self.mcp_remote_domains
+            .get("entries")
+            .and_then(serde_json::Value::as_array)
+            .into_iter()
+            .flatten()
+            .filter(|entry| {
+                entry
+                    .get("publisher_verified")
+                    .and_then(serde_json::Value::as_bool)
+                    == Some(true)
+                    && entry
+                        .get("status")
+                        .and_then(serde_json::Value::as_str)
+                        .is_some_and(|status| status.eq_ignore_ascii_case("active"))
+            })
+            .filter_map(|entry| {
+                entry
+                    .get("domain")
+                    .and_then(serde_json::Value::as_str)
+                    .map(str::to_ascii_lowercase)
+            })
+            .collect()
     }
 }
 

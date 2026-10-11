@@ -1,26 +1,118 @@
-[
-  "initialize",
-  "initialized",
-  "tools/list",
-  "tools/call",
-  "resources/list",
-  "resources/read",
-  "resources/subscribe",
-  "prompts/list",
-  "prompts/get",
-  "logging/setLevel",
-  "completion/complete",
-  "sampling/createMessage",
-  "ping",
-  "roots/list",
-  "notifications/initialized",
-  "notifications/cancelled",
-  "notifications/progress",
-  "notifications/message",
-  "notifications/resources/list_changed",
-  "notifications/resources/updated",
-  "notifications/tools/list_changed",
-  "notifications/prompts/list_changed",
-  "elicitation/create",
-  "cancelled"
-]
+{
+  "schema_version": 2,
+  "preferred_order": [
+    "2026-07-28",
+    "2025-11-25",
+    "2024-11-05"
+  ],
+  "protocols": {
+    "2026-07-28": {
+      "discovery_method": "server/discover",
+      "stateless": true,
+      "methods": [
+        "server/discover",
+        "tools/list",
+        "tools/call",
+        "resources/list",
+        "resources/read",
+        "resources/templates/list",
+        "prompts/list",
+        "prompts/get",
+        "completion/complete",
+        "elicitation/create",
+        "roots/list",
+        "sampling/createMessage",
+        "subscriptions/listen",
+        "notifications/cancelled",
+        "notifications/message",
+        "notifications/progress",
+        "notifications/prompts/list_changed",
+        "notifications/resources/list_changed",
+        "notifications/resources/updated",
+        "notifications/subscriptions/acknowledged",
+        "notifications/tools/list_changed"
+      ]
+    },
+    "2025-11-25": {
+      "discovery_method": "initialize",
+      "stateless": false,
+      "methods": [
+        "initialize",
+        "notifications/initialized",
+        "ping",
+        "tools/list",
+        "tools/call",
+        "resources/list",
+        "resources/read",
+        "resources/subscribe",
+        "resources/unsubscribe",
+        "resources/templates/list",
+        "prompts/list",
+        "prompts/get",
+        "logging/setLevel",
+        "completion/complete",
+        "sampling/createMessage",
+        "roots/list",
+        "elicitation/create",
+        "tasks/get",
+        "tasks/list",
+        "tasks/result",
+        "tasks/cancel",
+        "notifications/cancelled",
+        "notifications/elicitation/complete",
+        "notifications/message",
+        "notifications/progress",
+        "notifications/prompts/list_changed",
+        "notifications/resources/list_changed",
+        "notifications/resources/updated",
+        "notifications/roots/list_changed",
+        "notifications/tasks/status",
+        "notifications/tools/list_changed"
+      ]
+    },
+    "2024-11-05": {
+      "discovery_method": "initialize",
+      "stateless": false,
+      "methods": [
+        "initialize",
+        "notifications/initialized",
+        "ping",
+        "tools/list",
+        "tools/call",
+        "resources/list",
+        "resources/read",
+        "resources/subscribe",
+        "prompts/list",
+        "prompts/get",
+        "logging/setLevel",
+        "completion/complete",
+        "sampling/createMessage",
+        "roots/list",
+        "elicitation/create",
+        "notifications/cancelled",
+        "notifications/message",
+        "notifications/progress",
+        "notifications/prompts/list_changed",
+        "notifications/resources/list_changed",
+        "notifications/resources/updated",
+        "notifications/tools/list_changed"
+      ]
+    }
+  },
+  "extensions": {
+    "org.agentpin/credential-binding": {
+      "capability_path": "capabilities.agentpin",
+      "credential_meta_key": "agentpin_credential",
+      "version": "0.1",
+      "confidence_policy": "advertisement_only_not_identity_verification"
+    },
+    "io.modelcontextprotocol/tasks": {
+      "protocol_version": "2026-07-28",
+      "methods": [
+        "tasks/get",
+        "tasks/update",
+        "tasks/cancel"
+      ]
+    }
+  }
+}

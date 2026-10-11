@@ -13,18 +13,30 @@ fn test_port_scanner_name() {
 
 #[test]
 fn test_classify_agent_port() {
-    assert_eq!(classify_port(11434), Some(("ollama", Confidence::Medium)));
-    assert_eq!(classify_port(1234), Some(("lm_studio", Confidence::Medium)));
+    assert_eq!(
+        classify_port(11434),
+        Some(("ollama".into(), Confidence::Low))
+    );
+    assert_eq!(
+        classify_port(1234),
+        Some(("lmstudio".into(), Confidence::Low))
+    );
     assert_eq!(
         classify_port(6333),
-        Some(("qdrant_http", Confidence::Medium))
+        Some(("qdrant_http".into(), Confidence::Low))
     );
 }
 
 #[test]
 fn test_classify_generic_port() {
-    assert_eq!(classify_port(8080), Some(("generic_http", Confidence::Low)));
-    assert_eq!(classify_port(3000), Some(("generic_http", Confidence::Low)));
+    assert_eq!(
+        classify_port(8080),
+        Some((
+            "mcp|proxy|weaviate_rest|generic_http".into(),
+            Confidence::Low
+        ))
+    );
+    assert!(classify_port(3000).is_some());
 }
 
 #[test]
@@ -59,6 +71,5 @@ fn test_custom_ports_included() {
     let mut config = ScanConfig::default();
     config.custom_agent_ports.insert(9999, "my_agent".into());
     let detector = PortScannerDetector::new(&config);
-    // Default is 17 agent + 6 generic = 23, plus 1 custom = 24
-    assert!(detector.port_count() > 20);
+    assert!(detector.port_count() > 30);
 }

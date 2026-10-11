@@ -12,11 +12,13 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import base64
+import hashlib
 import json
 from pathlib import Path
 
-from schemapin.core import SchemaPinCore
-from schemapin.crypto import KeyManager, SignatureManager
+from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.primitives.asymmetric import ec
 
 REPO = Path(__file__).resolve().parent.parent
 SIG_DIR = REPO / "crates" / "agentsniff" / "assets" / "signatures"
@@ -29,6 +31,7 @@ JSON_FILES = [
     "ports.json",
     "tls_fingerprints.json",
     "mcp_methods.json",
+    "mcp_remote_domains.json",
 ]
 ALGORITHM = "ECDSA-P256-SHA256"
 
@@ -53,8 +56,15 @@ def main() -> None:
     if unknown:
         ap.error(f"unknown signature file(s): {', '.join(unknown)}")
 
-    private_key = KeyManager.load_private_key_pem(Path(args.key).read_text())
-    public_key_pem = KeyManager.export_public_key_pem(private_key.public_key())
+    private_key = serialization.load_pem_private_key(Path(args.key).read_bytes(), password=None)
+    if not isinstance(private_key, ec.EllipticCurvePrivateKey) or not isinstance(
+        private_key.curve, ec.SECP256R1
+    ):
+        raise SystemExit("refusing to sign: --key must be an ECDSA P-256 private key")
+    public_key_pem = private_key.public_key().public_bytes(
+        serialization.Encoding.PEM,
+        serialization.PublicFormat.SubjectPublicKeyInfo,
+    ).decode()
     pinned_public_key = (SIG_DIR / "signing_key.pub").read_text().strip()
     if public_key_pem.strip() != pinned_public_key:
         raise SystemExit(
@@ -65,9 +75,15 @@ def main() -> None:
         src = SIG_DIR / name
         data = json.loads(src.read_text())
 
-        canonical = SchemaPinCore.canonicalize_schema(data)
-        schema_hash = SchemaPinCore.hash_canonical(canonical)
-        signature = SignatureManager.sign_schema_hash(schema_hash, private_key)
+        canonical = json.dumps(
+            data, ensure_ascii=False, separators=(",", ":"), sort_keys=True
+        )
+        schema_hash = hashlib.sha256(canonical.encode()).digest()
+        # The verifier intentionally mirrors SchemaPin's historical double
+        # hashing: hash the canonical JSON, then ECDSA-SHA256 signs that digest.
+        signature = base64.b64encode(
+            private_key.sign(schema_hash, ec.ECDSA(hashes.SHA256()))
+        ).decode()
 
         sig_name = name.replace(".json", ".sig")
         sig_body = json.dumps(

@@ -7,6 +7,7 @@ use tokio::task::JoinSet;
 use tokio_util::sync::CancellationToken;
 
 use crate::config::ScanConfig;
+use crate::detectors::a2a_detector::A2aDetector;
 use crate::detectors::agentpin_prober::AgentpinProber;
 use crate::detectors::dns_monitor::DnsMonitorDetector;
 use crate::detectors::endpoint_prober::EndpointProberDetector;
@@ -177,6 +178,12 @@ pub fn build_registry() -> DetectorRegistry {
         "mcp_detector",
         "enable_mcp_detector",
         |config, _channels| Box::new(McpDetector::new(config)),
+    );
+
+    registry.register(
+        "a2a_detector",
+        "enable_a2a_detector",
+        |config, _channels| Box::new(A2aDetector::new(config)),
     );
 
     registry.register(
@@ -366,18 +373,19 @@ pub async fn run_scan(
         // Convert Zeek DNS records to signals
         match zeek.load_dns(&targets, time_window).await {
             Ok(dns_records) => {
-                let llm_domains: std::collections::HashSet<&str> =
-                    sigs.llm_domains.iter().map(|s| s.as_str()).collect();
-                let infra_domains: std::collections::HashSet<&str> = sigs
-                    .agent_infra_domains
-                    .iter()
-                    .map(|s| s.as_str())
-                    .collect();
+                let mut infra_domains = sigs.agent_infra_domains.clone();
+                infra_domains.extend(sigs.verified_mcp_remote_domains());
 
                 let mut zeek_signals = Vec::new();
                 for rec in &dns_records {
                     let query = rec.query.trim_end_matches('.');
-                    if llm_domains.contains(query) {
+                    let category = crate::detectors::dns_monitor::matches_known_domain(
+                        query,
+                        &sigs.llm_domains,
+                        &infra_domains,
+                        &sigs.domain_suffixes,
+                    );
+                    if category == Some("llm_api") {
                         zeek_signals.push(Signal::new(
                             DetectorType::Zeek,
                             "llm_api_domain_query".to_string(),
@@ -389,7 +397,7 @@ pub async fn run_scan(
                                 "source": "zeek",
                             }),
                         ));
-                    } else if infra_domains.contains(query) {
+                    } else if category.is_some() {
                         zeek_signals.push(Signal::new(
                             DetectorType::Zeek,
                             "agent_infrastructure_domain_query".to_string(),
@@ -423,18 +431,33 @@ pub async fn run_scan(
         // Convert Zeek TLS records to signals (only matching fingerprints or LLM domains)
         match zeek.load_tls(&targets, time_window).await {
             Ok(tls_records) => {
-                let llm_domains: std::collections::HashSet<&str> =
-                    sigs.llm_domains.iter().map(|s| s.as_str()).collect();
-
                 let mut zeek_tls_signals = Vec::new();
                 for rec in &tls_records {
                     // Match by server_name against known LLM domains
                     let server_match = rec.server_name.as_deref().is_some_and(|sn| {
                         let sn = sn.trim_end_matches('.');
-                        llm_domains.contains(sn)
+                        crate::detectors::dns_monitor::matches_known_domain(
+                            sn,
+                            &sigs.llm_domains,
+                            &sigs.agent_infra_domains,
+                            &sigs.domain_suffixes,
+                        )
+                        .is_some()
                     });
 
-                    if server_match {
+                    let fingerprint_match = rec.ja3_hash.as_deref().and_then(|hash| {
+                        crate::detectors::tls_fingerprint::match_tls_fingerprint(
+                            &sigs.tls_fingerprints,
+                            hash,
+                        )
+                    });
+
+                    if server_match || fingerprint_match.is_some() {
+                        let confidence = if server_match {
+                            Confidence::Medium
+                        } else {
+                            Confidence::Low
+                        };
                         zeek_tls_signals.push(Signal::new(
                             DetectorType::Zeek,
                             "tls_fingerprint_captured".to_string(),
@@ -443,11 +466,12 @@ pub async fn run_scan(
                                 rec.server_name.as_deref().unwrap_or("unknown"),
                                 rec.ja3_hash.as_deref().unwrap_or("none")
                             ),
-                            Confidence::Medium,
+                            confidence,
                             serde_json::json!({
                                 "ip": rec.src_ip.to_string(),
                                 "server_name": rec.server_name,
                                 "ja3": rec.ja3_hash,
+                                "fingerprint_profile": fingerprint_match,
                                 "source": "zeek",
                             }),
                         ));

@@ -37,7 +37,7 @@ agentsniff serve --port 9090
 
 - **DNS Monitor** — Passive DNS for LLM API domain queries
 - **Port Scanner** — Async TCP scan of agent-related ports
-- **AgentPin Prober** — `.well-known/agent-identity.json` discovery (confirmed identity)
+- **AgentPin Prober** — current-format `.well-known/agent-identity.json` discovery (unsigned, medium confidence)
 - **MCP Detector** — JSON-RPC 2.0 / SSE probing for MCP servers
 - **Endpoint Prober** — HTTP framework fingerprinting (LangChain, CrewAI, Dify, …)
 - **TLS Fingerprint** — JA3 fingerprinting of agent HTTP clients

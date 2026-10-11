@@ -11,13 +11,16 @@ AgentSniff is a Rust network scanner for discovering AI-agent infrastructure thr
 | DNS monitor | LLM and agent-infrastructure domains | Optional | High |
 | Port scanner | Agent, MCP, inference, and vector-service ports | No | Low–Medium |
 | AgentPin prober | `/.well-known/agent-identity.json` discovery | No | Medium |
-| MCP detector | JSON-RPC initialization and capability enumeration | No | High–Confirmed |
+| A2A detector | Agent Card discovery and trusted JWS verification | No | High–Confirmed |
+| MCP detector | Version-negotiated JSON-RPC discovery and capability enumeration | No | High–Confirmed |
 | Endpoint prober | Framework endpoints, metadata, headers, and OpenAPI | No | Medium–High |
-| TLS fingerprint | ClientHello fingerprints and active TLS probes | Optional | High |
+| TLS fingerprint | ClientHello fingerprints and active TLS probes | Optional | Low |
 | Traffic analyzer | LLM/API and burst behavior | Optional | Medium–High |
 | SSE detector | Long-lived event-stream traffic | Optional | High |
 
-AgentPin documents are currently treated as unsigned discovery evidence. AgentSniff validates their shape, but it does not yet implement the AgentPin signature, delegation, expiry, and revocation profile. Consequently, an AgentPin document alone is not labeled “identity verified” and cannot produce a `CONFIRMED` signal.
+AgentPin documents are currently treated as unsigned discovery evidence. AgentSniff validates their shape, but it does not yet implement the AgentPin signature, delegation, expiry, and revocation profile. Consequently, an AgentPin document alone is not labeled “identity verified” and cannot produce a `CONFIRMED` signal. AgentSniff also recognizes the AgentPin credential-binding capability advertised by MCP servers; that signal confirms only the advertised integration, not an agent identity or presented credential.
+
+A2A Agent Cards are likewise self-asserted at `HIGH` confidence unless an ES256 JWS verifies against an out-of-band `a2a_trusted_keys` entry. Self-advertised keys never establish identity.
 
 Signals from all enabled detectors are correlated by source host using noisy-OR scoring.
 
@@ -162,6 +165,8 @@ python3 scripts/resign_signatures.py --key ~/.agentsniff/keys/signing_key.pem fr
 ```
 
 The helper refuses to sign when the private key does not correspond to the tracked trust anchor. The private key must never be committed.
+
+MCP Registry domains are maintained in a separate signed overlay. Its generator requires an explicit publisher allowlist, so community publication alone never promotes a hostname into a DNS indicator. TLS captures must be added with `scripts/add_tls_fingerprint.py`, which requires version, backend, timestamp, and local capture provenance.
 
 ## Configuration and storage
 

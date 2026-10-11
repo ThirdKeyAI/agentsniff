@@ -29,6 +29,7 @@ exclude_hosts: []
 enable_dns_monitor: true
 enable_port_scanner: true
 enable_agentpin_prober: true
+enable_a2a_detector: true
 enable_mcp_detector: true
 enable_endpoint_prober: true
 enable_tls_fingerprint: true
@@ -67,6 +68,7 @@ storage:
 custom_llm_domains: []
 custom_agent_ports: {}
 custom_framework_signatures: {}
+a2a_trusted_keys: {}
 
 # Alerting
 alert_enabled: false
@@ -146,13 +148,37 @@ Define custom agent framework detection rules:
 ```yaml
 custom_framework_signatures:
   my_framework:
-    endpoints:
+    probe_paths:
       - "/api/agent/status"
       - "/api/agent/run"
-    user_agents:
+    well_known_paths:
+      - "/.well-known/my-agent.json"
+    request_user_agents:
       - "my-agent-framework"
-    headers:
+    response_header_names:
       - "x-my-framework-version"
+    response_headers:
+      server:
+        - "my-agent/*"
+    response_body_markers:
+      - "my-agent-framework"
+    json_predicates:
+      - path: "capabilities.tools"
+        exists: true
+```
+
+`request_user_agents` and `mcp_client_names` are passive indicators. Active HTTP probing only evaluates response headers, body markers, and JSON predicates.
+
+### Trusted A2A signing keys
+
+Map JWS `kid` values to out-of-band ES256 public keys. Do not copy a key from the Agent Card itself; that proves only self-consistency, not identity.
+
+```yaml
+a2a_trusted_keys:
+  "production-agent-2026": |-
+    -----BEGIN PUBLIC KEY-----
+    ...
+    -----END PUBLIC KEY-----
 ```
 
 ## Storage

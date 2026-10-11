@@ -27,7 +27,7 @@ CLI / loopback dashboard
 | `crates/agentsniff/src/server.rs` | Axum dashboard API and read-only SSE |
 | `crates/agentsniff/src/models.rs` | Signals, agents, results, confidence |
 | `crates/agentsniff/src/fusion.rs` | Cross-detector fusion |
-| `crates/agentsniff/src/detectors/` | Eight detector modules |
+| `crates/agentsniff/src/detectors/` | Nine detector modules |
 | `crates/agentsniff/src/integrations/` | Zeek and nmap |
 | `crates/agentsniff/src/signatures/` | Pinned-key dataset verification and updates |
 | `crates/agentsniff/assets/` | Embedded dashboard and signed data |
@@ -41,6 +41,8 @@ Passive capture, host networking, eBPF, and nmap expand local privilege and reso
 
 ## Identity semantics
 
-AgentPin structure validation establishes only that a target serves a plausible discovery document. It does not establish issuer ownership. AgentSniff therefore emits an unsigned medium-confidence discovery signal until cryptographic AgentPin validation is implemented.
+AgentPin structure validation establishes only that a target serves a plausible current-format discovery document. It does not establish entity-domain ownership. AgentSniff therefore emits an unsigned medium-confidence discovery signal until cryptographic AgentPin validation is implemented.
+
+A2A Agent Cards follow the same separation between discovery and identity. Structural validation produces discovery evidence; `CONFIRMED` identity requires an ES256 JWS that verifies against an administrator-configured, out-of-band `kid` trust anchor.
 
 Detection-data signatures are a separate control: ECDSA P-256 sidecars verify against the independently packaged `signing_key.pub`. A key inside a sidecar cannot replace that trust anchor.

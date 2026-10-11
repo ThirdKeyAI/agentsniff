@@ -282,6 +282,7 @@ fn apply_detector_filter(config: &mut ScanConfig, detectors_csv: &str) {
     config.enable_dns_monitor = false;
     config.enable_port_scanner = false;
     config.enable_agentpin_prober = false;
+    config.enable_a2a_detector = false;
     config.enable_mcp_detector = false;
     config.enable_endpoint_prober = false;
     config.enable_tls_fingerprint = false;
@@ -292,6 +293,7 @@ fn apply_detector_filter(config: &mut ScanConfig, detectors_csv: &str) {
             "dns_monitor" => config.enable_dns_monitor = true,
             "port_scanner" => config.enable_port_scanner = true,
             "agentpin_prober" => config.enable_agentpin_prober = true,
+            "a2a_detector" => config.enable_a2a_detector = true,
             "mcp_detector" => config.enable_mcp_detector = true,
             "endpoint_prober" => config.enable_endpoint_prober = true,
             "tls_fingerprint" => config.enable_tls_fingerprint = true,
@@ -313,6 +315,9 @@ fn enabled_detector_names(config: &ScanConfig) -> Vec<String> {
     }
     if config.enable_agentpin_prober {
         names.push("agentpin_prober".into());
+    }
+    if config.enable_a2a_detector {
+        names.push("a2a_detector".into());
     }
     if config.enable_mcp_detector {
         names.push("mcp_detector".into());

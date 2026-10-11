@@ -87,6 +87,41 @@ fn test_matches_domain_suffix_with_leading_dot() {
 }
 
 #[test]
+fn test_matches_region_qualified_domain_patterns() {
+    let suffixes = vec![
+        "bedrock-runtime.*.amazonaws.com".to_string(),
+        "*.gateway.bedrock-agentcore.*.amazonaws.com".to_string(),
+    ];
+    assert_eq!(
+        matches_known_domain(
+            "bedrock-runtime.us-east-2.amazonaws.com",
+            &[],
+            &[],
+            &suffixes
+        ),
+        Some("domain_suffix")
+    );
+    assert_eq!(
+        matches_known_domain(
+            "abc.gateway.bedrock-agentcore.eu-west-1.amazonaws.com",
+            &[],
+            &[],
+            &suffixes
+        ),
+        Some("domain_suffix")
+    );
+    assert_eq!(
+        matches_known_domain(
+            "deep.extra.bedrock-runtime.us-east-2.amazonaws.com",
+            &[],
+            &[],
+            &suffixes
+        ),
+        None
+    );
+}
+
+#[test]
 fn test_no_match() {
     let llm_domains = vec!["api.openai.com".to_string()];
     let infra_domains = vec!["langsmith.com".to_string()];

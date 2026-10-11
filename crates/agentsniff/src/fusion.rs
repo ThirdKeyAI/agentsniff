@@ -4,6 +4,7 @@ use crate::models::*;
 pub const CORROBORATING_DETECTORS: &[DetectorType] = &[
     DetectorType::DnsMonitor,
     DetectorType::AgentpinProber,
+    DetectorType::A2aDetector,
     DetectorType::McpDetector,
     DetectorType::EndpointProber,
     DetectorType::TlsFingerprint,

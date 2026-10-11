@@ -88,9 +88,24 @@ const MD_KEYWORDS: &[&str] = &[
 #[derive(Debug, Clone, Default)]
 struct FrameworkSig {
     name: String,
-    endpoints: Vec<String>,
-    headers: Vec<String>,
-    user_agents: Vec<String>,
+    probe_paths: Vec<String>,
+    response_header_names: Vec<String>,
+    response_headers: BTreeMap<String, Vec<String>>,
+    response_body_markers: Vec<String>,
+    json_predicates: Vec<JsonPredicate>,
+    // Passive-only indicators are retained in the parsed schema rather than
+    // incorrectly searching for request User-Agent values in response bodies.
+    #[allow(dead_code)]
+    request_user_agents: Vec<String>,
+    #[allow(dead_code)]
+    mcp_client_names: Vec<String>,
+}
+
+#[derive(Debug, Clone, Default)]
+struct JsonPredicate {
+    path: String,
+    exists: bool,
+    equals: Option<Value>,
 }
 
 impl FrameworkSig {
@@ -99,26 +114,139 @@ impl FrameworkSig {
             name: name.to_string(),
             ..Default::default()
         };
-        if let Some(eps) = value.get("endpoints").and_then(|v| v.as_array()) {
-            sig.endpoints = eps
+        for field in ["probe_paths", "well_known_paths", "endpoints"] {
+            match value.get(field) {
+                Some(Value::Array(paths)) => sig
+                    .probe_paths
+                    .extend(paths.iter().filter_map(Value::as_str).map(String::from)),
+                Some(Value::String(path)) => sig.probe_paths.push(path.clone()),
+                _ => {}
+            }
+        }
+        for field in ["response_header_names", "headers"] {
+            if let Some(headers) = value.get(field).and_then(Value::as_array) {
+                sig.response_header_names.extend(
+                    headers
+                        .iter()
+                        .filter_map(Value::as_str)
+                        .map(str::to_ascii_lowercase),
+                );
+            }
+        }
+        if let Some(headers) = value.get("response_headers").and_then(Value::as_object) {
+            for (name, patterns) in headers {
+                let patterns = match patterns {
+                    Value::String(pattern) => vec![pattern.to_ascii_lowercase()],
+                    Value::Array(patterns) => patterns
+                        .iter()
+                        .filter_map(Value::as_str)
+                        .map(str::to_ascii_lowercase)
+                        .collect(),
+                    _ => Vec::new(),
+                };
+                sig.response_headers
+                    .insert(name.to_ascii_lowercase(), patterns);
+            }
+        }
+        if let Some(markers) = value.get("response_body_markers").and_then(Value::as_array) {
+            sig.response_body_markers = markers
                 .iter()
-                .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                .filter_map(Value::as_str)
+                .map(str::to_ascii_lowercase)
                 .collect();
         }
-        if let Some(hs) = value.get("headers").and_then(|v| v.as_array()) {
-            sig.headers = hs
+        for field in ["request_user_agents", "user_agents"] {
+            if let Some(values) = value.get(field).and_then(Value::as_array) {
+                sig.request_user_agents.extend(
+                    values
+                        .iter()
+                        .filter_map(Value::as_str)
+                        .map(str::to_ascii_lowercase),
+                );
+            }
+        }
+        match value.get("mcp_client_names") {
+            Some(Value::Array(values)) => sig.mcp_client_names.extend(
+                values
+                    .iter()
+                    .filter_map(Value::as_str)
+                    .map(str::to_ascii_lowercase),
+            ),
+            Some(Value::String(name)) => sig.mcp_client_names.push(name.to_ascii_lowercase()),
+            _ => {}
+        }
+        if let Some(name) = value.get("mcp_client_name").and_then(Value::as_str) {
+            sig.mcp_client_names.push(name.to_ascii_lowercase());
+        }
+        if let Some(predicates) = value.get("json_predicates").and_then(Value::as_array) {
+            sig.json_predicates = predicates
                 .iter()
-                .filter_map(|v| v.as_str().map(|s| s.to_lowercase()))
+                .filter_map(|predicate| {
+                    let predicate = predicate.as_object()?;
+                    Some(JsonPredicate {
+                        path: predicate.get("path")?.as_str()?.to_string(),
+                        exists: predicate
+                            .get("exists")
+                            .and_then(Value::as_bool)
+                            .unwrap_or(true),
+                        equals: predicate.get("equals").cloned(),
+                    })
+                })
                 .collect();
         }
-        if let Some(ua) = value.get("user_agents").and_then(|v| v.as_array()) {
-            sig.user_agents = ua
-                .iter()
-                .filter_map(|v| v.as_str().map(|s| s.to_lowercase()))
-                .collect();
-        }
+        sig.probe_paths.sort();
+        sig.probe_paths.dedup();
         sig
     }
+}
+
+/// Match a passively observed MCP `clientInfo.name` against the signed
+/// framework catalog. Active endpoint probing cannot observe third-party
+/// client names, so callers such as packet/log integrations use this helper.
+pub fn match_mcp_client_name(frameworks: &Value, client_name: &str) -> Vec<String> {
+    let needle = client_name.to_ascii_lowercase();
+    frameworks
+        .as_object()
+        .into_iter()
+        .flat_map(|entries| entries.iter())
+        .filter_map(|(framework, value)| {
+            let names = value
+                .get("mcp_client_names")
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
+                .filter_map(Value::as_str)
+                .chain(value.get("mcp_client_name").and_then(Value::as_str));
+            names
+                .into_iter()
+                .any(|name| name.eq_ignore_ascii_case(&needle))
+                .then(|| framework.clone())
+        })
+        .collect()
+}
+
+/// Match a passively observed HTTP User-Agent without treating it as response
+/// body content during active probing.
+pub fn match_request_user_agent(frameworks: &Value, user_agent: &str) -> Vec<String> {
+    let haystack = user_agent.to_ascii_lowercase();
+    frameworks
+        .as_object()
+        .into_iter()
+        .flat_map(|entries| entries.iter())
+        .filter_map(|(framework, value)| {
+            let markers = value
+                .get("request_user_agents")
+                .or_else(|| value.get("user_agents"))
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
+                .filter_map(Value::as_str);
+            markers
+                .into_iter()
+                .any(|marker| haystack.contains(&marker.to_ascii_lowercase()))
+                .then(|| framework.clone())
+        })
+        .collect()
 }
 
 /// Endpoint prober detector that fingerprints AI agent frameworks via HTTP probing.
@@ -222,7 +350,7 @@ impl EndpointProberDetector {
 
         // --- Framework endpoint probing ---
         for sig in self.frameworks.values() {
-            for endpoint in &sig.endpoints {
+            for endpoint in &sig.probe_paths {
                 let Some((status, _ct, headers, body)) = self.probe_path(&base, endpoint).await
                 else {
                     continue;
@@ -232,24 +360,32 @@ impl EndpointProberDetector {
                 }
 
                 let body_lower = body.to_lowercase();
-                let fw_lower = sig.name.to_lowercase().replace('_', "");
+                let fw_lower = sig.name.to_ascii_lowercase();
 
-                let matched_headers = match_headers(&headers, &sig.headers);
+                let mut matched_headers = match_headers(&headers, &sig.response_header_names);
+                matched_headers.extend(match_header_values(&headers, &sig.response_headers));
+                matched_headers.sort();
+                matched_headers.dedup();
                 let has_header = !matched_headers.is_empty();
-                // Body must contain the framework name OR one of its
-                // user-agent strings. A bare 200 OK from an SPA's catch-all
-                // route is NOT evidence of a framework.
-                let body_match = body_lower.contains(&fw_lower)
+                let body_match = [
+                    fw_lower.clone(),
+                    fw_lower.replace('_', "-"),
+                    fw_lower.replace('_', " "),
+                    fw_lower.replace('_', ""),
+                ]
+                .iter()
+                .any(|marker| body_lower.contains(marker))
                     || sig
-                        .user_agents
+                        .response_body_markers
                         .iter()
-                        .any(|ua| body_lower.contains(ua.as_str()));
+                        .any(|marker| body_lower.contains(marker));
+                let json_match = matches_json_predicates(&body, &sig.json_predicates);
 
-                if !has_header && !body_match {
+                if !has_header && !body_match && !json_match {
                     continue;
                 }
 
-                let confidence = if has_header || body_match {
+                let confidence = if has_header || body_match || json_match {
                     Confidence::High
                 } else {
                     Confidence::Medium
@@ -277,6 +413,7 @@ impl EndpointProberDetector {
                     "endpoint": endpoint,
                     "status_code": status,
                     "body_match": body_match,
+                    "json_predicates_match": json_match,
                     "matched_headers": matched_headers,
                 });
                 if !body.is_empty() {
@@ -479,6 +616,75 @@ fn match_headers(resp_headers: &reqwest::header::HeaderMap, expected: &[String])
         }
     }
     matched
+}
+
+fn match_header_values(
+    resp_headers: &reqwest::header::HeaderMap,
+    expected: &BTreeMap<String, Vec<String>>,
+) -> Vec<String> {
+    let mut matched = Vec::new();
+    for (name, patterns) in expected {
+        let candidate_names: Vec<&reqwest::header::HeaderName> =
+            if let Some(prefix) = name.strip_suffix('*') {
+                resp_headers
+                    .keys()
+                    .filter(|candidate| candidate.as_str().starts_with(prefix))
+                    .collect()
+            } else {
+                resp_headers
+                    .keys()
+                    .filter(|candidate| candidate.as_str().eq_ignore_ascii_case(name))
+                    .collect()
+            };
+        for candidate_name in candidate_names {
+            let value = resp_headers
+                .get(candidate_name)
+                .and_then(|value| value.to_str().ok())
+                .unwrap_or("")
+                .to_ascii_lowercase();
+            if patterns.is_empty()
+                || patterns
+                    .iter()
+                    .any(|pattern| wildcard_value_match(&value, pattern))
+            {
+                matched.push(candidate_name.as_str().to_string());
+            }
+        }
+    }
+    matched
+}
+
+fn wildcard_value_match(value: &str, pattern: &str) -> bool {
+    match (pattern.strip_prefix('*'), pattern.strip_suffix('*')) {
+        (Some(rest), _) if rest.ends_with('*') => value.contains(rest.trim_end_matches('*')),
+        (Some(suffix), _) => value.ends_with(suffix),
+        (_, Some(prefix)) => value.starts_with(prefix),
+        _ => value == pattern,
+    }
+}
+
+fn matches_json_predicates(body: &str, predicates: &[JsonPredicate]) -> bool {
+    if predicates.is_empty() {
+        return false;
+    }
+    let Ok(document) = serde_json::from_str::<Value>(body) else {
+        return false;
+    };
+    predicates.iter().all(|predicate| {
+        let found = predicate
+            .path
+            .split('.')
+            .filter(|part| !part.is_empty())
+            .try_fold(&document, |current, part| current.get(part));
+        if !predicate.exists {
+            return found.is_none();
+        }
+        match (&predicate.equals, found) {
+            (_, None) => false,
+            (Some(expected), Some(actual)) => actual == expected,
+            (None, Some(_)) => true,
+        }
+    })
 }
 
 /// Remove duplicate signals, keeping the highest-confidence entry per

@@ -25,7 +25,7 @@ impl DnsMonitorDetector {
     pub fn new(config: &ScanConfig, ebpf_channels: Option<Arc<EbpfChannels>>) -> Self {
         Self {
             config: config.clone(),
-            signatures: SignatureData::load_embedded(),
+            signatures: SignatureData::load_with_overlay(),
             ebpf_channels,
         }
     }
@@ -54,6 +54,15 @@ impl Detector for DnsMonitorDetector {
             return Ok(Vec::new());
         }
 
+        // Build combined domain lists once so passive and active modes use the
+        // same signed and locally configured indicators.
+        let mut llm_domains = self.signatures.llm_domains.clone();
+        llm_domains.extend(self.config.custom_llm_domains.clone());
+        let mut agent_infra_domains = self.signatures.agent_infra_domains.clone();
+        agent_infra_domains.extend(self.config.custom_agent_infra_domains.clone());
+        agent_infra_domains.extend(self.signatures.verified_mcp_remote_domains());
+        let domain_suffixes = self.signatures.domain_suffixes.clone();
+
         // Try eBPF passive mode first
         if let Some(ref channels) = self.ebpf_channels {
             let mut rx = channels.dns_tx.subscribe();
@@ -61,9 +70,6 @@ impl Detector for DnsMonitorDetector {
             let deadline = tokio::time::Instant::now() + duration;
             let mut signals = Vec::new();
             let target_set: std::collections::HashSet<IpAddr> = targets.iter().copied().collect();
-
-            let llm_domains = &self.signatures.llm_domains;
-            let agent_infra_domains = &self.signatures.agent_infra_domains;
 
             loop {
                 match tokio::time::timeout_at(deadline, rx.recv()).await {
@@ -79,28 +85,26 @@ impl Detector for DnsMonitorDetector {
                         if domain.is_empty() {
                             continue;
                         }
-                        if matches_known_domain(&domain, llm_domains, &[], &[]).is_some() {
+                        if let Some(category) = matches_known_domain(
+                            &domain,
+                            &llm_domains,
+                            &agent_infra_domains,
+                            &domain_suffixes,
+                        ) {
+                            let (signal_type, confidence) = if category == "llm_api" {
+                                ("llm_api_domain_query", Confidence::High)
+                            } else {
+                                ("agent_infrastructure_domain_query", Confidence::Medium)
+                            };
                             signals.push(Signal::new(
                                 DetectorType::DnsMonitor,
-                                "llm_api_domain_query".into(),
-                                format!("DNS query to LLM API: {}", domain),
-                                Confidence::High,
+                                signal_type.into(),
+                                format!("DNS query matching {} signature: {}", category, domain),
+                                confidence,
                                 serde_json::json!({
                                     "ip": src_ip.to_string(),
                                     "domain": domain,
-                                    "source": "ebpf",
-                                }),
-                            ));
-                        }
-                        if matches_known_domain(&domain, &[], agent_infra_domains, &[]).is_some() {
-                            signals.push(Signal::new(
-                                DetectorType::DnsMonitor,
-                                "agent_infrastructure_domain_query".into(),
-                                format!("DNS query to agent infra: {}", domain),
-                                Confidence::Medium,
-                                serde_json::json!({
-                                    "ip": src_ip.to_string(),
-                                    "domain": domain,
+                                    "category": category,
                                     "source": "ebpf",
                                 }),
                             ));
@@ -119,17 +123,11 @@ impl Detector for DnsMonitorDetector {
 
         let mut signals = Vec::new();
 
-        // Build combined domain lists (embedded signatures + custom config entries)
-        let mut llm_domains: Vec<String> = self.signatures.llm_domains.clone();
-        llm_domains.extend(self.config.custom_llm_domains.clone());
-
-        let mut agent_infra_domains: Vec<String> = self.signatures.agent_infra_domains.clone();
-        agent_infra_domains.extend(self.config.custom_agent_infra_domains.clone());
-
-        let domain_suffixes = self.signatures.domain_suffixes.clone();
-
         // --- Forward lookup: LLM domains → check if any IP matches a target ---
         for domain in &llm_domains {
+            if domain.contains('*') || domain.contains(':') {
+                continue;
+            }
             match resolve_domain(domain).await {
                 Ok(ips) => {
                     for ip in &ips {
@@ -156,6 +154,9 @@ impl Detector for DnsMonitorDetector {
 
         // --- Forward lookup: agent infra domains → MEDIUM confidence ---
         for domain in &agent_infra_domains {
+            if domain.contains('*') || domain.contains(':') {
+                continue;
+            }
             match resolve_domain(domain).await {
                 Ok(ips) => {
                     for ip in &ips {
@@ -234,25 +235,31 @@ pub fn matches_known_domain(
     infra_domains: &[String],
     suffixes: &[String],
 ) -> Option<&'static str> {
-    let domain_lower = domain.to_lowercase();
+    let domain_lower = domain.trim_end_matches('.').to_ascii_lowercase();
 
     // Exact match against LLM domains
     for known in llm_domains {
-        if domain_lower == known.to_lowercase() {
+        if domain_lower == known.trim_end_matches('.').to_ascii_lowercase() {
             return Some("llm_api");
         }
     }
 
     // Exact match against agent infra domains
     for known in infra_domains {
-        if domain_lower == known.to_lowercase() {
+        if domain_lower == known.trim_end_matches('.').to_ascii_lowercase() {
             return Some("agent_infrastructure");
         }
     }
 
     // Suffix match (e.g. "api.openai.com" matches suffix ".openai.com")
     for suffix in suffixes {
-        let suffix_lower = suffix.to_lowercase();
+        let suffix_lower = suffix.trim_end_matches('.').to_ascii_lowercase();
+        if suffix_lower.contains('*') {
+            if matches_domain_pattern(&domain_lower, &suffix_lower) {
+                return Some("domain_suffix");
+            }
+            continue;
+        }
         // Support both ".example.com" and "example.com" style suffixes
         let normalised_suffix = if suffix_lower.starts_with('.') {
             suffix_lower.clone()
@@ -267,6 +274,27 @@ pub fn matches_known_domain(
     }
 
     None
+}
+
+/// Match a DNS pattern where `*` represents exactly one non-empty label.
+/// This intentionally avoids a general-purpose glob language so a signature
+/// cannot unexpectedly span label boundaries.
+pub fn matches_domain_pattern(domain: &str, pattern: &str) -> bool {
+    let domain_labels: Vec<&str> = domain
+        .trim_matches('.')
+        .split('.')
+        .filter(|label| !label.is_empty())
+        .collect();
+    let pattern_labels: Vec<&str> = pattern
+        .trim_matches('.')
+        .split('.')
+        .filter(|label| !label.is_empty())
+        .collect();
+    domain_labels.len() == pattern_labels.len()
+        && domain_labels
+            .iter()
+            .zip(pattern_labels)
+            .all(|(actual, expected)| expected == "*" || actual.eq_ignore_ascii_case(expected))
 }
 
 /// Resolve a domain name to a list of IP addresses using blocking DNS.

@@ -1,15 +1,15 @@
 {
   "ag2": {
-    "endpoints": [
+    "probe_paths": [
       "/api/agents",
       "/api/runs"
     ],
-    "user_agents": [
+    "request_user_agents": [
       "ag2"
     ]
   },
   "agent_metadata_standards": {
-    "endpoints": [
+    "probe_paths": [
       "/AGENTS.md",
       "/SKILL.md",
       "/SOUL.md",
@@ -20,67 +20,67 @@
     ]
   },
   "agent_zero": {
-    "endpoints": [
+    "probe_paths": [
       "/api/message",
       "/poll"
     ],
-    "headers": [],
-    "user_agents": [
+    "response_header_names": [],
+    "request_user_agents": [
       "agent-zero",
       "agent_zero"
     ]
   },
   "agentforce": {
-    "endpoints": [],
-    "headers": [],
-    "user_agents": [
+    "probe_paths": [],
+    "response_header_names": [],
+    "request_user_agents": [
       "agentforce",
       "salesforce/agentforce"
     ]
   },
   "agentops": {
-    "headers": [
+    "response_header_names": [
       "x-agentops-*"
     ],
-    "user_agents": [
+    "request_user_agents": [
       "agentops"
     ]
   },
   "agno": {
-    "endpoints": [
+    "probe_paths": [
       "/v1/run",
       "/v1/playground"
     ],
-    "user_agents": [
+    "request_user_agents": [
       "agno"
     ]
   },
   "aider": {
-    "user_agents": [
+    "request_user_agents": [
       "aider"
     ]
   },
   "amazon_q": {
-    "endpoints": [],
-    "headers": [
+    "probe_paths": [],
+    "response_header_names": [
       "x-amzn-codewhisperer-*"
     ],
-    "user_agents": [
+    "request_user_agents": [
       "amazon-q",
       "codewhisperer",
       "AmazonQ"
     ]
   },
   "amp": {
-    "headers": [],
-    "user_agents": [
+    "response_header_names": [],
+    "request_user_agents": [
       "ampcode",
       "amp-cli",
       "sourcegraph-amp"
     ]
   },
   "anthropic_sdk": {
-    "headers": [
+    "response_header_names": [
       "anthropic-version",
       "anthropic-beta",
       "x-stainless-lang",
@@ -89,185 +89,193 @@
       "x-stainless-arch",
       "x-stainless-runtime"
     ],
-    "user_agents": [
+    "request_user_agents": [
       "Anthropic/Python",
       "Anthropic/Node"
     ]
   },
   "anythingllm": {
-    "endpoints": [
+    "probe_paths": [
       "/api/system/status",
       "/api/v1/workspace"
     ],
-    "headers": [
+    "response_header_names": [
       "x-anythingllm-signature"
     ]
   },
   "autogen": {
-    "endpoints": [
+    "probe_paths": [
       "/api/messages"
     ],
-    "user_agents": [
+    "request_user_agents": [
       "autogen",
       "pyautogen",
       "ag2"
     ]
   },
   "bee_agent": {
-    "endpoints": [
+    "probe_paths": [
       "/api/run"
     ],
-    "user_agents": [
+    "request_user_agents": [
       "bee-agent-framework"
     ]
   },
   "big_agi": {
-    "endpoints": [
+    "probe_paths": [
       "/api/llms/stream"
     ],
-    "headers": [],
-    "user_agents": [
+    "response_header_names": [],
+    "request_user_agents": [
       "big-agi",
       "big-AGI"
     ]
   },
   "blackboxai": {
-    "user_agents": [
+    "request_user_agents": [
       "blackboxai"
     ]
   },
   "bolt_new": {
-    "endpoints": [],
-    "headers": [],
-    "user_agents": [
+    "probe_paths": [],
+    "response_header_names": [],
+    "request_user_agents": [
       "bolt.new",
       "stackblitz/bolt"
     ]
   },
   "braintrust": {
-    "endpoints": [
+    "probe_paths": [
       "/api/project",
       "/api/experiment"
     ],
-    "headers": [
+    "response_header_names": [
       "x-bt-parent",
       "x-bt-use-cache",
       "x-bt-endpoint-name"
     ],
-    "user_agents": [
+    "request_user_agents": [
       "braintrust"
     ]
   },
   "browser_use": {
-    "endpoints": [
+    "probe_paths": [
       "/api/browser",
       "/ws/browser"
     ],
-    "user_agents": [
+    "request_user_agents": [
       "browser-use"
     ]
   },
   "camel_ai": {
-    "endpoints": [
+    "probe_paths": [
       "/api/chat",
       "/api/role"
     ],
-    "user_agents": [
+    "request_user_agents": [
       "camel-ai"
     ]
   },
   "chatwoot": {
-    "endpoints": [
+    "probe_paths": [
       "/api/v1/accounts/1/conversations"
     ],
-    "headers": [
+    "response_header_names": [
       "api_access_token"
     ],
-    "user_agents": [
+    "request_user_agents": [
       "chatwoot"
     ]
   },
   "claude_agent_sdk": {
-    "headers": [
+    "response_header_names": [
       "anthropic-beta"
     ],
-    "user_agents": [
+    "request_user_agents": [
       "claude-agent-sdk",
       "claude-sdk"
     ]
   },
   "claude_code": {
-    "headers": [
+    "response_header_names": [
       "anthropic-beta"
     ],
-    "mcp_client_name": "claude-code",
-    "user_agents": [
+    "request_user_agents": [
       "claude-code",
       "claude-cli",
       "claude-code/"
+    ],
+    "mcp_client_names": [
+      "claude-code"
     ]
   },
   "claude_desktop": {
-    "mcp_client_name": "Claude Desktop"
+    "mcp_client_names": [
+      "Claude Desktop"
+    ]
   },
   "cline": {
-    "mcp_client_name": "cline",
-    "user_agents": [
+    "request_user_agents": [
+      "cline"
+    ],
+    "mcp_client_names": [
       "cline"
     ]
   },
   "codeium": {
-    "endpoints": [],
-    "headers": [
+    "probe_paths": [],
+    "response_header_names": [
       "x-codeium-*"
     ],
-    "user_agents": [
+    "request_user_agents": [
       "codeium"
     ]
   },
   "codex_cli": {
-    "user_agents": [
+    "request_user_agents": [
       "codex-cli",
       "openai-codex"
     ]
   },
   "cody": {
-    "endpoints": [],
-    "headers": [],
-    "user_agents": [
+    "probe_paths": [],
+    "response_header_names": [],
+    "request_user_agents": [
       "sourcegraph-cody",
       "cody-vscode",
       "cody-jetbrains"
     ]
   },
   "composio": {
-    "endpoints": [
+    "probe_paths": [
       "/api/v1/actions",
       "/api/v1/triggers"
     ],
-    "user_agents": [
+    "request_user_agents": [
       "composio",
       "composio-core"
     ]
   },
   "continue_dev": {
-    "endpoints": [
+    "probe_paths": [
       "/ide/chat"
     ],
-    "mcp_client_name": "continue",
-    "user_agents": [
+    "request_user_agents": [
       "continue-dev",
+      "continue"
+    ],
+    "mcp_client_names": [
       "continue"
     ]
   },
   "copilot": {
-    "headers": [
+    "response_header_names": [
       "x-github-copilot-*",
       "Editor-Version",
       "Editor-Plugin-Version",
       "Copilot-Integration-Id"
     ],
-    "user_agents": [
+    "request_user_agents": [
       "github-copilot",
       "copilot",
       "GithubCopilot",
@@ -275,156 +283,158 @@
     ]
   },
   "copilotkit": {
-    "endpoints": [
+    "probe_paths": [
       "/api/copilotkit"
     ],
-    "headers": [],
-    "user_agents": [
+    "response_header_names": [],
+    "request_user_agents": [
       "copilotkit"
     ]
   },
   "crewai": {
-    "endpoints": [
+    "probe_paths": [
       "/crew/status",
       "/crew/kickoff"
     ],
-    "user_agents": [
+    "request_user_agents": [
       "crewai"
     ]
   },
   "crush": {
-    "headers": [],
-    "user_agents": [
+    "response_header_names": [],
+    "request_user_agents": [
       "crush",
       "charmbracelet/crush"
     ]
   },
   "cursor": {
-    "headers": [
+    "response_header_names": [
       "x-cursor-client-version",
       "x-cursor-client-type",
       "x-cursor-client-os",
       "x-cursor-checksum",
       "x-ghost-mode"
     ],
-    "mcp_client_name": "cursor",
-    "user_agents": [
+    "request_user_agents": [
+      "cursor"
+    ],
+    "mcp_client_names": [
       "cursor"
     ]
   },
   "devin": {
-    "endpoints": [],
-    "headers": [],
-    "user_agents": [
+    "probe_paths": [],
+    "response_header_names": [],
+    "request_user_agents": [
       "devin",
       "cognition/devin"
     ]
   },
   "dify": {
-    "endpoints": [
+    "probe_paths": [
       "/api/v1/chat-messages",
       "/api/v1/workflows"
     ]
   },
   "dspy": {
-    "endpoints": [
+    "probe_paths": [
       "/api/dspy"
     ],
-    "headers": [],
-    "user_agents": [
+    "response_header_names": [],
+    "request_user_agents": [
       "dspy",
       "DSPy"
     ]
   },
   "e2b": {
-    "user_agents": [
+    "request_user_agents": [
       "e2b"
     ]
   },
   "eliza": {
-    "endpoints": [
+    "probe_paths": [
       "/api/agents",
       "/message"
     ],
-    "user_agents": [
+    "request_user_agents": [
       "eliza"
     ]
   },
   "factory_droid": {
-    "headers": [],
-    "user_agents": [
+    "response_header_names": [],
+    "request_user_agents": [
       "factory-droid",
       "factory.ai",
       "droid-cli"
     ]
   },
   "firecrawl": {
-    "endpoints": [
+    "probe_paths": [
       "/v1/scrape",
       "/v1/crawl",
       "/v1/search"
     ],
-    "headers": [],
-    "user_agents": [
+    "response_header_names": [],
+    "request_user_agents": [
       "firecrawl"
     ]
   },
   "flowise": {
-    "endpoints": [
+    "probe_paths": [
       "/api/v1/prediction",
       "/api/v1/chatflows"
     ]
   },
   "gemini_cli": {
-    "user_agents": [
+    "request_user_agents": [
       "gemini-cli",
       "google-genai-sdk"
     ]
   },
   "google_adk": {
-    "user_agents": [
+    "request_user_agents": [
       "google-adk"
     ]
   },
   "google_genai_sdk": {
-    "user_agents": [
+    "request_user_agents": [
       "google-genai-sdk"
     ]
   },
   "goose": {
-    "endpoints": [],
-    "headers": [],
-    "user_agents": [
+    "probe_paths": [],
+    "response_header_names": [],
+    "request_user_agents": [
       "goose-ai",
       "block/goose"
     ]
   },
   "gradio_agent_ui": {
-    "endpoints": [
+    "probe_paths": [
       "/api/predict",
       "/queue/join"
     ],
-    "user_agents": [
+    "request_user_agents": [
       "gradio"
     ]
   },
   "griptape": {
-    "endpoints": [],
-    "headers": [],
-    "user_agents": [
+    "probe_paths": [],
+    "response_header_names": [],
+    "request_user_agents": [
       "griptape"
     ]
   },
   "haystack": {
-    "endpoints": [
+    "probe_paths": [
       "/pipeline/run"
     ],
-    "user_agents": [
+    "request_user_agents": [
       "haystack"
     ]
   },
   "helicone": {
-    "headers": [
+    "response_header_names": [
       "helicone-*",
       "helicone-auth",
       "Helicone-Auth",
@@ -437,283 +447,287 @@
     ]
   },
   "jan": {
-    "endpoints": [
+    "probe_paths": [
       "/v1/chat/completions",
       "/v1/models"
     ],
-    "user_agents": [
+    "request_user_agents": [
       "jan"
     ]
   },
   "julep": {
-    "endpoints": [
+    "probe_paths": [
       "/api/sessions",
       "/api/agents"
     ],
-    "user_agents": [
+    "request_user_agents": [
       "julep"
     ]
   },
   "kimi_code": {
-    "user_agents": [
+    "request_user_agents": [
       "kimi-code"
     ]
   },
   "kilo_code": {
-    "mcp_client_name": "kilo-code",
-    "user_agents": [
+    "request_user_agents": [
       "kilo-code",
       "kilocode"
+    ],
+    "mcp_client_names": [
+      "kilo-code"
     ]
   },
   "koboldcpp": {
-    "endpoints": [
+    "probe_paths": [
       "/api/v1/generate",
       "/api/extra/generate/stream"
     ],
-    "user_agents": [
+    "request_user_agents": [
       "koboldcpp"
     ]
   },
   "langchain": {
-    "endpoints": [
+    "probe_paths": [
       "/docs",
       "/openapi.json"
     ],
-    "headers": [
+    "response_header_names": [
       "x-langchain-*"
     ],
-    "user_agents": [
+    "request_user_agents": [
       "langchain",
       "langserve",
       "DefaultLangchainUserAgent"
     ]
   },
   "langchain4j": {
-    "user_agents": [
+    "request_user_agents": [
       "langchain4j"
     ]
   },
   "langflow": {
-    "endpoints": [
+    "probe_paths": [
       "/api/v1/process",
       "/api/v1/predict",
       "/api/v1/flows"
     ],
-    "headers": [],
-    "user_agents": [
+    "response_header_names": [],
+    "request_user_agents": [
       "langflow"
     ]
   },
   "langfuse": {
-    "endpoints": [
+    "probe_paths": [
       "/api/public/traces",
       "/api/public/generations"
     ],
-    "headers": [
+    "response_header_names": [
       "x-langfuse-*"
     ]
   },
   "langgraph": {
-    "endpoints": [
+    "probe_paths": [
       "/runs",
       "/threads",
       "/assistants"
     ],
-    "user_agents": [
+    "request_user_agents": [
       "langgraph"
     ]
   },
   "langsmith": {
-    "endpoints": [
+    "probe_paths": [
       "/api/v1/runs",
       "/api/v1/datasets"
     ],
-    "headers": [
+    "response_header_names": [
       "x-langsmith-*"
     ]
   },
   "letta": {
-    "endpoints": [
+    "probe_paths": [
       "/api/agents",
       "/api/memory"
     ],
-    "user_agents": [
+    "request_user_agents": [
       "letta",
       "memgpt"
     ]
   },
   "librechat": {
-    "endpoints": [
+    "probe_paths": [
       "/api/auth",
       "/api/convos",
       "/api/messages"
     ],
-    "headers": [],
-    "user_agents": [
+    "response_header_names": [],
+    "request_user_agents": [
       "librechat"
     ]
   },
   "litellm": {
-    "endpoints": [
+    "probe_paths": [
       "/chat/completions",
       "/key/generate"
     ],
-    "user_agents": [
+    "request_user_agents": [
       "litellm"
     ]
   },
   "llama_cpp": {
-    "endpoints": [
+    "probe_paths": [
       "/completion",
       "/v1/chat/completions"
     ],
-    "user_agents": [
+    "request_user_agents": [
       "llama.cpp"
     ]
   },
   "llama_deploy": {
-    "endpoints": [
+    "probe_paths": [
       "/control-plane/status",
       "/message-queue/status"
     ],
-    "user_agents": [
+    "request_user_agents": [
       "llamaindex",
       "llama-deploy"
     ]
   },
   "llamaindex": {
-    "endpoints": [
+    "probe_paths": [
       "/api/v1/query",
       "/api/v1/chat",
       "/healthcheck"
     ],
-    "headers": [
+    "response_header_names": [
       "x-llamaindex-*"
     ],
-    "user_agents": [
+    "request_user_agents": [
       "llamaindex",
       "LlamaIndex",
       "llama-index"
     ]
   },
   "lm_studio": {
-    "endpoints": [
+    "probe_paths": [
       "/v1/models",
       "/v1/chat/completions"
     ],
-    "user_agents": [
+    "request_user_agents": [
       "LM Studio",
       "LMStudio"
     ]
   },
   "lobe_chat": {
-    "endpoints": [
+    "probe_paths": [
       "/api/chat",
       "/api/openai/chat"
     ],
-    "headers": [],
-    "user_agents": [
+    "response_header_names": [],
+    "request_user_agents": [
       "lobehub",
       "lobe-chat"
     ]
   },
   "lovable": {
-    "endpoints": [],
-    "headers": [],
-    "user_agents": [
+    "probe_paths": [],
+    "response_header_names": [],
+    "request_user_agents": [
       "lovable.dev",
       "lovable.app"
     ]
   },
   "mastra": {
-    "endpoints": [
+    "probe_paths": [
       "/api/mastra",
       "/api/agents"
     ]
   },
   "mcp_inspector": {
-    "mcp_client_name": "mcp-inspector",
-    "user_agents": [
+    "request_user_agents": [
       "mcp-inspector",
       "inspector-client"
+    ],
+    "mcp_client_names": [
+      "mcp-inspector"
     ]
   },
   "mcp_proxy": {
-    "endpoints": [
+    "probe_paths": [
       "/sse",
       "/messages",
       "/proxy"
     ],
-    "headers": [],
-    "user_agents": [
+    "response_header_names": [],
+    "request_user_agents": [
       "mcp-proxy"
     ]
   },
   "mem0": {
-    "endpoints": [
+    "probe_paths": [
       "/v1/memories",
       "/v1/memories/search"
     ],
-    "headers": [
+    "response_header_names": [
       "x-mem0-*"
     ],
-    "user_agents": [
+    "request_user_agents": [
       "mem0",
       "mem0ai"
     ]
   },
   "n8n": {
-    "endpoints": [
+    "probe_paths": [
       "/webhook/",
       "/rest/workflows"
     ]
   },
   "nextchat": {
-    "endpoints": [
+    "probe_paths": [
       "/api/openai/v1/chat/completions"
     ],
-    "headers": [],
-    "user_agents": [
+    "response_header_names": [],
+    "request_user_agents": [
       "nextchat",
       "chatgpt-next-web"
     ]
   },
   "ollama": {
-    "endpoints": [
+    "probe_paths": [
       "/api/generate",
       "/api/chat",
       "/api/tags",
       "/api/ps"
     ],
-    "user_agents": [
+    "request_user_agents": [
       "ollama"
     ]
   },
   "open_webui": {
-    "endpoints": [
+    "probe_paths": [
       "/api/v1/auths",
       "/api/v1/models",
       "/openwebui"
     ],
-    "headers": [],
-    "user_agents": [
+    "response_header_names": [],
+    "request_user_agents": [
       "open-webui",
       "openwebui"
     ]
   },
   "openai_agents_sdk": {
-    "headers": [
+    "response_header_names": [
       "OpenAI-Beta"
     ],
-    "user_agents": [
+    "request_user_agents": [
       "openai-agents",
       "openai-agents-python",
       "agents-sdk"
     ]
   },
   "openai_assistants": {
-    "headers": [
+    "response_header_names": [
       "OpenAI-Beta",
       "x-stainless-lang",
       "x-stainless-package-version",
@@ -722,7 +736,7 @@
       "x-stainless-runtime",
       "x-stainless-runtime-version"
     ],
-    "user_agents": [
+    "request_user_agents": [
       "openai-python",
       "openai-node",
       "OpenAI/Python",
@@ -730,15 +744,15 @@
     ]
   },
   "openclaw": {
-    "endpoints": [
+    "probe_paths": [
       "/api/agents",
       "/api/skills",
       "/.well-known/clawhub.json"
     ],
-    "headers": [
+    "response_header_names": [
       "x-openclaw-*"
     ],
-    "user_agents": [
+    "request_user_agents": [
       "openclaw",
       "clawdbot",
       "moltbot",
@@ -746,33 +760,35 @@
     ]
   },
   "opencode": {
-    "mcp_client_name": "opencode"
+    "mcp_client_names": [
+      "opencode"
+    ]
   },
   "openhands": {
-    "endpoints": [
+    "probe_paths": [
       "/api/options",
       "/api/config",
       "/ws"
     ],
-    "user_agents": [
+    "request_user_agents": [
       "openhands"
     ]
   },
   "phidata": {
-    "endpoints": [
+    "probe_paths": [
       "/v1/agent/run",
       "/v1/playground/chat"
     ],
-    "user_agents": [
+    "request_user_agents": [
       "phidata"
     ]
   },
   "portkey": {
-    "endpoints": [
+    "probe_paths": [
       "/v1/chat/completions",
       "/v1/prompts"
     ],
-    "headers": [
+    "response_header_names": [
       "x-portkey-*",
       "x-portkey-api-key",
       "x-portkey-provider",
@@ -783,208 +799,212 @@
     ]
   },
   "promptflow": {
-    "endpoints": [
+    "probe_paths": [
       "/score",
       "/api/Connections"
     ],
-    "headers": [],
-    "user_agents": [
+    "response_header_names": [],
+    "request_user_agents": [
       "promptflow"
     ]
   },
   "pydantic_ai": {
-    "endpoints": [
+    "probe_paths": [
       "/api/chat",
       "/schema.json"
     ],
-    "headers": [
+    "response_header_names": [
       "x-pydantic-ai-*"
     ],
-    "user_agents": [
+    "request_user_agents": [
       "pydantic-ai",
       "pydantic-core"
     ]
   },
   "qwen_code": {
-    "user_agents": [
+    "request_user_agents": [
       "qwen-code"
     ]
   },
   "rasa": {
-    "endpoints": [
+    "probe_paths": [
       "/webhooks/rest/webhook",
       "/status",
       "/conversations"
     ],
-    "headers": [
+    "response_header_names": [
       "x-rasa-version"
     ]
   },
   "rivet": {
-    "endpoints": [
+    "probe_paths": [
       "/api/graph/run"
     ],
-    "user_agents": [
+    "request_user_agents": [
       "rivet"
     ]
   },
   "roocode": {
-    "mcp_client_name": "roo-code",
-    "user_agents": [
+    "request_user_agents": [
       "roocode",
+      "roo-code"
+    ],
+    "mcp_client_names": [
       "roo-code"
     ]
   },
   "semantic_kernel": {
-    "headers": [
+    "response_header_names": [
       "semantic-kernel-version"
     ],
-    "user_agents": [
+    "request_user_agents": [
       "Semantic-Kernel"
     ]
   },
   "skyvern": {
-    "endpoints": [
+    "probe_paths": [
       "/api/v1/tasks",
       "/api/v1/workflows"
     ],
-    "user_agents": [
+    "request_user_agents": [
       "skyvern"
     ]
   },
   "smolagents": {
-    "endpoints": [
+    "probe_paths": [
       "/run/agent",
       "/api/predict"
     ],
-    "user_agents": [
+    "request_user_agents": [
       "smolagents",
       "huggingface-hub"
     ]
   },
   "spring_ai": {
-    "user_agents": [
+    "request_user_agents": [
       "Spring-AI"
     ]
   },
   "stagehand": {
-    "user_agents": [
+    "request_user_agents": [
       "stagehand",
       "browserbase/stagehand"
     ]
   },
   "strands_agents": {
-    "user_agents": [
+    "request_user_agents": [
       "strands-agents"
     ]
   },
   "streamlit_agent_ui": {
-    "endpoints": [
+    "probe_paths": [
       "/_stcore/health",
       "/_stcore/host-config"
     ]
   },
   "superagi": {
-    "endpoints": [
+    "probe_paths": [
       "/api/agent/schedule",
       "/api/agent/status"
     ],
-    "user_agents": [
+    "request_user_agents": [
       "superagi-agent"
     ]
   },
   "supermaven": {
-    "endpoints": [],
-    "headers": [],
-    "user_agents": [
+    "probe_paths": [],
+    "response_header_names": [],
+    "request_user_agents": [
       "supermaven"
     ]
   },
   "swarm": {
-    "endpoints": [],
-    "headers": [],
-    "user_agents": [
+    "probe_paths": [],
+    "response_header_names": [],
+    "request_user_agents": [
       "openai/swarm",
       "swarm-python"
     ]
   },
   "symbiont": {
-    "endpoints": [
+    "probe_paths": [
       "/health",
       "/api/v1/agents",
       "/mcp"
     ],
-    "headers": [
+    "well_known_paths": [
+      "/.well-known/agent-identity.json"
+    ],
+    "response_header_names": [
       "x-agent-id",
       "x-symbiont-*"
     ],
-    "user_agents": [
+    "request_user_agents": [
       "symbiont"
-    ],
-    "well_known": [
-      "/.well-known/agent-identity.json"
     ]
   },
   "tabbyml": {
-    "endpoints": [
+    "probe_paths": [
       "/v1/completions",
       "/v1/health"
     ],
-    "user_agents": [
+    "request_user_agents": [
       "tabby"
     ]
   },
   "taskweaver": {
-    "endpoints": [
+    "probe_paths": [
       "/api/task",
       "/api/session"
     ],
-    "user_agents": [
+    "request_user_agents": [
       "taskweaver"
     ]
   },
   "text_generation_webui": {
-    "endpoints": [
+    "probe_paths": [
       "/api/v1/generate",
       "/api/v1/chat"
     ]
   },
   "trae": {
-    "user_agents": [
+    "request_user_agents": [
       "trae"
     ]
   },
   "v0": {
-    "endpoints": [],
-    "headers": [],
-    "user_agents": [
+    "probe_paths": [],
+    "response_header_names": [],
+    "request_user_agents": [
       "v0.dev",
       "vercel/v0"
     ]
   },
   "vercel_ai_sdk": {
-    "headers": [
+    "response_header_names": [
       "x-vercel-ai-*"
     ],
-    "user_agents": [
+    "request_user_agents": [
       "ai"
     ]
   },
   "vllm": {
-    "endpoints": [
+    "probe_paths": [
       "/v1/chat/completions",
       "/v1/models"
     ],
-    "user_agents": [
+    "request_user_agents": [
       "vLLM",
       "vllm"
     ]
   },
   "windsurf": {
-    "mcp_client_name": "windsurf",
-    "user_agents": [
+    "request_user_agents": [
       "windsurf",
       "codeium"
+    ],
+    "mcp_client_names": [
+      "windsurf"
     ]
   }
 }

@@ -7,7 +7,11 @@ fn test_load_embedded_signatures() {
     assert!(!data.agent_infra_domains.is_empty());
     assert!(!data.domain_suffixes.is_empty());
     assert!(!data.ports.is_empty());
-    assert!(!data.mcp_methods.is_empty());
+    assert!(data
+        .mcp_methods
+        .get("protocols")
+        .and_then(serde_json::Value::as_object)
+        .is_some_and(|protocols| !protocols.is_empty()));
 }
 
 #[test]
@@ -50,6 +54,33 @@ fn test_ports_parsed_as_integers() {
     let data = SignatureData::load_embedded();
     assert!(data.ports.contains_key(&11434)); // Ollama
     assert!(data.ports.contains_key(&6333)); // Qdrant
+    assert!(data.ports[&8080].len() > 1); // Ambiguous ports keep all candidates
+    assert_eq!(data.ports[&30000], vec!["sglang"]);
+}
+
+#[test]
+fn test_tls_fingerprints_have_capture_metadata() {
+    let data = SignatureData::load_embedded();
+    let fingerprints = data.tls_fingerprints["fingerprints"].as_array().unwrap();
+    assert!(!fingerprints.is_empty());
+    for fingerprint in fingerprints {
+        for field in [
+            "library",
+            "versions",
+            "tls_backend",
+            "captured_at",
+            "source",
+        ] {
+            assert!(fingerprint.get(field).is_some(), "missing {field}");
+        }
+        assert_eq!(fingerprint["confidence"], "low");
+    }
+}
+
+#[test]
+fn test_only_approved_mcp_registry_entries_become_domains() {
+    let data = SignatureData::load_embedded();
+    assert!(data.verified_mcp_remote_domains().is_empty());
 }
 
 #[test]

@@ -38,6 +38,7 @@ pub struct ScanConfig {
     pub enable_dns_monitor: bool,
     pub enable_port_scanner: bool,
     pub enable_agentpin_prober: bool,
+    pub enable_a2a_detector: bool,
     pub enable_mcp_detector: bool,
     pub enable_endpoint_prober: bool,
     pub enable_tls_fingerprint: bool,
@@ -80,6 +81,9 @@ pub struct ScanConfig {
     pub custom_agent_infra_domains: Vec<String>,
     pub custom_agent_ports: HashMap<u16, String>,
     pub custom_framework_signatures: serde_json::Value,
+    /// Out-of-band trusted ES256 public keys for A2A Agent Card signatures,
+    /// keyed by the JWS `kid`. Self-advertised keys are never trusted.
+    pub a2a_trusted_keys: HashMap<String, String>,
 
     // ── Alerting ─────────────────────────────────────────────────────
     pub alert_enabled: bool,
@@ -120,6 +124,7 @@ impl Default for ScanConfig {
             enable_dns_monitor: true,
             enable_port_scanner: true,
             enable_agentpin_prober: true,
+            enable_a2a_detector: true,
             enable_mcp_detector: true,
             enable_endpoint_prober: true,
             enable_tls_fingerprint: true,
@@ -159,6 +164,7 @@ impl Default for ScanConfig {
             custom_agent_infra_domains: Vec::new(),
             custom_agent_ports: HashMap::new(),
             custom_framework_signatures: serde_json::json!({}),
+            a2a_trusted_keys: HashMap::new(),
 
             // Alerting
             alert_enabled: false,
@@ -273,6 +279,7 @@ target_network: "192.168.1.0/24"
 enable_dns_monitor: true
 enable_port_scanner: true
 enable_agentpin_prober: true
+enable_a2a_detector: true
 enable_mcp_detector: true
 enable_endpoint_prober: true
 enable_tls_fingerprint: true
@@ -313,6 +320,11 @@ dns_monitor_duration: 60      # seconds to monitor DNS
 #   - "my-vector-db.example.com"
 # custom_agent_ports:
 #   12345: "my-agent-service"
+# a2a_trusted_keys:           # JWS kid -> trusted ES256 public-key PEM
+#   "agent-key-2026": |-
+#     -----BEGIN PUBLIC KEY-----
+#     ...
+#     -----END PUBLIC KEY-----
 
 # ── eBPF ────────────────────────────────────────────────────────────
 # ebpf_interface: "eth0"      # network interface for eBPF capture

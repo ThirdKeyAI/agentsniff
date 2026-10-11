@@ -1,4 +1,6 @@
+use std::collections::{HashMap, HashSet};
 use std::net::IpAddr;
+use std::sync::Arc;
 use std::time::Duration;
 
 use async_trait::async_trait;
@@ -8,113 +10,70 @@ use tokio::sync::Semaphore;
 
 use crate::config::ScanConfig;
 use crate::models::{Confidence, DetectorType, Signal};
+use crate::signatures::SignatureData;
 
 use super::Detector;
 
-/// Known AI agent ports: (port, name, description).
-const AGENT_PORTS: &[(u16, &str, &str)] = &[
-    (11434, "ollama", "Ollama LLM server"),
-    (1234, "lm_studio", "LM Studio API"),
-    (6333, "qdrant_http", "Qdrant vector DB HTTP"),
-    (6334, "qdrant_grpc", "Qdrant vector DB gRPC"),
-    (8090, "weaviate", "Weaviate vector DB"),
-    (19530, "milvus", "Milvus vector DB"),
-    (3080, "librechat", "LibreChat"),
-    (3100, "dify", "Dify AI platform"),
-    (8501, "streamlit", "Streamlit app"),
-    (4000, "litellm", "LiteLLM proxy"),
-    (2024, "langgraph_studio", "LangGraph Studio"),
-    (8283, "letta", "Letta agent framework"),
-    (65432, "continue_dev", "Continue.dev IDE plugin"),
-    (7860, "text_gen_webui", "Text Generation WebUI"),
-    (5001, "koboldcpp", "KoboldCpp"),
-    (1337, "jan", "Jan AI"),
-    (8443, "code_server", "Code Server"),
-];
-
-/// Generic HTTP ports that may host agent services (LOW confidence).
-const GENERIC_PORTS: &[u16] = &[3000, 3001, 5000, 8000, 8001, 8080];
-
-/// Banner patterns: (pattern, service_name).
 const BANNER_PATTERNS: &[(&str, &str)] = &[
     ("ollama", "ollama"),
     ("qdrant", "qdrant"),
     ("weaviate", "weaviate"),
     ("milvus", "milvus"),
-    ("redis", "redis"),
-    ("lm studio", "lm_studio"),
+    ("lm studio", "lmstudio"),
+    ("sglang", "sglang"),
+    ("litellm", "litellm"),
 ];
 
-/// Classify a port number into a known agent service or generic HTTP.
-///
-/// Returns `Some((service_name, confidence))` or `None` for unknown ports.
-pub fn classify_port(port: u16) -> Option<(&'static str, Confidence)> {
-    for &(p, name, _) in AGENT_PORTS {
-        if p == port {
-            return Some((name, Confidence::Medium));
-        }
-    }
-    if GENERIC_PORTS.contains(&port) {
-        return Some(("generic_http", Confidence::Low));
-    }
-    None
+/// Look up a port in the signed catalog. Port-only evidence remains LOW
+/// confidence because an unrelated application can bind any conventional
+/// port; protocol or banner evidence is required for a stronger signal.
+pub fn classify_port(port: u16) -> Option<(String, Confidence)> {
+    let signatures = SignatureData::load_embedded();
+    signatures
+        .ports
+        .get(&port)
+        .map(|services| (services.join("|"), Confidence::Low))
 }
 
-/// Classify a banner string against known patterns.
-///
-/// Performs case-insensitive matching and returns the service name if matched.
 pub fn classify_banner(banner: &str) -> Option<&'static str> {
-    let lower = banner.to_lowercase();
-    for &(pattern, name) in BANNER_PATTERNS {
-        if lower.contains(pattern) {
-            return Some(name);
-        }
-    }
-    None
+    let lower = banner.to_ascii_lowercase();
+    BANNER_PATTERNS
+        .iter()
+        .find_map(|(pattern, service)| lower.contains(pattern).then_some(*service))
 }
 
-/// Port scanner detector that probes known AI agent ports on target hosts.
 pub struct PortScannerDetector {
     ports: Vec<u16>,
+    services: Arc<HashMap<u16, Vec<String>>>,
+    custom_ports: Arc<HashSet<u16>>,
     timeout: Duration,
     concurrency: usize,
 }
 
 impl PortScannerDetector {
-    /// Create a new port scanner from scan configuration.
     pub fn new(config: &ScanConfig) -> Self {
-        let mut ports: Vec<u16> = Vec::new();
-
-        // Add known agent ports
-        for &(port, _, _) in AGENT_PORTS {
-            ports.push(port);
+        let signatures = SignatureData::load_with_overlay();
+        let mut services = signatures.ports;
+        let custom_ports: HashSet<u16> = config.custom_agent_ports.keys().copied().collect();
+        for (&port, service) in &config.custom_agent_ports {
+            services.entry(port).or_default().push(service.clone());
         }
-
-        // Add generic ports
-        for &port in GENERIC_PORTS {
-            ports.push(port);
+        for candidates in services.values_mut() {
+            candidates.sort();
+            candidates.dedup();
         }
-
-        // Add custom ports
-        for &port in config.custom_agent_ports.keys() {
-            ports.push(port);
-        }
-
-        // Deduplicate and sort
+        let mut ports: Vec<u16> = services.keys().copied().collect();
         ports.sort_unstable();
-        ports.dedup();
-
-        let timeout = Duration::from_secs_f64(config.port_scan_timeout);
-        let concurrency = config.port_scan_concurrency;
 
         Self {
             ports,
-            timeout,
-            concurrency,
+            services: Arc::new(services),
+            custom_ports: Arc::new(custom_ports),
+            timeout: Duration::from_secs_f64(config.port_scan_timeout),
+            concurrency: config.port_scan_concurrency.max(1),
         }
     }
 
-    /// Returns the number of ports that will be scanned.
     pub fn port_count(&self) -> usize {
         self.ports.len()
     }
@@ -135,43 +94,37 @@ impl Detector for PortScannerDetector {
     }
 
     async fn scan(&self, targets: &[IpAddr]) -> anyhow::Result<Vec<Signal>> {
-        let semaphore = std::sync::Arc::new(Semaphore::new(self.concurrency));
+        let semaphore = Arc::new(Semaphore::new(self.concurrency));
         let mut handles = Vec::new();
 
         for &ip in targets {
             for &port in &self.ports {
                 let permit = semaphore.clone().acquire_owned().await?;
                 let timeout = self.timeout;
-                let banner_timeout = Duration::from_millis(500);
-
-                let handle = tokio::spawn(async move {
+                let services = Arc::clone(&self.services);
+                let custom_ports = Arc::clone(&self.custom_ports);
+                handles.push(tokio::spawn(async move {
                     let _permit = permit;
                     let addr = std::net::SocketAddr::new(ip, port);
-
-                    // TCP connect with timeout
-                    let mut stream =
-                        match tokio::time::timeout(timeout, TcpStream::connect(addr)).await {
-                            Ok(Ok(s)) => s,
-                            _ => return None,
-                        };
-
-                    let mut buf = vec![0u8; 4096];
-
-                    // Try reading a banner
-                    let banner = match tokio::time::timeout(banner_timeout, stream.read(&mut buf))
-                        .await
-                    {
-                        Ok(Ok(n)) if n > 0 => Some(String::from_utf8_lossy(&buf[..n]).to_string()),
-                        _ => None,
+                    let mut stream = match tokio::time::timeout(timeout, TcpStream::connect(addr)).await {
+                        Ok(Ok(stream)) => stream,
+                        _ => return None,
                     };
 
-                    // If no banner, try HTTP GET probe
+                    let banner_timeout = Duration::from_millis(500);
+                    let mut buffer = vec![0u8; 4096];
+                    let banner = match tokio::time::timeout(banner_timeout, stream.read(&mut buffer)).await {
+                        Ok(Ok(count)) if count > 0 => {
+                            Some(String::from_utf8_lossy(&buffer[..count]).to_string())
+                        }
+                        _ => None,
+                    };
                     let banner = if banner.is_none() {
-                        let http_req = format!("GET / HTTP/1.0\r\nHost: {}\r\n\r\n", ip);
-                        let _ = stream.write_all(http_req.as_bytes()).await;
-                        match tokio::time::timeout(banner_timeout, stream.read(&mut buf)).await {
-                            Ok(Ok(n)) if n > 0 => {
-                                Some(String::from_utf8_lossy(&buf[..n]).to_string())
+                        let request = format!("GET / HTTP/1.0\r\nHost: {}\r\n\r\n", ip);
+                        let _ = stream.write_all(request.as_bytes()).await;
+                        match tokio::time::timeout(banner_timeout, stream.read(&mut buffer)).await {
+                            Ok(Ok(count)) if count > 0 => {
+                                Some(String::from_utf8_lossy(&buffer[..count]).to_string())
                             }
                             _ => None,
                         }
@@ -179,60 +132,39 @@ impl Detector for PortScannerDetector {
                         banner
                     };
 
-                    // Classify
-                    let (service, confidence, signal_type) = if let Some(ref b) = banner {
-                        if let Some(svc) = classify_banner(b) {
-                            (
-                                svc.to_string(),
-                                Confidence::Medium,
-                                "agent_service_identified".to_string(),
-                            )
-                        } else if let Some((svc, conf)) = classify_port(port) {
-                            (
-                                svc.to_string(),
-                                conf,
-                                if conf >= Confidence::Medium {
-                                    "agent_service_identified".to_string()
-                                } else {
-                                    "open_agent_port".to_string()
-                                },
-                            )
-                        } else {
-                            return None;
-                        }
-                    } else if let Some((svc, conf)) = classify_port(port) {
+                    let candidates = services.get(&port)?.clone();
+                    let banner_service = banner.as_deref().and_then(classify_banner);
+                    let (service, confidence, signal_type) = if let Some(service) = banner_service {
                         (
-                            svc.to_string(),
-                            conf,
-                            if conf >= Confidence::Medium {
-                                "agent_service_identified".to_string()
-                            } else {
-                                "open_agent_port".to_string()
-                            },
+                            service.to_string(),
+                            Confidence::Medium,
+                            "agent_service_identified",
+                        )
+                    } else if custom_ports.contains(&port) {
+                        (
+                            candidates.join("|"),
+                            Confidence::Medium,
+                            "custom_agent_port_open",
                         )
                     } else {
-                        return None;
+                        (candidates.join("|"), Confidence::Low, "open_agent_port")
                     };
-
-                    let description = format!("Port {} open on {} - {} service", port, ip, service);
-
-                    let evidence = serde_json::json!({
-                        "ip": ip.to_string(),
-                        "port": port,
-                        "service": service,
-                        "banner": banner.as_deref().unwrap_or(""),
-                    });
 
                     Some(Signal::new(
                         DetectorType::PortScanner,
-                        signal_type,
-                        description,
+                        signal_type.to_string(),
+                        format!("Port {} open on {} - candidate service(s): {}", port, ip, service),
                         confidence,
-                        evidence,
+                        serde_json::json!({
+                            "ip": ip.to_string(),
+                            "port": port,
+                            "service": service,
+                            "service_candidates": candidates,
+                            "banner": banner.as_deref().unwrap_or(""),
+                            "signature_source": if custom_ports.contains(&port) { "custom" } else { "signed_catalog" },
+                        }),
                     ))
-                });
-
-                handles.push(handle);
+                }));
             }
         }
 
@@ -242,7 +174,6 @@ impl Detector for PortScannerDetector {
                 signals.push(signal);
             }
         }
-
         Ok(signals)
     }
 

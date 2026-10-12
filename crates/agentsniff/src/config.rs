@@ -73,6 +73,14 @@ pub struct ScanConfig {
     pub api_token: String,
     pub api_cors_origins: Vec<String>,
 
+    // ── AgentPin verifier ────────────────────────────────────────────
+    /// Operator-supplied trust bundle. Empty keeps the REST/MCP verifier disabled.
+    pub agentpin_trust_bundle_path: String,
+    /// Durable TOFU key-pin store used by the REST/MCP verifier.
+    pub agentpin_pin_store_path: String,
+    /// Audience that presented credentials must name.
+    pub agentpin_expected_audience: String,
+
     // ── Storage ──────────────────────────────────────────────────────
     pub storage: StorageConfig,
 
@@ -158,6 +166,11 @@ impl Default for ScanConfig {
             api_port: 9090,
             api_token: String::new(),
             api_cors_origins: vec!["*".to_string()],
+
+            // AgentPin verifier
+            agentpin_trust_bundle_path: String::new(),
+            agentpin_pin_store_path: "~/.agentsniff/agentpin-pins.json".to_string(),
+            agentpin_expected_audience: String::new(),
 
             // Storage
             storage: StorageConfig::default(),
@@ -250,6 +263,15 @@ impl ScanConfig {
         if let Ok(v) = std::env::var("AGENTSNIFF_API_TOKEN") {
             config.api_token = v;
         }
+        if let Ok(v) = std::env::var("AGENTSNIFF_AGENTPIN_TRUST_BUNDLE") {
+            config.agentpin_trust_bundle_path = v;
+        }
+        if let Ok(v) = std::env::var("AGENTSNIFF_AGENTPIN_PIN_STORE") {
+            config.agentpin_pin_store_path = v;
+        }
+        if let Ok(v) = std::env::var("AGENTSNIFF_AGENTPIN_AUDIENCE") {
+            config.agentpin_expected_audience = v;
+        }
         if let Ok(v) = std::env::var("AGENTSNIFF_STORAGE_BACKEND") {
             config.storage.backend = v;
         }
@@ -312,6 +334,13 @@ dns_monitor_duration: 60      # seconds to monitor DNS
 # api_token: ""               # required for non-loopback; prefer AGENTSNIFF_API_TOKEN
 # api_cors_origins:
 #   - "*"
+
+# ── AgentPin credential verifier (REST + MCP) ───────────────────────
+# Configure all three values to expose the verifier. The trust bundle must
+# arrive through an authenticated out-of-band channel; callers cannot replace it.
+# agentpin_trust_bundle_path: "/etc/agentsniff/agentpin-trust-bundle.json"
+# agentpin_pin_store_path: "~/.agentsniff/agentpin-pins.json"
+# agentpin_expected_audience: "verifier.example"
 
 # ── Storage ─────────────────────────────────────────────────────────
 # storage:

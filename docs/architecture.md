@@ -27,6 +27,7 @@ CLI / loopback dashboard
 | Path | Responsibility |
 |---|---|
 | `crates/agentsniff/src/main.rs` | CLI and output |
+| `crates/agentsniff/src/agentpin.rs` | Fail-closed AgentPin credential verification |
 | `crates/agentsniff/src/scanner.rs` | Target resolution and orchestration |
 | `crates/agentsniff/src/server.rs` | Axum dashboard API and read-only SSE |
 | `crates/agentsniff/src/models.rs` | Signals, agents, results, confidence |
@@ -46,7 +47,7 @@ Passive capture, host networking, eBPF, and nmap expand local privilege and reso
 
 ## Identity semantics
 
-AgentPin structure validation establishes only that a target serves a plausible current-format discovery document. It does not establish entity-domain ownership. AgentSniff therefore emits an unsigned medium-confidence discovery signal until cryptographic AgentPin validation is implemented.
+AgentPin structure validation establishes only that a target serves a plausible current-format discovery document; the network prober therefore emits an unsigned medium-confidence discovery signal. Cryptographic verification is an explicit second path for a presented credential, available through the CLI, REST API, and a narrowly scoped MCP tool. It accepts only operator-supplied trust bundles and audiences, requires current revocation material, verifies the ES256 credential and any delegation signatures, and commits TOFU pins only after every check succeeds. REST and MCP callers cannot replace the configured trust inputs. It does not fetch issuer-controlled URLs, preventing credential claims from becoming an SSRF or unbounded-download primitive.
 
 A2A Agent Cards follow the same separation between discovery and identity. Structural validation produces discovery evidence; `trusted_verified` identity assurance requires an ES256 JWS that verifies against an administrator-configured, out-of-band `kid` trust anchor.
 

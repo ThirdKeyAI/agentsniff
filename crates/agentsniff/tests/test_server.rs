@@ -190,6 +190,8 @@ async fn test_api_token_protects_every_non_health_route_class() {
         ("GET", "/api/db/backup"),
         ("GET", "/api/settings"),
         ("POST", "/api/scan/stop"),
+        ("POST", "/api/agentpin/verify"),
+        ("POST", "/mcp"),
         ("POST", "/api/settings/test"),
         ("POST", "/api/db/reset"),
     ] {

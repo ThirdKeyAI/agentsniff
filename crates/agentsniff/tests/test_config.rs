@@ -11,6 +11,12 @@ fn test_default_config() {
     assert_eq!(config.port_scan_timeout, 2.0);
     assert_eq!(config.port_scan_concurrency, 100);
     assert!(config.alert_changes_only);
+    assert!(config.agentpin_trust_bundle_path.is_empty());
+    assert_eq!(
+        config.agentpin_pin_store_path,
+        "~/.agentsniff/agentpin-pins.json"
+    );
+    assert!(config.agentpin_expected_audience.is_empty());
 }
 
 #[test]
@@ -106,6 +112,8 @@ fn test_default_config_yaml_contains_sections() {
     assert!(yaml.contains("ebpf_interface"));
     assert!(yaml.contains("alert_enabled"));
     assert!(yaml.contains("alert_changes_only"));
+    assert!(yaml.contains("agentpin_trust_bundle_path"));
+    assert!(yaml.contains("agentpin_expected_audience"));
 }
 
 #[test]

@@ -3,6 +3,7 @@
 #![allow(clippy::double_must_use)]
 
 // AgentSniff library root
+pub mod agentpin;
 pub mod baseline;
 pub mod config;
 pub mod detectors;

@@ -9,6 +9,7 @@ nav = [
   {"Getting Started" = "getting-started.md"},
   {"Detectors" = "detectors.md"},
   {"CLI Reference" = "cli-reference.md"},
+  {"AgentPin Verification" = "agentpin-verification.md"},
   {"Dashboard" = "dashboard.md"},
   {"Configuration" = "configuration.md"},
   {"Alerting" = "alerting.md"},

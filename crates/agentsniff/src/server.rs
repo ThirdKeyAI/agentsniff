@@ -3,7 +3,8 @@ use std::net::IpAddr;
 use std::sync::Arc;
 use std::time::Duration;
 
-use axum::extract::{Path, Query, Request, State};
+use axum::body::Bytes;
+use axum::extract::{DefaultBodyLimit, Path, Query, Request, State};
 use axum::http::header::{AUTHORIZATION, CONTENT_TYPE, WWW_AUTHENTICATE};
 use axum::http::{HeaderMap, HeaderValue, Method, StatusCode};
 use axum::middleware::{self, Next};
@@ -13,11 +14,17 @@ use axum::routing::{get, post};
 use axum::Router;
 use base64::Engine;
 use serde::{Deserialize, Serialize};
+use serde_json::{json, Value};
 use tokio::sync::{broadcast, Mutex};
 use tokio_stream::wrappers::BroadcastStream;
 use tokio_stream::StreamExt;
 use tokio_util::sync::CancellationToken;
 
+use crate::agentpin::{
+    expand_user_path, load_agentpin_pins, load_agentpin_trust_bundle, save_agentpin_pins,
+    verify_credential_from_bundle, AgentpinVerificationPolicy, AgentpinVerificationReport,
+    MAX_AGENTPIN_CREDENTIAL_BYTES,
+};
 use crate::baseline::apply_scan_diff;
 use crate::config::ScanConfig;
 use crate::ebpf::EbpfChannels;
@@ -150,6 +157,8 @@ pub struct AppState {
     pub cancel_token: Mutex<Option<CancellationToken>>,
     pub sse_tx: broadcast::Sender<SseEvent>,
     pub ebpf_channels: Arc<EbpfChannels>,
+    /// Serializes pin-store read/verify/write transactions across REST and MCP.
+    pub agentpin_verification: Mutex<()>,
 }
 
 // ─── Request / response types ───────────────────────────────────────────────
@@ -184,6 +193,31 @@ pub struct HistoryQuery {
     pub offset: Option<u32>,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct AgentpinVerifyRequest {
+    credential: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct McpRequest {
+    jsonrpc: String,
+    #[serde(default)]
+    id: Value,
+    method: String,
+    #[serde(default = "empty_json_object")]
+    params: Value,
+}
+
+fn empty_json_object() -> Value {
+    json!({})
+}
+
+const MCP_PROTOCOL_VERSION: &str = "2026-07-28";
+const MCP_LEGACY_PROTOCOL_VERSION: &str = "2025-11-25";
+const MCP_HTTP_BODY_LIMIT: usize = 96 * 1024;
+const AGENTPIN_MCP_TOOL: &str = "verify_agentpin_credential";
+
 // ─── Route handlers ─────────────────────────────────────────────────────────
 
 async fn health_handler() -> Json<HealthResponse> {
@@ -191,6 +225,467 @@ async fn health_handler() -> Json<HealthResponse> {
         status: "ok".to_string(),
         version: env!("CARGO_PKG_VERSION").to_string(),
     })
+}
+
+fn agentpin_verifier_enabled(config: &ScanConfig) -> bool {
+    !config.agentpin_trust_bundle_path.trim().is_empty()
+        && !config.agentpin_expected_audience.trim().is_empty()
+}
+
+/// Validate the operator-controlled trust inputs before opening the listener.
+pub fn validate_agentpin_server_config(config: &ScanConfig) -> anyhow::Result<()> {
+    if config.agentpin_trust_bundle_path.trim().is_empty() {
+        if !config.agentpin_expected_audience.trim().is_empty() {
+            anyhow::bail!("agentpin_expected_audience requires agentpin_trust_bundle_path");
+        }
+        return Ok(());
+    }
+    if config.agentpin_expected_audience.trim().is_empty() {
+        anyhow::bail!(
+            "agentpin_expected_audience is required when the AgentPin API/MCP verifier is enabled"
+        );
+    }
+    if config.agentpin_pin_store_path.trim().is_empty() {
+        anyhow::bail!("agentpin_pin_store_path cannot be empty");
+    }
+
+    let bundle_path = expand_user_path(&config.agentpin_trust_bundle_path);
+    let pin_path = expand_user_path(&config.agentpin_pin_store_path);
+    if bundle_path == pin_path {
+        anyhow::bail!("AgentPin trust bundle and pin store must use different paths");
+    }
+    load_agentpin_trust_bundle(&bundle_path)?;
+    load_agentpin_pins(&pin_path)?;
+    Ok(())
+}
+
+fn validate_agentpin_credential_input(credential: &str) -> Result<(), &'static str> {
+    if credential.trim().is_empty() {
+        return Err("credential must not be empty");
+    }
+    if credential.len() > MAX_AGENTPIN_CREDENTIAL_BYTES {
+        return Err("credential exceeds the 65536-byte limit");
+    }
+    Ok(())
+}
+
+async fn verify_agentpin_for_server(
+    state: &AppState,
+    credential: &str,
+) -> anyhow::Result<AgentpinVerificationReport> {
+    validate_agentpin_credential_input(credential).map_err(anyhow::Error::msg)?;
+    let (bundle_path, pin_path, audience) = {
+        let config = state.config.lock().await;
+        if !agentpin_verifier_enabled(&config) {
+            anyhow::bail!("AgentPin verifier is not configured");
+        }
+        (
+            expand_user_path(&config.agentpin_trust_bundle_path),
+            expand_user_path(&config.agentpin_pin_store_path),
+            config.agentpin_expected_audience.clone(),
+        )
+    };
+
+    // Loading, verification, and the atomic replace form one logical TOFU
+    // transaction. Without this lock, simultaneous first-use calls could each
+    // verify against stale pin state and overwrite one another.
+    let _guard = state.agentpin_verification.lock().await;
+    let credential = credential.trim().to_string();
+    tokio::task::spawn_blocking(move || {
+        let bundle = load_agentpin_trust_bundle(&bundle_path)?;
+        let mut pins = load_agentpin_pins(&pin_path)?;
+        let report = verify_credential_from_bundle(
+            &credential,
+            &bundle,
+            &mut pins,
+            Some(&audience),
+            &AgentpinVerificationPolicy::default(),
+        );
+        if report.valid {
+            save_agentpin_pins(&pin_path, &pins)?;
+        }
+        Ok(report)
+    })
+    .await
+    .map_err(|error| anyhow::anyhow!("AgentPin verification worker failed: {error}"))?
+}
+
+async fn agentpin_verify_handler(
+    State(state): State<Arc<AppState>>,
+    Json(request): Json<AgentpinVerifyRequest>,
+) -> Response {
+    if let Err(message) = validate_agentpin_credential_input(&request.credential) {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error": "invalid_request", "message": message})),
+        )
+            .into_response();
+    }
+    match verify_agentpin_for_server(&state, &request.credential).await {
+        Ok(report) => Json(report).into_response(),
+        Err(error) => {
+            tracing::error!(error = %error, "AgentPin API verification failed");
+            (
+                StatusCode::SERVICE_UNAVAILABLE,
+                Json(json!({
+                    "error": "agentpin_verifier_unavailable",
+                    "message": "AgentPin verifier is unavailable or not configured"
+                })),
+            )
+                .into_response()
+        }
+    }
+}
+
+fn mcp_server_info() -> Value {
+    json!({"name": "agentsniff", "version": env!("CARGO_PKG_VERSION")})
+}
+
+fn mcp_tool_definition() -> Value {
+    json!({
+        "name": AGENTPIN_MCP_TOOL,
+        "title": "Verify AgentPin credential",
+        "description": "Cryptographically verify a presented AgentPin credential against the operator-configured trust bundle, audience, revocation data, delegation policy, and persistent TOFU pins. The trust anchor cannot be supplied by the caller.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "credential": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": MAX_AGENTPIN_CREDENTIAL_BYTES,
+                    "description": "Presented AgentPin JWT. Do not place this credential in logs or prompts beyond the tool call."
+                }
+            },
+            "required": ["credential"],
+            "additionalProperties": false
+        },
+        "annotations": {
+            "readOnlyHint": false,
+            "destructiveHint": false,
+            "idempotentHint": true,
+            "openWorldHint": false
+        }
+    })
+}
+
+fn mcp_result(mut result: Value, modern: bool) -> Value {
+    if modern {
+        if let Some(object) = result.as_object_mut() {
+            object
+                .entry("resultType")
+                .or_insert_with(|| Value::String("complete".to_string()));
+            object.entry("_meta").or_insert_with(
+                || json!({"io.modelcontextprotocol/serverInfo": mcp_server_info()}),
+            );
+        }
+    }
+    result
+}
+
+fn mcp_success(id: Value, result: Value, modern: bool) -> Response {
+    Json(json!({
+        "jsonrpc": "2.0",
+        "id": id,
+        "result": mcp_result(result, modern)
+    }))
+    .into_response()
+}
+
+fn mcp_error(
+    id: Value,
+    code: i64,
+    message: &str,
+    data: Option<Value>,
+    status: StatusCode,
+) -> Response {
+    let mut error = json!({"code": code, "message": message});
+    if let (Some(object), Some(data)) = (error.as_object_mut(), data) {
+        object.insert("data".to_string(), data);
+    }
+    (
+        status,
+        Json(json!({"jsonrpc": "2.0", "id": id, "error": error})),
+    )
+        .into_response()
+}
+
+fn mcp_header<'a>(headers: &'a HeaderMap, name: &str) -> Option<&'a str> {
+    let mut values = headers.get_all(name).iter();
+    let value = values.next()?.to_str().ok()?;
+    if values.next().is_some() {
+        return None;
+    }
+    Some(value)
+}
+
+fn mcp_body_protocol_version(request: &McpRequest) -> Option<&str> {
+    request
+        .params
+        .get("_meta")
+        .and_then(Value::as_object)
+        .and_then(|meta| meta.get("io.modelcontextprotocol/protocolVersion"))
+        .and_then(Value::as_str)
+}
+
+fn validate_mcp_transport(
+    headers: &HeaderMap,
+    request: &McpRequest,
+) -> Result<bool, Box<Response>> {
+    let id = request.id.clone();
+    let body_version = mcp_body_protocol_version(request);
+    let header_version = mcp_header(headers, "mcp-protocol-version");
+
+    let modern = if let Some(requested) = body_version {
+        if requested != MCP_PROTOCOL_VERSION {
+            return Err(Box::new(mcp_error(
+                id,
+                -32022,
+                "Unsupported protocol version",
+                Some(json!({
+                    "supported": [MCP_PROTOCOL_VERSION, MCP_LEGACY_PROTOCOL_VERSION],
+                    "requested": requested
+                })),
+                StatusCode::BAD_REQUEST,
+            )));
+        }
+        if header_version != Some(requested) {
+            return Err(Box::new(mcp_error(
+                id,
+                -32020,
+                "MCP-Protocol-Version header does not match the request body",
+                None,
+                StatusCode::BAD_REQUEST,
+            )));
+        }
+        true
+    } else if header_version == Some(MCP_PROTOCOL_VERSION) {
+        return Err(Box::new(mcp_error(
+            id,
+            -32020,
+            "Modern MCP requests require matching protocol metadata in the request body",
+            None,
+            StatusCode::BAD_REQUEST,
+        )));
+    } else {
+        if header_version.is_some_and(|version| version != MCP_LEGACY_PROTOCOL_VERSION) {
+            return Err(Box::new(mcp_error(
+                id,
+                -32022,
+                "Unsupported protocol version",
+                Some(json!({
+                    "supported": [MCP_PROTOCOL_VERSION, MCP_LEGACY_PROTOCOL_VERSION],
+                    "requested": header_version.unwrap_or_default()
+                })),
+                StatusCode::BAD_REQUEST,
+            )));
+        }
+        false
+    };
+
+    if modern {
+        if mcp_header(headers, "mcp-method") != Some(request.method.as_str()) {
+            return Err(Box::new(mcp_error(
+                request.id.clone(),
+                -32020,
+                "Mcp-Method header is missing or does not match the request body",
+                None,
+                StatusCode::BAD_REQUEST,
+            )));
+        }
+        if request.method == "tools/call" {
+            let name = request.params.get("name").and_then(Value::as_str);
+            if name.is_none() || mcp_header(headers, "mcp-name") != name {
+                return Err(Box::new(mcp_error(
+                    request.id.clone(),
+                    -32020,
+                    "Mcp-Name header is missing or does not match the tool name",
+                    None,
+                    StatusCode::BAD_REQUEST,
+                )));
+            }
+        }
+    }
+    Ok(modern)
+}
+
+fn mcp_tool_result(report: &AgentpinVerificationReport, modern: bool) -> Value {
+    let structured = serde_json::to_value(report).unwrap_or_else(|_| {
+        json!({
+            "valid": false,
+            "identity_assurance": "invalid",
+            "error_code": "SERIALIZATION_FAILED"
+        })
+    });
+    let text = serde_json::to_string_pretty(&structured)
+        .unwrap_or_else(|_| "AgentPin verification result unavailable".to_string());
+    mcp_result(
+        json!({
+            "content": [{"type": "text", "text": text}],
+            "structuredContent": structured,
+            "isError": false
+        }),
+        modern,
+    )
+}
+
+fn mcp_tool_execution_error(message: &str, modern: bool) -> Value {
+    mcp_result(
+        json!({
+            "content": [{"type": "text", "text": message}],
+            "isError": true
+        }),
+        modern,
+    )
+}
+
+async fn mcp_handler(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    body: Bytes,
+) -> Response {
+    let message: Value = match serde_json::from_slice(&body) {
+        Ok(message) => message,
+        Err(_) => {
+            return mcp_error(
+                Value::Null,
+                -32700,
+                "Parse error",
+                None,
+                StatusCode::BAD_REQUEST,
+            )
+        }
+    };
+    let request: McpRequest = match serde_json::from_value(message) {
+        Ok(request) => request,
+        Err(_) => {
+            return mcp_error(
+                Value::Null,
+                -32600,
+                "Invalid Request",
+                None,
+                StatusCode::BAD_REQUEST,
+            )
+        }
+    };
+    if request.jsonrpc != "2.0" || request.method.is_empty() {
+        return mcp_error(
+            request.id,
+            -32600,
+            "Invalid Request",
+            None,
+            StatusCode::BAD_REQUEST,
+        );
+    }
+    let modern = match validate_mcp_transport(&headers, &request) {
+        Ok(modern) => modern,
+        Err(response) => return *response,
+    };
+
+    match request.method.as_str() {
+        "notifications/initialized" if !modern => StatusCode::ACCEPTED.into_response(),
+        "initialize" if !modern => {
+            let enabled = {
+                let config = state.config.lock().await;
+                agentpin_verifier_enabled(&config)
+            };
+            mcp_success(
+                request.id,
+                json!({
+                    "protocolVersion": MCP_LEGACY_PROTOCOL_VERSION,
+                    "capabilities": if enabled { json!({"tools": {}}) } else { json!({}) },
+                    "serverInfo": mcp_server_info(),
+                    "instructions": "Verify presented AgentPin credentials against operator-controlled trust material."
+                }),
+                false,
+            )
+        }
+        "server/discover" if modern => {
+            let enabled = {
+                let config = state.config.lock().await;
+                agentpin_verifier_enabled(&config)
+            };
+            mcp_success(
+                request.id,
+                json!({
+                    "supportedVersions": [MCP_PROTOCOL_VERSION],
+                    "capabilities": if enabled { json!({"tools": {}}) } else { json!({}) },
+                    "instructions": "Verify presented AgentPin credentials against operator-controlled trust material. Credentials are never accepted as their own trust anchor.",
+                    "ttlMs": 60_000,
+                    "cacheScope": "private"
+                }),
+                true,
+            )
+        }
+        "tools/list" => {
+            let enabled = {
+                let config = state.config.lock().await;
+                agentpin_verifier_enabled(&config)
+            };
+            let tools = if enabled {
+                vec![mcp_tool_definition()]
+            } else {
+                Vec::new()
+            };
+            let result = if modern {
+                json!({
+                    "tools": tools,
+                    "ttlMs": 60_000,
+                    "cacheScope": "private"
+                })
+            } else {
+                json!({"tools": tools})
+            };
+            mcp_success(request.id, result, modern)
+        }
+        "tools/call" => {
+            let name = request.params.get("name").and_then(Value::as_str);
+            if name != Some(AGENTPIN_MCP_TOOL) {
+                return mcp_error(request.id, -32602, "Unknown tool", None, StatusCode::OK);
+            }
+            let arguments = request
+                .params
+                .get("arguments")
+                .cloned()
+                .unwrap_or_else(|| json!({}));
+            let arguments: AgentpinVerifyRequest = match serde_json::from_value(arguments) {
+                Ok(arguments) => arguments,
+                Err(_) => {
+                    return mcp_error(
+                        request.id,
+                        -32602,
+                        "Tool arguments must contain only a credential string",
+                        None,
+                        StatusCode::OK,
+                    )
+                }
+            };
+            if let Err(message) = validate_agentpin_credential_input(&arguments.credential) {
+                return mcp_error(request.id, -32602, message, None, StatusCode::OK);
+            }
+            let result = match verify_agentpin_for_server(&state, &arguments.credential).await {
+                Ok(report) => mcp_tool_result(&report, modern),
+                Err(error) => {
+                    tracing::error!(error = %error, "AgentPin MCP verification failed");
+                    mcp_tool_execution_error(
+                        "AgentPin verifier is unavailable or not configured",
+                        modern,
+                    )
+                }
+            };
+            mcp_success(request.id, result, false)
+        }
+        _ => mcp_error(
+            request.id,
+            -32601,
+            "Method not found",
+            None,
+            if modern {
+                StatusCode::NOT_FOUND
+            } else {
+                StatusCode::OK
+            },
+        ),
+    }
 }
 
 fn is_loopback_host(host: &str) -> bool {
@@ -934,9 +1429,18 @@ pub fn create_router_with_storage(
         cancel_token: Mutex::new(None),
         sse_tx,
         ebpf_channels,
+        agentpin_verification: Mutex::new(()),
     });
 
     let protected_routes = Router::new()
+        .route(
+            "/api/agentpin/verify",
+            post(agentpin_verify_handler).layer(DefaultBodyLimit::max(MCP_HTTP_BODY_LIMIT)),
+        )
+        .route(
+            "/mcp",
+            post(mcp_handler).layer(DefaultBodyLimit::max(MCP_HTTP_BODY_LIMIT)),
+        )
         .route("/api/scan", post(start_scan_handler))
         .route("/api/scan/status", get(scan_status_handler))
         .route("/api/scan/results", get(scan_results_handler))
@@ -972,6 +1476,7 @@ pub async fn run_server(
     ebpf_channels: Arc<EbpfChannels>,
 ) -> anyhow::Result<()> {
     validate_api_security(&config)?;
+    validate_agentpin_server_config(&config)?;
     let host = config.api_host.clone();
     let port = config.api_port;
 

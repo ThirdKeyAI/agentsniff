@@ -18,7 +18,7 @@ AgentSniff is a Rust network scanner for discovering AI-agent infrastructure thr
 | Traffic analyzer | LLM/API and burst behavior | Optional | Medium–High |
 | SSE detector | Long-lived event-stream traffic | Optional | High |
 
-AgentPin documents are currently treated as unsigned discovery evidence. AgentSniff validates their shape, but it does not yet implement the AgentPin signature, delegation, expiry, and revocation profile. Consequently, an AgentPin document alone is not labeled “identity verified” and cannot produce a `CONFIRMED` signal. AgentSniff also recognizes the AgentPin credential-binding capability advertised by MCP servers; that signal confirms only the advertised integration, not an agent identity or presented credential.
+AgentPin discovery documents remain unsigned discovery evidence: a document alone is not labeled “identity verified” and cannot produce a `CONFIRMED` signal. Presented AgentPin credentials can be verified separately with `agentsniff verify-agentpin`. That fail-closed path checks the ES256 signature, time and key validity, agent status, capability and constraint narrowing, revocation, delegation signatures and depth, audience (when supplied), and persistent TOFU pins against an authenticated out-of-band trust bundle. AgentSniff also recognizes the AgentPin credential-binding capability advertised by MCP servers; that signal confirms only the advertised integration, not an agent identity or presented credential.
 
 A2A Agent Cards are likewise self-asserted at `HIGH` confidence unless an ES256 JWS verifies against an out-of-band `a2a_trusted_keys` entry. Self-advertised keys never establish identity.
 
@@ -97,6 +97,7 @@ agentsniff <command> [options]
 Commands:
   scan                 Run a network scan
   serve                Start the dashboard and API
+  verify-agentpin      Verify a presented AgentPin credential
   init-config          Generate a configuration file
   update-signatures    Download a complete verified signature set
 ```
@@ -109,9 +110,19 @@ agentsniff scan --hosts server1,server2
 agentsniff scan 10.0.0.0/24 --format json --output results.json
 agentsniff scan 192.168.1.0/24 --continuous 300
 agentsniff serve --port 9090
+agentsniff verify-agentpin \
+  --trust-bundle agentpin-trust-bundle.json \
+  --audience verifier.example < credential.jwt
 ```
 
 A scan is limited to 65,536 resolved targets. Larger ranges are rejected before address materialization.
+
+`verify-agentpin` never fetches a URL derived from an untrusted JWT. The supplied bundle must come from an authenticated out-of-band channel and contain exactly one discovery document and one revocation document for the issuer and every delegation domain. Credentials default to standard input so they do not need to appear in shell history or process arguments. See [AgentPin credential verification](docs/agentpin-verification.md).
+
+`agentsniff serve` can expose the same verifier as
+`POST /api/agentpin/verify` and as the `verify_agentpin_credential` tool on the
+`POST /mcp` endpoint. The operator configures the trust bundle, expected
+audience, and durable pin store; callers submit only the credential.
 
 ## Dashboard security
 
@@ -145,6 +156,8 @@ Core endpoints:
 | `/api/scan/stop` | POST JSON | Stop the running scan |
 | `/api/scan/history` | GET | Scan history |
 | `/api/scan/sarif` | GET | SARIF export |
+| `/api/agentpin/verify` | POST JSON | Verify a presented AgentPin credential |
+| `/mcp` | POST JSON-RPC | AgentPin verification MCP tool |
 | `/api/settings` | GET/PUT | Alert settings |
 | `/api/settings/test` | POST JSON | Send a test alert |
 | `/api/db/backup` | GET | Download a SQLite snapshot |

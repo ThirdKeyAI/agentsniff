@@ -4,7 +4,7 @@ use std::collections::HashSet;
 
 use async_trait::async_trait;
 use quick_xml::events::Event;
-use quick_xml::Reader;
+use quick_xml::{Reader, XmlVersion};
 
 use super::Enricher;
 use crate::models::{Confidence, DetectedAgent, DetectorType, Signal};
@@ -146,7 +146,10 @@ pub fn parse_nmap_xml(xml: &str) -> Vec<NmapHost> {
                         let mut addr_type: Option<String> = None;
                         for attr in e.attributes().flatten() {
                             let key = std::str::from_utf8(attr.key.as_ref()).unwrap_or("");
-                            let val = attr.unescape_value().unwrap_or_default().into_owned();
+                            let val = attr
+                                .normalized_value(XmlVersion::Implicit1_0)
+                                .unwrap_or_default()
+                                .into_owned();
                             match key {
                                 "addr" => addr_val = Some(val),
                                 "addrtype" => addr_type = Some(val),
@@ -160,7 +163,10 @@ pub fn parse_nmap_xml(xml: &str) -> Vec<NmapHost> {
                     "port" if in_host => {
                         for attr in e.attributes().flatten() {
                             let key = std::str::from_utf8(attr.key.as_ref()).unwrap_or("");
-                            let val = attr.unescape_value().unwrap_or_default().into_owned();
+                            let val = attr
+                                .normalized_value(XmlVersion::Implicit1_0)
+                                .unwrap_or_default()
+                                .into_owned();
                             match key {
                                 "portid" => {
                                     current_port = val.parse().ok();
@@ -176,7 +182,10 @@ pub fn parse_nmap_xml(xml: &str) -> Vec<NmapHost> {
                     "state" if in_host => {
                         for attr in e.attributes().flatten() {
                             let key = std::str::from_utf8(attr.key.as_ref()).unwrap_or("");
-                            let val = attr.unescape_value().unwrap_or_default().into_owned();
+                            let val = attr
+                                .normalized_value(XmlVersion::Implicit1_0)
+                                .unwrap_or_default()
+                                .into_owned();
                             if key == "state" {
                                 current_state = Some(val);
                             }
@@ -189,7 +198,10 @@ pub fn parse_nmap_xml(xml: &str) -> Vec<NmapHost> {
                             let mut version: Option<String> = None;
                             for attr in e.attributes().flatten() {
                                 let key = std::str::from_utf8(attr.key.as_ref()).unwrap_or("");
-                                let val = attr.unescape_value().unwrap_or_default().into_owned();
+                                let val = attr
+                                    .normalized_value(XmlVersion::Implicit1_0)
+                                    .unwrap_or_default()
+                                    .into_owned();
                                 match key {
                                     "name" => svc_name = Some(val),
                                     "product" => product = Some(val),

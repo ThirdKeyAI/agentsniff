@@ -121,8 +121,9 @@ impl AgentpinProber {
 
     /// Build a discovery signal from a structurally valid, unsigned AgentPin document.
     ///
-    /// AgentSniff does not yet implement AgentPin's cryptographic verification
-    /// profile. Document shape therefore proves protocol presence, not identity.
+    /// Discovery alone never runs the credential verifier. Document shape
+    /// therefore proves protocol presence, not identity; presented credentials
+    /// are verified separately against an operator-supplied trust bundle.
     fn signals_from_document(
         &self,
         ip: IpAddr,

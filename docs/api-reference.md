@@ -18,6 +18,8 @@ For API clients, send the token as a Bearer credential. Browsers can use HTTP Ba
 | `GET /api/scan/{scan_id}` | — | Specific historical scan |
 | `GET /api/scan/sarif` | — | Latest scan as SARIF 2.1.0 JSON |
 | `GET /api/agents` | — | All detected agents |
+| `POST /api/agentpin/verify` | JSON body | Verify a presented AgentPin credential |
+| `POST /mcp` | MCP JSON-RPC | AgentPin verification MCP server |
 | `GET /api/scan/stream` | SSE | Real-time scan streaming |
 | `GET /api/settings` | — | Get alert settings |
 | `PUT /api/settings` | JSON body | Update alert settings |
@@ -33,6 +35,46 @@ curl --request POST http://127.0.0.1:9090/api/scan \
   --header 'Content-Type: application/json' \
   --data '{"network":"192.168.1.0/24","detectors":"port_scanner,endpoint_prober"}'
 ```
+
+## AgentPin verification API and MCP tool
+
+Configure the server-side trust anchor, durable pins, and expected audience:
+
+```yaml
+agentpin_trust_bundle_path: "/etc/agentsniff/agentpin-trust-bundle.json"
+agentpin_pin_store_path: "~/.agentsniff/agentpin-pins.json"
+agentpin_expected_audience: "verifier.example"
+```
+
+The server refuses to start if this configuration is incomplete or unreadable.
+The trust bundle must be distributed through an authenticated out-of-band
+channel. A caller cannot submit a trust bundle or audience alongside its
+credential.
+
+REST clients send a JSON body to `POST /api/agentpin/verify`:
+
+```json
+{"credential":"eyJ...presented AgentPin JWT..."}
+```
+
+The endpoint returns the same machine-readable report as
+`agentsniff verify-agentpin`. A rejected credential is a successful HTTP
+exchange with `"valid": false`; configuration and storage failures return
+`503`. Credentials are limited to 64 KiB, and the route uses the same
+Basic/Bearer authentication policy as the rest of the management API.
+
+MCP clients connect to `POST /mcp`. AgentSniff supports current stateless MCP
+`2026-07-28` (`server/discover`, `tools/list`, and `tools/call`) and stateless
+legacy initialization for `2025-11-25` clients. The exposed tool is:
+
+```text
+verify_agentpin_credential({credential: string})
+```
+
+Current-protocol HTTP clients must send matching `MCP-Protocol-Version`,
+`Mcp-Method`, and, for `tools/call`, `Mcp-Name` headers. Verification results
+are returned in both `structuredContent` and text content for compatibility.
+The API token can be sent as an `Authorization: Bearer ...` header.
 
 ## SSE Streaming
 

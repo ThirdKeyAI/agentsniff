@@ -45,11 +45,13 @@ The signed catalog can assign multiple candidates to ambiguous ports such as 808
 
 ## AgentPin Prober
 
-Probes hosts for [AgentPin](https://agentpin.org) discovery documents at `/.well-known/agent-identity.json`. The current implementation validates the AgentPin v0.1 document shape, including entity metadata, P-256 public-key declarations, delegation depth, timestamp, and agent declarations. It does not verify credentials, domain ownership, delegation, expiry, or revocation state, so it reports an explicit **unsigned, medium-confidence discovery** rather than a verified identity. The optional v0.3 `a2a_endpoint` is retained as cross-protocol evidence.
+Probes hosts for [AgentPin](https://agentpin.org) discovery documents at `/.well-known/agent-identity.json`. The scanner validates the AgentPin v0.1 document shape, including entity metadata, P-256 public-key declarations, delegation depth, timestamp, and agent declarations. Discovery does not prove domain ownership or private-key possession, so the prober reports an explicit **unsigned, medium-confidence discovery** rather than a verified identity. The optional v0.3 `a2a_endpoint` is retained as cross-protocol evidence.
+
+Presented credentials use a separate fail-closed verifier: `agentsniff verify-agentpin` checks the signature, time and key validity, revocation, declared authority, delegation chain, audience, and persistent TOFU state against an authenticated out-of-band trust bundle. This explicit boundary prevents an untrusted scan target from supplying its own trust anchor or causing issuer-driven network requests. See [AgentPin credential verification](agentpin-verification.md).
 
 Follows the AgentPin spec's no-redirect security policy. Probes HTTPS and HTTP across common ports (443, 8443, 8080, 3000, 8000, 80).
 
-AgentPin itself is a discovery and identity layer rather than an MCP server. The MCP detector recognizes servers that advertise the AgentPin credential-binding capability and reports `mcp_agentpin_binding_advertised` at high confidence. This means the server claims support for carrying AgentPin credentials in MCP metadata; it does **not** mean a credential was presented or an identity was cryptographically verified.
+AgentPin itself is a discovery and identity layer rather than an MCP server. The MCP detector recognizes servers that advertise the AgentPin credential-binding capability and reports `mcp_agentpin_binding_advertised` at high confidence. This means the server claims support for carrying AgentPin credentials in MCP metadata; it does **not** mean a credential was presented or an identity was cryptographically verified. Separately, `agentsniff serve` can host an MCP verification tool that checks a presented credential against operator-configured trust material.
 
 ## A2A Detector
 

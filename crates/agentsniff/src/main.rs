@@ -1,6 +1,7 @@
 use std::borrow::Cow;
 use std::fs;
 use std::io::IsTerminal;
+use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -10,6 +11,11 @@ use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::Layer;
 
+use agentsniff::agentpin::{
+    expand_user_path, load_agentpin_pins, load_agentpin_trust_bundle, read_bounded,
+    read_bounded_path, save_agentpin_pins, verify_credential_from_bundle,
+    AgentpinVerificationPolicy, MAX_AGENTPIN_CREDENTIAL_BYTES,
+};
 use agentsniff::baseline::apply_scan_diff;
 use agentsniff::config::ScanConfig;
 use agentsniff::ebpf::try_load_ebpf;
@@ -155,6 +161,28 @@ enum Cli {
         /// Base URL for signature files
         #[arg(long)]
         url: Option<String>,
+    },
+    /// Verify a presented AgentPin credential against an out-of-band trust bundle
+    VerifyAgentpin {
+        /// Read the credential JWT from this file (default: standard input)
+        #[arg(long, value_name = "PATH")]
+        credential_file: Option<String>,
+
+        /// AgentPin pre-shared trust bundle containing discovery and revocation documents
+        #[arg(long, value_name = "PATH")]
+        trust_bundle: String,
+
+        /// Persistent TOFU pin store
+        #[arg(
+            long,
+            value_name = "PATH",
+            default_value = "~/.agentsniff/agentpin-pins.json"
+        )]
+        pin_store: String,
+
+        /// Expected credential audience (omit only when audience is not enforced)
+        #[arg(long)]
+        audience: Option<String>,
     },
     /// Generate a default configuration file
     InitConfig {
@@ -341,6 +369,33 @@ async fn main() -> anyhow::Result<()> {
             agentsniff::signatures::updater::update_signatures(url.as_deref()).await?;
         }
 
+        Cli::VerifyAgentpin {
+            credential_file,
+            trust_bundle,
+            pin_store,
+            audience,
+        } => {
+            init_logging(false, true, "")?;
+            let credential = read_credential(credential_file.as_deref())?;
+            let bundle = load_agentpin_trust_bundle(Path::new(&trust_bundle))?;
+            let pin_path = expand_user_path(&pin_store);
+            let mut pins = load_agentpin_pins(&pin_path)?;
+            let report = verify_credential_from_bundle(
+                credential.trim(),
+                &bundle,
+                &mut pins,
+                audience.as_deref(),
+                &AgentpinVerificationPolicy::default(),
+            );
+            if report.valid {
+                save_agentpin_pins(&pin_path, &pins)?;
+            }
+            println!("{}", serde_json::to_string_pretty(&report)?);
+            if !report.valid {
+                std::process::exit(2);
+            }
+        }
+
         Cli::InitConfig { output, force } => {
             init_logging(false, false, "")?;
             let path = std::path::Path::new(&output);
@@ -358,6 +413,27 @@ async fn main() -> anyhow::Result<()> {
     }
 
     Ok(())
+}
+
+fn read_credential(path: Option<&str>) -> anyhow::Result<String> {
+    let bytes = match path {
+        Some(path) => read_bounded_path(
+            Path::new(path),
+            MAX_AGENTPIN_CREDENTIAL_BYTES,
+            "AgentPin credential",
+        )?,
+        None => read_bounded(
+            std::io::stdin().lock(),
+            MAX_AGENTPIN_CREDENTIAL_BYTES,
+            "AgentPin credential from standard input",
+        )?,
+    };
+    let credential = String::from_utf8(bytes)
+        .map_err(|_| anyhow::anyhow!("AgentPin credential must be UTF-8"))?;
+    if credential.trim().is_empty() {
+        anyhow::bail!("AgentPin credential is empty");
+    }
+    Ok(credential)
 }
 
 fn format_to_string(format: OutputFormat) -> String {

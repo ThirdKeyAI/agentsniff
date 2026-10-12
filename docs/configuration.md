@@ -55,6 +55,11 @@ api_host: "127.0.0.1"
 api_port: 9090
 api_token: ""           # required for non-loopback; prefer AGENTSNIFF_API_TOKEN
 
+# AgentPin REST/MCP verifier (disabled while trust bundle path is empty)
+agentpin_trust_bundle_path: "/etc/agentsniff/agentpin-trust-bundle.json"
+agentpin_pin_store_path: "~/.agentsniff/agentpin-pins.json"
+agentpin_expected_audience: "verifier.example"
+
 # Storage
 db_path: ""       # default: ~/.agentsniff/agentsniff.db
 log_file: ""      # empty = console only
@@ -107,6 +112,9 @@ All configuration options can be set via environment variables with the `AGENTSN
 ```bash
 export AGENTSNIFF_TARGET_NETWORK="10.0.0.0/16"
 export AGENTSNIFF_API_TOKEN="$(openssl rand -hex 32)"
+export AGENTSNIFF_AGENTPIN_TRUST_BUNDLE="/etc/agentsniff/agentpin-trust-bundle.json"
+export AGENTSNIFF_AGENTPIN_PIN_STORE="/var/lib/agentsniff/agentpin-pins.json"
+export AGENTSNIFF_AGENTPIN_AUDIENCE="verifier.example"
 export AGENTSNIFF_ENABLE_DNS_MONITOR=true
 export AGENTSNIFF_HTTP_TIMEOUT=10.0
 export AGENTSNIFF_DB_PATH="/var/lib/agentsniff/scans.db"
@@ -119,6 +127,11 @@ Lists use comma-separated values:
 export AGENTSNIFF_TARGET_HOSTS="server1,server2,server3"
 export AGENTSNIFF_SMTP_TO="admin@example.com,security@example.com"
 ```
+
+The AgentPin verifier is exposed only when both the trust-bundle path and
+expected audience are configured. AgentSniff validates the files before the
+server starts. MCP and REST callers submit only a credential; they cannot
+replace the operator's trust bundle, audience, or TOFU pin store.
 
 ## Custom Signatures
 

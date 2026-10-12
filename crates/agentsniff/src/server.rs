@@ -31,7 +31,8 @@ use crate::ebpf::EbpfChannels;
 use crate::models::{DetectedAgent, IdentityAssurance, ScanResult};
 use crate::notifier::{send_alerts, Notifier};
 use crate::scanner::{resolve_targets, run_scan};
-use crate::storage::{SqliteBackend, StorageBackend};
+use crate::storage::{create_storage, StorageBackend};
+use crate::storage_redis::RedisEventBus;
 
 // ─── Embedded dashboard assets ───────────────────────────────────────────────
 
@@ -81,6 +82,19 @@ pub enum SseEvent {
     ScanError {
         message: String,
     },
+}
+
+fn emit_sse_event(
+    local: &broadcast::Sender<SseEvent>,
+    redis: Option<&Arc<RedisEventBus>>,
+    event: SseEvent,
+) {
+    let _ = local.send(event.clone());
+    if let Some(redis) = redis {
+        if let Err(error) = redis.try_publish(event) {
+            tracing::warn!("Failed to queue cross-instance event: {error}");
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -156,6 +170,7 @@ pub struct AppState {
     pub notifier: Mutex<Notifier>,
     pub cancel_token: Mutex<Option<CancellationToken>>,
     pub sse_tx: broadcast::Sender<SseEvent>,
+    pub event_bus: Option<Arc<RedisEventBus>>,
     pub ebpf_channels: Arc<EbpfChannels>,
     /// Serializes pin-store read/verify/write transactions across REST and MCP.
     pub agentpin_verification: Mutex<()>,
@@ -866,6 +881,7 @@ fn spawn_scan(
     cancel_token: CancellationToken,
 ) {
     let sse_tx = state.sse_tx.clone();
+    let event_bus = state.event_bus.clone();
     let cancel_clone = cancel_token.clone();
 
     // Resolve targets and enabled detectors for the start event
@@ -874,12 +890,16 @@ fn spawn_scan(
     let network = scan_config.target_network.clone();
 
     // Send scan started event with full info
-    let _ = sse_tx.send(SseEvent::ScanStarted {
-        scan_id: scan_id.clone(),
-        network,
-        host_count,
-        detectors: detector_names,
-    });
+    emit_sse_event(
+        &sse_tx,
+        event_bus.as_ref(),
+        SseEvent::ScanStarted {
+            scan_id: scan_id.clone(),
+            network,
+            host_count,
+            detectors: detector_names,
+        },
+    );
 
     let scan_id_clone = scan_id;
 
@@ -887,10 +907,15 @@ fn spawn_scan(
 
     tokio::spawn(async move {
         let on_agent_tx = sse_tx.clone();
+        let on_agent_bus = event_bus.clone();
         let on_agent: crate::scanner::OnAgentCallback = Box::new(move |agent: &DetectedAgent| {
-            let _ = on_agent_tx.send(SseEvent::AgentDetected {
-                agent: Box::new(agent.clone()),
-            });
+            emit_sse_event(
+                &on_agent_tx,
+                on_agent_bus.as_ref(),
+                SseEvent::AgentDetected {
+                    agent: Box::new(agent.clone()),
+                },
+            );
         });
 
         match run_scan(
@@ -968,7 +993,7 @@ fn spawn_scan(
                         summary,
                     }
                 };
-                let _ = sse_tx.send(event);
+                emit_sse_event(&sse_tx, event_bus.as_ref(), event);
             }
             Err(e) => {
                 let msg = format!("Scan failed: {}", e);
@@ -983,7 +1008,11 @@ fn spawn_scan(
                     *token = None;
                 }
 
-                let _ = sse_tx.send(SseEvent::ScanError { message: msg });
+                emit_sse_event(
+                    &sse_tx,
+                    event_bus.as_ref(),
+                    SseEvent::ScanError { message: msg },
+                );
             }
         }
     });
@@ -1351,18 +1380,15 @@ async fn db_backup_handler(
     State(state): State<Arc<AppState>>,
 ) -> Result<impl IntoResponse, StatusCode> {
     match state.storage.backup().await {
-        Ok(data) => {
+        Ok(backup) => {
             let headers = [
-                (
-                    axum::http::header::CONTENT_TYPE,
-                    "application/x-sqlite3".to_string(),
-                ),
+                (axum::http::header::CONTENT_TYPE, backup.content_type),
                 (
                     axum::http::header::CONTENT_DISPOSITION,
-                    "attachment; filename=\"agentsniff-backup.db\"".to_string(),
+                    format!("attachment; filename=\"{}\"", backup.filename),
                 ),
             ];
-            Ok((headers, data))
+            Ok((headers, backup.data))
         }
         Err(e) => {
             tracing::error!("Database backup failed: {}", e);
@@ -1404,11 +1430,28 @@ async fn static_fallback_handler() -> StatusCode {
 ///
 /// This is exposed publicly so integration tests can call it without binding
 /// to a real TCP port.
-pub fn create_router(config: ScanConfig, ebpf_channels: Arc<EbpfChannels>) -> Router {
-    let storage: Box<dyn StorageBackend> = Box::new(
-        SqliteBackend::new(&config.storage.sqlite_path).expect("Failed to open SQLite database"),
-    );
-    create_router_with_storage(config, storage, ebpf_channels)
+pub async fn create_router(
+    config: ScanConfig,
+    ebpf_channels: Arc<EbpfChannels>,
+) -> anyhow::Result<Router> {
+    let storage = create_storage(&config.storage).await?;
+    let event_bus = if config.storage.redis_url.trim().is_empty() {
+        None
+    } else {
+        Some(
+            RedisEventBus::connect(
+                &config.storage.redis_url,
+                config.storage.redis_channel.trim(),
+            )
+            .await?,
+        )
+    };
+    Ok(create_router_with_components(
+        config,
+        storage,
+        ebpf_channels,
+        event_bus,
+    ))
 }
 
 /// Create router with a custom storage backend (useful for testing with in-memory DB).
@@ -1417,7 +1460,19 @@ pub fn create_router_with_storage(
     storage: Box<dyn StorageBackend>,
     ebpf_channels: Arc<EbpfChannels>,
 ) -> Router {
+    create_router_with_components(config, storage, ebpf_channels, None)
+}
+
+fn create_router_with_components(
+    config: ScanConfig,
+    storage: Box<dyn StorageBackend>,
+    ebpf_channels: Arc<EbpfChannels>,
+    event_bus: Option<Arc<RedisEventBus>>,
+) -> Router {
     let (sse_tx, _rx) = broadcast::channel::<SseEvent>(256);
+    if let Some(bus) = &event_bus {
+        bus.start_forwarder(sse_tx.clone());
+    }
     let notifier = Notifier::new(&config);
 
     let state = Arc::new(AppState {
@@ -1428,6 +1483,7 @@ pub fn create_router_with_storage(
         notifier: Mutex::new(notifier),
         cancel_token: Mutex::new(None),
         sse_tx,
+        event_bus,
         ebpf_channels,
         agentpin_verification: Mutex::new(()),
     });
@@ -1480,7 +1536,7 @@ pub async fn run_server(
     let host = config.api_host.clone();
     let port = config.api_port;
 
-    let app = create_router(config, ebpf_channels);
+    let app = create_router(config, ebpf_channels).await?;
 
     let addr = format!("{}:{}", host, port);
     tracing::info!("AgentSniff v2 server listening on {}", addr);

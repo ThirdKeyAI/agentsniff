@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use agentsniff::config::ScanConfig;
 use agentsniff::ebpf::EbpfChannels;
-use agentsniff::server::create_router_with_storage;
+use agentsniff::server::{create_router, create_router_with_storage};
 use agentsniff::storage::SqliteBackend;
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
@@ -28,6 +28,16 @@ fn bearer_request(method: &str, uri: &str, token: &str) -> Request<Body> {
         .header("Content-Type", "application/json")
         .body(Body::empty())
         .unwrap()
+}
+
+#[tokio::test]
+async fn configured_router_rejects_unsupported_storage() {
+    let mut config = ScanConfig::default();
+    config.storage.backend = "redis".into();
+    config.storage.redis_url = "redis://127.0.0.1".into();
+    let result = create_router(config, Arc::new(EbpfChannels::new())).await;
+    assert!(result.is_err());
+    assert!(result.unwrap_err().to_string().contains("event bus"));
 }
 
 #[tokio::test]

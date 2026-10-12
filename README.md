@@ -160,7 +160,7 @@ Core endpoints:
 | `/mcp` | POST JSON-RPC | AgentPin verification MCP tool |
 | `/api/settings` | GET/PUT | Alert settings |
 | `/api/settings/test` | POST JSON | Send a test alert |
-| `/api/db/backup` | GET | Download a SQLite snapshot |
+| `/api/db/backup` | GET | Download a SQLite snapshot or PostgreSQL JSON export |
 | `/api/db/reset` | POST JSON | Delete scan history |
 
 ## Detection signatures
@@ -202,9 +202,11 @@ api_token: ""
 storage:
   backend: "sqlite"
   sqlite_path: "~/.agentsniff/agentsniff.db"
+  postgres_url: "" # prefer AGENTSNIFF_POSTGRES_URL
+  redis_url: ""    # optional event fan-out; prefer AGENTSNIFF_REDIS_URL
 ```
 
-SQLite is the default persistent backend. PostgreSQL and Redis implementations are available in the Rust source, but verify deployment support for your selected command path before relying on them. Full scan results can contain sensitive network inventory; protect the database and backups accordingly.
+SQLite is the default persistent backend. Set `backend: "postgres"` for shared PostgreSQL persistence; startup verifies the connection and applies embedded migrations before scanning or serving. Redis is an optional pub/sub event bus layered over either backend so multiple dashboard instances receive the same live scan events. It is not accepted as a persistence backend. Unsupported or incomplete storage selections fail at startup instead of silently falling back to SQLite. Full scan results can contain sensitive network inventory; protect databases, connection URLs, Redis, and backups accordingly.
 
 ## Optional integrations
 

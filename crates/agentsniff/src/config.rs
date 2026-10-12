@@ -10,6 +10,7 @@ pub struct StorageConfig {
     pub sqlite_path: String,
     pub postgres_url: String,
     pub redis_url: String,
+    pub redis_channel: String,
 }
 
 impl Default for StorageConfig {
@@ -19,6 +20,7 @@ impl Default for StorageConfig {
             sqlite_path: "~/.agentsniff/agentsniff.db".to_string(),
             postgres_url: String::new(),
             redis_url: String::new(),
+            redis_channel: "agentsniff:events:v1".to_string(),
         }
     }
 }
@@ -281,6 +283,9 @@ impl ScanConfig {
         if let Ok(v) = std::env::var("AGENTSNIFF_REDIS_URL") {
             config.storage.redis_url = v;
         }
+        if let Ok(v) = std::env::var("AGENTSNIFF_REDIS_CHANNEL") {
+            config.storage.redis_channel = v;
+        }
         if let Ok(v) = std::env::var("AGENTSNIFF_VERBOSE") {
             config.verbose = v == "1" || v.eq_ignore_ascii_case("true");
         }
@@ -347,7 +352,8 @@ dns_monitor_duration: 60      # seconds to monitor DNS
 #   backend: "sqlite"
 #   sqlite_path: "~/.agentsniff/agentsniff.db"
 #   postgres_url: ""
-#   redis_url: ""
+#   redis_url: ""             # optional cross-instance SSE event bus
+#   redis_channel: "agentsniff:events:v1"
 
 # ── Custom signatures ───────────────────────────────────────────────
 # custom_llm_domains:

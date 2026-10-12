@@ -5,6 +5,7 @@ use async_trait::async_trait;
 use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 
+use crate::config::StorageConfig;
 use crate::models::{
     AgentStatus, Confidence, DetectedAgent, DetectorType, ScanDiff, ScanResult, Signal,
 };
@@ -26,6 +27,13 @@ pub struct ScanSummary {
     pub removed_assets: usize,
 }
 
+/// Downloadable backup returned by a storage backend.
+pub struct StorageBackup {
+    pub filename: String,
+    pub content_type: String,
+    pub data: Vec<u8>,
+}
+
 /// Async storage backend trait.
 #[async_trait]
 pub trait StorageBackend: Send + Sync {
@@ -38,10 +46,56 @@ pub trait StorageBackend: Send + Sync {
     /// Most recent persisted scan for a target scope, used as the durable
     /// baseline for change classification.
     async fn get_latest_scan(&self, scope_id: &str) -> Result<Option<ScanResult>>;
-    /// Return the raw SQLite database bytes for backup download.
-    async fn backup(&self) -> Result<Vec<u8>>;
+    /// Return a backend-appropriate backup artifact.
+    async fn backup(&self) -> Result<StorageBackup>;
     /// Delete all data (scans, agents, signals).
     async fn reset(&self) -> Result<()>;
+}
+
+/// Validate a storage selection without opening any network connections.
+pub fn validate_storage_config(config: &StorageConfig) -> Result<()> {
+    match config.backend.trim().to_ascii_lowercase().as_str() {
+        "sqlite" => {
+            if config.sqlite_path.trim().is_empty() {
+                anyhow::bail!("storage.sqlite_path is required for the SQLite backend");
+            }
+        }
+        "postgres" | "postgresql" => {
+            if config.postgres_url.trim().is_empty() {
+                anyhow::bail!(
+                    "storage.postgres_url (or AGENTSNIFF_POSTGRES_URL) is required for the PostgreSQL backend"
+                );
+            }
+        }
+        "redis" => anyhow::bail!(
+            "Redis is an event bus, not a persistence backend; select storage.backend as sqlite or postgres and set storage.redis_url"
+        ),
+        other => anyhow::bail!(
+            "unsupported storage backend '{other}'; expected 'sqlite' or 'postgres'"
+        ),
+    }
+
+    if !config.redis_url.trim().is_empty() {
+        let channel = config.redis_channel.trim();
+        if channel.is_empty() || channel.len() > 256 || channel.chars().any(char::is_control) {
+            anyhow::bail!(
+                "storage.redis_channel must contain 1-256 characters and no control characters"
+            );
+        }
+    }
+    Ok(())
+}
+
+/// Open the configured primary persistence backend and run its migrations.
+pub async fn create_storage(config: &StorageConfig) -> Result<Box<dyn StorageBackend>> {
+    validate_storage_config(config)?;
+    match config.backend.trim().to_ascii_lowercase().as_str() {
+        "sqlite" => Ok(Box::new(SqliteBackend::new(&config.sqlite_path)?)),
+        "postgres" | "postgresql" => Ok(Box::new(
+            crate::storage_postgres::PostgresBackend::connect(&config.postgres_url).await?,
+        )),
+        _ => unreachable!("validated storage backend"),
+    }
 }
 
 /// SQLite-backed storage.
@@ -530,7 +584,7 @@ impl StorageBackend for SqliteBackend {
         }))
     }
 
-    async fn backup(&self) -> Result<Vec<u8>> {
+    async fn backup(&self) -> Result<StorageBackup> {
         let conn = self.conn.lock().map_err(|e| anyhow::anyhow!("{e}"))?;
         // Get the database file path from PRAGMA database_list
         let db_path: String =
@@ -545,7 +599,11 @@ impl StorageBackend for SqliteBackend {
         drop(conn);
 
         let data = std::fs::read(&db_path)?;
-        Ok(data)
+        Ok(StorageBackup {
+            filename: "agentsniff-backup.db".to_string(),
+            content_type: "application/x-sqlite3".to_string(),
+            data,
+        })
     }
 
     async fn reset(&self) -> Result<()> {

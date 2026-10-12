@@ -24,7 +24,7 @@ For API clients, send the token as a Bearer credential. Browsers can use HTTP Ba
 | `GET /api/settings` | — | Get alert settings |
 | `PUT /api/settings` | JSON body | Update alert settings |
 | `POST /api/settings/test` | JSON `{}` | Send test alert |
-| `GET /api/db/backup` | — | Download SQLite database snapshot |
+| `GET /api/db/backup` | — | Download a SQLite snapshot or PostgreSQL JSON scan export |
 | `POST /api/db/reset` | JSON `{}` | Wipe scan history |
 
 Start a scan with an explicit JSON request:

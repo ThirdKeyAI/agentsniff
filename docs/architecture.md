@@ -19,7 +19,9 @@ CLI / loopback dashboard
           |
  persisted scan diff
           |
- SQLite / delta alerts / SARIF / SSE
+ SQLite or PostgreSQL / delta alerts / SARIF / SSE
+          |
+ optional Redis cross-instance event fan-out
 ```
 
 ## Main components
@@ -32,6 +34,7 @@ CLI / loopback dashboard
 | `crates/agentsniff/src/server.rs` | Axum dashboard API and read-only SSE |
 | `crates/agentsniff/src/models.rs` | Signals, agents, results, confidence |
 | `crates/agentsniff/src/baseline.rs` | Persisted scan-to-scan asset classification |
+| `crates/agentsniff/src/storage*.rs` | SQLite/PostgreSQL persistence and Redis event fan-out |
 | `crates/agentsniff/src/fusion.rs` | Cross-detector fusion |
 | `crates/agentsniff/src/detectors/` | Nine detector modules |
 | `crates/agentsniff/src/integrations/` | Zeek and nmap |
@@ -60,3 +63,5 @@ Detection-data signatures are a separate control: ECDSA P-256 sidecars verify ag
 Active detector signals are correlated by `(IP, port, transport)`. Passive signals without a local service port use a host-level asset. Asset IDs are deterministic hashes of that key, so two services on one host do not overwrite one another and the same endpoint can be followed across scans.
 
 Before a completed scan is stored, it is compared with the latest persisted scan for the same deterministic scope: resolved targets, enabled detectors, and relevant passive-integration settings. Material fingerprints exclude timestamps and latency-like evidence. The result contains new, changed, unchanged, and removed assets; storage retains each scan independently while preserving stable public asset IDs and `first_seen` timestamps. Cancelled or detector-degraded scans are retained for inspection but never become baselines or trigger delta alerts.
+
+SQLite remains the single-instance default. PostgreSQL startup is fail-closed and runs embedded, transactional migrations before the scanner accepts work; canonical results are stored as JSONB with indexed scope/history columns. An optional Redis bus forwards live scan events between dashboard instances but never acts as the system of record. Redis envelopes carry an instance origin and protocol version so self-echoes and incompatible messages are discarded.

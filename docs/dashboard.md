@@ -33,7 +33,7 @@ Loopback use is credential-free. When `AGENTSNIFF_API_TOKEN` is configured, the 
 
 ### Scan History
 
-- Previous scans stored in SQLite database
+- Previous scans stored in SQLite or PostgreSQL
 - Browse past results with timestamps, asset counts, and new/changed/removed totals
 - Stable service IDs and first-seen timestamps carry across scans of the same target
 - Cancelled and incomplete scans are preserved
@@ -54,5 +54,5 @@ The Export dropdown writes the latest scan in JSON, CSV, or SARIF 2.1.0 format.
 
 On v2, the dashboard also exposes database administration controls backed by `GET /api/db/backup` and `POST /api/db/reset`:
 
-- **Backup Database** — downloads a snapshot of the SQLite scan history
+- **Backup Database** — downloads a SQLite snapshot or PostgreSQL JSON scan export
 - **Reset Database** — wipes all stored scans (confirmation required)

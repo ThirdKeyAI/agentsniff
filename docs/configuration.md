@@ -66,8 +66,9 @@ log_file: ""      # empty = console only
 storage:
   backend: "sqlite"
   sqlite_path: "~/.agentsniff/agentsniff.db"
-  postgres_url: ""
-  redis_url: ""
+  postgres_url: ""            # prefer AGENTSNIFF_POSTGRES_URL
+  redis_url: ""               # optional live event bus
+  redis_channel: "agentsniff:events:v1"
 
 # Custom detection signatures
 custom_llm_domains: []
@@ -209,16 +210,21 @@ agentsniff scan 192.168.1.0/24 --log-file /var/log/agentsniff/scan.log
 
 The database stores full scan results including detected agents and signals. The web dashboard's Scan History panel loads from the database, so history persists across server restarts.
 
-### Multi-backend storage (v2 only)
+### PostgreSQL and multi-instance events
 
-The Rust build adds PostgreSQL and Redis storage backends behind the same `StorageBackend` trait. Select via the `storage` block in YAML:
+Select SQLite for local operation or PostgreSQL for shared persistence. Redis is an optional pub/sub event bus for forwarding live SSE events between server instances; it does not store scan history.
 
 ```yaml
 storage:
-  backend: "sqlite"           # "sqlite" | "postgres" | "redis"
+  backend: "postgres"         # "sqlite" | "postgres"
   sqlite_path: "~/.agentsniff/agentsniff.db"
-  postgres_url: ""            # e.g. postgres://user:pass@host/db
-  redis_url: ""               # e.g. redis://host:6379/0
+  postgres_url: ""            # set AGENTSNIFF_POSTGRES_URL instead
+  redis_url: ""               # set AGENTSNIFF_REDIS_URL to enable event fan-out
+  redis_channel: "agentsniff:events:v1"
 ```
 
-Or via env vars: `AGENTSNIFF_STORAGE_BACKEND`, `AGENTSNIFF_POSTGRES_URL`, `AGENTSNIFF_REDIS_URL`. The `--db` CLI flag still overrides `sqlite_path` and applies to all backends that need a local fallback path.
+The corresponding environment variables are `AGENTSNIFF_STORAGE_BACKEND`, `AGENTSNIFF_POSTGRES_URL`, `AGENTSNIFF_REDIS_URL`, and `AGENTSNIFF_REDIS_CHANNEL`. Prefer environment or secret-manager injection for URLs containing credentials. The `--db` CLI flag overrides only `sqlite_path`.
+
+AgentSniff verifies the selected backend and applies embedded PostgreSQL migrations before accepting work. Unknown backends, missing URLs, unreachable services, and the legacy `backend: "redis"` selection fail startup instead of falling back to SQLite. PostgreSQL stores the canonical scan result as JSONB with indexed history and baseline columns. Redis supports `redis://` and TLS `rediss://` URLs, uses a bounded event queue and payload limit, ignores its own echoed events, and reconnects subscribers after interruption.
+
+`GET /api/db/backup` returns a SQLite snapshot for SQLite or a portable JSON scan export for PostgreSQL. `POST /api/db/reset` clears the selected backend.

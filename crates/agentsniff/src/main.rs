@@ -25,7 +25,7 @@ use agentsniff::sarif_export::to_sarif;
 use agentsniff::scanner::run_scan;
 use agentsniff::server::run_server;
 use agentsniff::signatures::{SignatureData, VerificationStatus};
-use agentsniff::storage::{SqliteBackend, StorageBackend};
+use agentsniff::storage::{create_storage, StorageBackend};
 
 const ANSI_RESET: &str = "\x1b[0m";
 const ANSI_BOLD: &str = "\x1b[1m";
@@ -289,10 +289,8 @@ async fn main() -> anyhow::Result<()> {
             }
 
             // 4. Open storage and run.
-            let storage: Arc<dyn StorageBackend> = Arc::new(
-                SqliteBackend::new(&scan_config.storage.sqlite_path)
-                    .map_err(|e| anyhow::anyhow!("failed to open storage: {e}"))?,
-            );
+            let storage: Arc<dyn StorageBackend> =
+                Arc::from(create_storage(&scan_config.storage).await?);
 
             if scan_config.scan_interval > 0 {
                 run_continuous_scans(&scan_config, format, storage).await?;

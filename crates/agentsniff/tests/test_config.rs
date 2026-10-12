@@ -50,6 +50,7 @@ fn test_config_serialization_roundtrip() {
 fn test_storage_config_defaults() {
     let config = ScanConfig::default();
     assert_eq!(config.storage.backend, "sqlite");
+    assert_eq!(config.storage.redis_channel, "agentsniff:events:v1");
 }
 
 #[test]

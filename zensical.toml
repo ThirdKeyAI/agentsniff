@@ -4,6 +4,9 @@ site_url = "https://docs.agentsniff.org/"
 site_description = "AI Agent Network Scanner - Detect AI agents on your network"
 repo_url = "https://github.com/ThirdKeyAI/agentsniff"
 repo_name = "ThirdKeyAI/agentsniff"
+extra_css = [
+  "stylesheets/extra.css",
+]
 nav = [
   {"Home" = "index.md"},
   {"Getting Started" = "getting-started.md"},
@@ -21,14 +24,18 @@ nav = [
 ]
 
 [[project.theme.palette]]
-scheme = "default"
-toggle.icon = "lucide/sun"
-toggle.name = "Switch to dark mode"
-
-[[project.theme.palette]]
 scheme = "slate"
+primary = "custom"
+accent = "custom"
 toggle.icon = "lucide/moon"
 toggle.name = "Switch to light mode"
+
+[[project.theme.palette]]
+scheme = "default"
+primary = "custom"
+accent = "custom"
+toggle.icon = "lucide/sun"
+toggle.name = "Switch to dark mode"
 
 [[project.extra.social]]
 icon = "fontawesome/brands/github"

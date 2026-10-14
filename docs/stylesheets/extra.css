@@ -1,0 +1,74 @@
+/* AgentSniff brand palette, shared with agentsniff.org. */
+[data-md-color-scheme="slate"] {
+  color-scheme: dark;
+
+  --md-primary-fg-color: #10211b;
+  --md-primary-fg-color--light: #1a332a;
+  --md-primary-fg-color--dark: #07120e;
+  --md-primary-bg-color: #f8fffb;
+  --md-primary-bg-color--light: rgba(248, 255, 251, 0.72);
+
+  --md-accent-fg-color: #17b978;
+  --md-accent-fg-color--transparent: rgba(23, 185, 120, 0.14);
+  --md-accent-bg-color: #07120e;
+  --md-accent-bg-color--light: rgba(7, 18, 14, 0.72);
+
+  --md-default-fg-color: #f8fffb;
+  --md-default-fg-color--light: #c7d9d0;
+  --md-default-fg-color--lighter: #9bb4a8;
+  --md-default-fg-color--lightest: rgba(155, 180, 168, 0.16);
+  --md-default-bg-color: #0a1914;
+  --md-default-bg-color--light: #10211b;
+  --md-default-bg-color--lighter: #12251e;
+  --md-default-bg-color--lightest: rgba(18, 37, 30, 0.42);
+
+  --md-typeset-a-color: #5dd69a;
+  --md-code-fg-color: #dff5ea;
+  --md-code-bg-color: #07120e;
+  --md-code-hl-color: rgba(23, 185, 120, 0.14);
+}
+
+[data-md-color-scheme="default"] {
+  color-scheme: light;
+
+  --md-primary-fg-color: #10211b;
+  --md-primary-fg-color--light: #1a332a;
+  --md-primary-fg-color--dark: #0a1914;
+  --md-primary-bg-color: #f8fffb;
+  --md-primary-bg-color--light: rgba(248, 255, 251, 0.72);
+
+  --md-accent-fg-color: #087b53;
+  --md-accent-fg-color--transparent: rgba(23, 185, 120, 0.12);
+  --md-accent-bg-color: #f8fffb;
+  --md-accent-bg-color--light: rgba(248, 255, 251, 0.72);
+
+  --md-default-fg-color: #10211b;
+  --md-default-fg-color--light: #5f7068;
+  --md-default-fg-color--lighter: #7b8a82;
+  --md-default-fg-color--lightest: rgba(95, 112, 104, 0.16);
+  --md-default-bg-color: #f4f7f3;
+  --md-default-bg-color--light: #ffffff;
+  --md-default-bg-color--lighter: #edf3ef;
+  --md-default-bg-color--lightest: rgba(237, 243, 239, 0.52);
+
+  --md-typeset-a-color: #087b53;
+  --md-code-fg-color: #10211b;
+  --md-code-bg-color: #edf3ef;
+  --md-code-hl-color: rgba(23, 185, 120, 0.12);
+}
+
+[data-md-color-scheme="slate"] .md-main {
+  background:
+    radial-gradient(circle at 92% 0, rgba(23, 185, 120, 0.09), transparent 28rem),
+    var(--md-default-bg-color);
+}
+
+[data-md-color-scheme="default"] .md-main {
+  background:
+    radial-gradient(circle at 92% 0, rgba(23, 185, 120, 0.08), transparent 28rem),
+    var(--md-default-bg-color);
+}
+
+::selection {
+  background: rgba(23, 185, 120, 0.28);
+}

@@ -1,5 +1,19 @@
 # Changelog
 
+## 2.3.1
+
+### Fixed
+
+- Service enrichment (`--enrich`) and Nmap XML import (`--nmap-xml`) are meant
+  to halve an agent's confidence when every service on its host is non-agent
+  infrastructure (for example only CUPS, PostgreSQL or SSH) and no other
+  detector corroborates the agent. Since the enrichment was added, the score
+  was recomputed afterwards and the reduction was lost. It now persists through
+  every recompute and is recorded as a `non_agent_services` signal, with the
+  services as evidence, so the scan output shows the reason. Some detections
+  now score lower, and may move from Detected to Suspected. This can change
+  alert thresholds and the result of a baseline diff.
+
 ## 2.3.0
 
 ### Breaking

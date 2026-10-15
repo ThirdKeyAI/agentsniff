@@ -128,6 +128,14 @@ impl ScanDiff {
     }
 }
 
+/// Signal type recording that enrichment found only non-agent services on a
+/// host. It carries no detection weight; instead it scales the score by
+/// `NON_AGENT_SERVICES_FACTOR`, so the reduction survives every recompute.
+pub const NON_AGENT_SERVICES_SIGNAL: &str = "non_agent_services";
+
+/// Score multiplier applied when a `non_agent_services` signal is present.
+pub const NON_AGENT_SERVICES_FACTOR: f64 = 0.5;
+
 /// Types of detectors available in the scanning pipeline.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -362,14 +370,23 @@ impl DetectedAgent {
     /// Compute aggregate confidence using Noisy-OR fusion:
     /// P = 1 - product(1 - weight_i)
     pub fn compute_confidence_score(&self) -> f64 {
-        if self.signals.is_empty() {
-            return 0.0;
-        }
-        1.0 - self
+        let (penalties, evidence): (Vec<&Signal>, Vec<&Signal>) = self
             .signals
             .iter()
-            .map(|s| 1.0 - s.confidence.weight())
-            .product::<f64>()
+            .partition(|s| s.signal_type == NON_AGENT_SERVICES_SIGNAL);
+        if evidence.is_empty() {
+            return 0.0;
+        }
+        let score = 1.0
+            - evidence
+                .iter()
+                .map(|s| 1.0 - s.confidence.weight())
+                .product::<f64>();
+        if penalties.is_empty() {
+            score
+        } else {
+            score * NON_AGENT_SERVICES_FACTOR
+        }
     }
 
     /// Returns true if any signal has High or Confirmed confidence.

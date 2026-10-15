@@ -11,7 +11,7 @@ use async_trait::async_trait;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 use super::Enricher;
-use crate::models::{Confidence, DetectedAgent, DetectorType, Signal};
+use crate::models::{Confidence, DetectedAgent, DetectorType, Signal, NON_AGENT_SERVICES_SIGNAL};
 
 /// Hard cap on a single tool's stdout, enforced while reading.
 const MAX_TOOL_OUTPUT_BYTES: u64 = 16 * 1024 * 1024;
@@ -175,10 +175,23 @@ pub fn apply_services(
         .signals
         .iter()
         .any(|s| CORROBORATING_DETECTORS.contains(&s.detector));
-    // Carried over from the Nmap enricher. update_status() recomputes the score
-    // from signals, so this reduction does not currently persist.
-    if all_non_agent && !has_agent_like && !has_corroborating {
-        agent.confidence_score *= 0.5;
+    // Recorded as a signal so the reduction survives update_status() recomputes.
+    let already_penalized = agent
+        .signals
+        .iter()
+        .any(|s| s.signal_type == NON_AGENT_SERVICES_SIGNAL);
+    if all_non_agent && !has_agent_like && !has_corroborating && !already_penalized {
+        let ports: Vec<serde_json::Value> = services
+            .iter()
+            .map(|s| serde_json::json!({ "port": s.port, "names": s.names }))
+            .collect();
+        agent.signals.push(Signal::new(
+            detector,
+            NON_AGENT_SERVICES_SIGNAL.to_string(),
+            "Only non-agent services found on this host".to_string(),
+            Confidence::Low,
+            serde_json::json!({ "services": ports }),
+        ));
     }
     agent.update_status();
 }

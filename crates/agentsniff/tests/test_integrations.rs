@@ -8,7 +8,9 @@ use agentsniff::integrations::zeek::{
     detect_format, parse_conn_line, parse_dns_line, parse_ssl_line, ZeekFormat,
 };
 use agentsniff::integrations::{DnsRecord, TlsRecord, TrafficRecord};
-use agentsniff::models::{DetectedAgent, DetectorType};
+use agentsniff::models::{
+    Confidence, DetectedAgent, DetectorType, Signal, NON_AGENT_SERVICES_SIGNAL,
+};
 use std::net::IpAddr;
 
 #[test]
@@ -279,24 +281,119 @@ fn test_apply_services_agent_like_adds_signal() {
         .any(|s| s.detector == DetectorType::ServiceEnricher && s.signal_type == "service_match"));
 }
 
-#[test]
-fn test_apply_services_all_non_agent_adds_no_signal() {
-    let mut a = agent("192.0.2.20");
+/// An agent seen only by the port scanner (Medium -> score 0.5).
+fn port_scanned_agent(ip: &str) -> DetectedAgent {
+    let mut a = DetectedAgent::new(ip.to_string(), ip.parse().unwrap());
+    a.signals.push(Signal::new(
+        DetectorType::PortScanner,
+        "agent_port".to_string(),
+        "Agent-like port open".to_string(),
+        Confidence::Medium,
+        serde_json::json!({}),
+    ));
+    a.update_status();
+    a
+}
+
+fn services_for(ip: &str) -> Vec<ObservedService> {
     let mut services: Vec<ObservedService> = parse_httpx_json(HTTPX)
         .into_iter()
         .chain(parse_zgrab2_json(ZGRAB2))
-        .filter(|(ip, _)| ip == "192.0.2.20")
+        .filter(|(i, _)| i == ip)
         .map(|(_, s)| s)
         .collect();
     services.sort_by_key(|s| s.port);
+    services
+}
+
+#[test]
+fn test_all_non_agent_services_halve_score_through_recomputes() {
+    let mut a = port_scanned_agent("192.0.2.20");
+    assert_eq!(a.confidence_score, 0.5);
+    let services = services_for("192.0.2.20");
+    assert_eq!(services.len(), 2);
     apply_services(
         &mut a,
         &services,
         DetectorType::ServiceEnricher,
         "service_match",
     );
-    assert_eq!(services.len(), 2);
-    assert!(a.signals.is_empty());
+    assert_eq!(a.confidence_score, 0.25);
+    // The scanner, storage and dashboard all recompute; the reduction must stick.
+    for _ in 0..3 {
+        a.update_status();
+    }
+    assert_eq!(a.confidence_score, 0.25);
+    let penalty: Vec<_> = a
+        .signals
+        .iter()
+        .filter(|s| s.signal_type == NON_AGENT_SERVICES_SIGNAL)
+        .collect();
+    assert_eq!(penalty.len(), 1);
+    assert!(penalty[0].evidence["services"].is_array());
+    // Applying again (e.g. --enrich plus --nmap-xml) does not halve twice.
+    apply_services(
+        &mut a,
+        &services,
+        DetectorType::NmapEnricher,
+        "nmap_service_match",
+    );
+    assert_eq!(a.confidence_score, 0.25);
+}
+
+#[test]
+fn test_unknown_or_agent_like_service_keeps_score() {
+    let unknown = ObservedService {
+        port: 9999,
+        names: vec!["some-custom-app".to_string()],
+    };
+    let redis = ObservedService {
+        port: 6379,
+        names: vec!["redis".to_string()],
+    };
+    let mut a = port_scanned_agent("192.0.2.30");
+    apply_services(
+        &mut a,
+        &[redis.clone(), unknown],
+        DetectorType::ServiceEnricher,
+        "service_match",
+    );
+    a.update_status();
+    assert_eq!(a.confidence_score, 0.5);
+
+    let mut b = port_scanned_agent("192.0.2.10");
+    apply_services(
+        &mut b,
+        &services_for("192.0.2.10"),
+        DetectorType::ServiceEnricher,
+        "service_match",
+    );
+    b.update_status();
+    assert!(b.confidence_score > 0.5);
+    assert!(!b
+        .signals
+        .iter()
+        .any(|s| s.signal_type == NON_AGENT_SERVICES_SIGNAL));
+}
+
+#[test]
+fn test_nmap_xml_import_applies_same_reduction() {
+    let xml = r#"<nmaprun><host><address addr="192.0.2.20" addrtype="ipv4"/><ports>
+<port protocol="tcp" portid="631"><state state="open"/><service name="ipp" product="CUPS"/></port>
+</ports></host></nmaprun>"#;
+    let mut agents = vec![port_scanned_agent("192.0.2.20")];
+    apply_nmap_xml(&mut agents, xml);
+    agents[0].update_status();
+    assert_eq!(agents[0].confidence_score, 0.25);
+}
+
+#[test]
+fn test_stored_agent_from_before_fix_deserializes_unchanged() {
+    // An agent serialized by 2.3.0: no non_agent_services signal.
+    let json = serde_json::to_string(&port_scanned_agent("192.0.2.40")).unwrap();
+    let mut restored: DetectedAgent = serde_json::from_str(&json).unwrap();
+    restored.update_status();
+    assert_eq!(restored.confidence_score, 0.5);
 }
 
 #[test]

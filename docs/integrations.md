@@ -70,7 +70,7 @@ enrich_timeout: 300   # seconds per tool
 Server headers, technology names and successful zgrab2 modules are matched against two lists:
 
 - **Agent-like** (Uvicorn, Gunicorn, Hypercorn, Node.js, Express, Ollama, LM Studio, vLLM, Streamlit, Gradio, FastAPI) adds a `service_match` signal from `service_enricher`.
-- **Non-agent** (CUPS, PostgreSQL, MySQL, Redis, MongoDB, SSH, SMTP, IMAP, FTP, nginx, and similar) adds no signal.
+- **Non-agent** (CUPS, PostgreSQL, MySQL, Redis, MongoDB, SSH, SMTP, IMAP, FTP, nginx, and similar) adds no detection signal. If every service on the host is non-agent and no other detector (endpoint, MCP, A2A, AgentPin, DNS, traffic, TLS or SSE) corroborates the agent, a `non_agent_services` signal is added and the confidence score is halved.
 - Anything else counts as unknown.
 
 Discovered services are stored in the agent's `enrich_services` metadata.

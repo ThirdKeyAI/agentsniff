@@ -1,5 +1,6 @@
 //! Integration traits and shared record types for external data sources and enrichers.
 
+pub mod enrich;
 pub mod nmap;
 pub mod zeek;
 

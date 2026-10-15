@@ -20,7 +20,8 @@ use crate::detectors::traffic_analyzer::TrafficAnalyzerDetector;
 use crate::detectors::{Detector, DetectorRegistry};
 use crate::ebpf::EbpfChannels;
 use crate::fusion::apply_fusion_rules;
-use crate::integrations::nmap::NmapEnricher;
+use crate::integrations::enrich::ServiceEnricher;
+use crate::integrations::nmap::{apply_nmap_xml, read_nmap_xml};
 use crate::integrations::zeek::ZeekDataSource;
 use crate::integrations::{DataSource, Enricher};
 use crate::models::{Confidence, DetectedAgent, DetectorType, ScanResult, Signal};
@@ -49,8 +50,11 @@ fn scan_scope_id(config: &ScanConfig, targets: &[IpAddr], detectors: &[DetectorT
             config.zeek_log_path, config.zeek_time_window
         ));
     }
-    if config.nmap_enabled {
-        detectors.push(format!("nmap:{}", config.nmap_scan_args));
+    if config.enrich_enabled {
+        detectors.push("enrich".to_string());
+    }
+    if !config.nmap_xml_import.is_empty() {
+        detectors.push(format!("nmap_xml:{}", config.nmap_xml_import));
     }
     detectors.sort();
     let material = serde_json::to_vec(&serde_json::json!({
@@ -543,17 +547,32 @@ pub async fn run_scan(
     let agents: Vec<DetectedAgent> = agents_by_asset.into_values().collect();
     let mut agents = apply_fusion_rules(agents);
 
-    // 6b. Nmap enrichment (post-fusion, pre-final-status)
-    if config.nmap_enabled {
-        tracing::info!("Running nmap enrichment");
-        let enricher = NmapEnricher::new(&config.nmap_scan_args, config.nmap_timeout);
+    // 6b. Service enrichment (post-fusion, pre-final-status)
+    if config.enrich_enabled {
+        tracing::info!("Running service enrichment");
+        let enricher = ServiceEnricher::new(config.enrich_timeout);
         match enricher.enrich(agents.clone()).await {
             Ok(enriched) => {
-                result.detectors_run.push(DetectorType::NmapEnricher);
+                result.detectors_run.push(DetectorType::ServiceEnricher);
                 agents = enriched;
             }
             Err(e) => {
-                let msg = format!("Nmap enrichment failed: {}", e);
+                let msg = format!("Service enrichment failed: {}", e);
+                tracing::warn!("{}", msg);
+                result.errors.push(msg);
+            }
+        }
+    }
+
+    // 6c. Import the user's own Nmap XML results (never executes Nmap)
+    if !config.nmap_xml_import.is_empty() {
+        match read_nmap_xml(&config.nmap_xml_import) {
+            Ok(xml) => {
+                apply_nmap_xml(&mut agents, &xml);
+                result.detectors_run.push(DetectorType::NmapEnricher);
+            }
+            Err(e) => {
+                let msg = format!("Nmap XML import failed: {}", e);
                 tracing::warn!("{}", msg);
                 result.errors.push(msg);
             }

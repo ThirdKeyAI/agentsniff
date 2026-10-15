@@ -142,6 +142,7 @@ pub enum DetectorType {
     TrafficAnalyzer,
     SseDetector,
     NmapEnricher,
+    ServiceEnricher,
     Zeek,
 }
 
@@ -302,7 +303,9 @@ impl DetectedAgent {
             DetectorType::A2aDetector => Some("a2a_agent"),
             DetectorType::McpDetector => Some("mcp_server"),
             DetectorType::EndpointProber => Some("framework"),
-            DetectorType::PortScanner | DetectorType::NmapEnricher => Some("agent_service"),
+            DetectorType::PortScanner
+            | DetectorType::NmapEnricher
+            | DetectorType::ServiceEnricher => Some("agent_service"),
             DetectorType::DnsMonitor
             | DetectorType::TlsFingerprint
             | DetectorType::TrafficAnalyzer

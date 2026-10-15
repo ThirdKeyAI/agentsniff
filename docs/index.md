@@ -26,7 +26,7 @@ The dashboard binds to `127.0.0.1` by default. Non-loopback binding requires a s
 | [Dashboard](dashboard.md) | Dashboard and streaming |
 | [Configuration](configuration.md) | YAML and environment settings |
 | [Alerting](alerting.md) | Webhook and SMTP alerts |
-| [Integrations](integrations.md) | Zeek and nmap |
+| [Integrations](integrations.md) | Zeek, service enrichment, Nmap XML import |
 | [API Reference](api-reference.md) | REST and SSE endpoints |
 | [Architecture](architecture.md) | Components and trust boundaries |
 | [Wazuh](wazuh.md) | SIEM integration |

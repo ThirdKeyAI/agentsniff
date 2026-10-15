@@ -180,11 +180,11 @@
     <description>AgentSniff detected agent traffic patterns from $(agents.ip_address).</description>
   </rule>
 
-  <!-- nmap enrichment excluded a false positive -->
+  <!-- service enrichment excluded a false positive -->
   <rule id="100265" level="3">
     <if_sid>100240</if_sid>
     <field name="agents.status">info</field>
-    <description>AgentSniff nmap enrichment excluded non-agent service at $(agents.ip_address):$(agents.port).</description>
+    <description>AgentSniff service enrichment excluded non-agent service at $(agents.ip_address):$(agents.port).</description>
   </rule>
 
   <!-- ── Multiple agents on same scan (correlation) ─────────────── -->

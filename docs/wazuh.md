@@ -75,7 +75,7 @@ Rules use IDs 100200-100271:
 | 100262 | 7 | LLM API DNS queries detected |
 | 100263 | 8 | Agent framework endpoint found |
 | 100264 | 7 | Agent traffic patterns detected |
-| 100265 | 3 | nmap excluded non-agent service |
+| 100265 | 3 | Service enrichment excluded non-agent service |
 | 100270 | 12 | 5+ confirmed agents in 60s (cluster alert) |
 | 100271 | 11 | 10+ high-confidence agents in 5 min |
 

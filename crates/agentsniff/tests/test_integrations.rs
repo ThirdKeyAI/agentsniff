@@ -1,8 +1,14 @@
-use agentsniff::integrations::nmap::{classify_service, parse_nmap_xml, ServiceClass};
+use agentsniff::integrations::enrich::{
+    apply_services, parse_httpx_json, parse_naabu_json, parse_zgrab2_json, ObservedService,
+};
+use agentsniff::integrations::nmap::{
+    apply_nmap_xml, classify_service, parse_nmap_xml, ServiceClass,
+};
 use agentsniff::integrations::zeek::{
     detect_format, parse_conn_line, parse_dns_line, parse_ssl_line, ZeekFormat,
 };
 use agentsniff::integrations::{DnsRecord, TlsRecord, TrafficRecord};
+use agentsniff::models::{DetectedAgent, DetectorType};
 use std::net::IpAddr;
 
 #[test]
@@ -195,4 +201,125 @@ fn test_parse_nmap_xml() {
     assert_eq!(host.services[0].product.as_deref(), Some("uvicorn"));
     assert_eq!(host.services[0].port, 8000);
     assert_eq!(host.services[1].product.as_deref(), Some("OpenSSH"));
+}
+
+const NAABU: &str = include_str!("fixtures/enrich/naabu.jsonl");
+const HTTPX: &str = include_str!("fixtures/enrich/httpx.jsonl");
+const ZGRAB2: &str = include_str!("fixtures/enrich/zgrab2.jsonl");
+
+#[test]
+fn test_parse_naabu_dedups_ports() {
+    let open = parse_naabu_json(NAABU);
+    assert_eq!(open.len(), 4);
+    assert!(open.contains(&("192.0.2.10".to_string(), 8000)));
+    assert!(open.contains(&("192.0.2.20".to_string(), 6379)));
+}
+
+#[test]
+fn test_parse_httpx_skips_failed_and_splits_server() {
+    let services = parse_httpx_json(HTTPX);
+    assert_eq!(services.len(), 2);
+    let (ip, uvicorn) = &services[0];
+    assert_eq!(ip, "192.0.2.10");
+    assert_eq!(uvicorn.port, 8000);
+    assert!(uvicorn.names.contains(&"fastapi".to_string()));
+    assert!(uvicorn.names.contains(&"uvicorn".to_string()));
+    let (_, cups) = &services[1];
+    assert!(cups.names.contains(&"cups".to_string()));
+    assert!(cups.names.contains(&"ipp".to_string()));
+}
+
+#[test]
+fn test_parse_zgrab2_uses_successful_module() {
+    let services = parse_zgrab2_json(ZGRAB2);
+    assert_eq!(
+        services,
+        vec![
+            (
+                "192.0.2.10".to_string(),
+                ObservedService {
+                    port: 22,
+                    names: vec!["ssh".to_string()]
+                }
+            ),
+            (
+                "192.0.2.20".to_string(),
+                ObservedService {
+                    port: 6379,
+                    names: vec!["redis".to_string()]
+                }
+            ),
+        ]
+    );
+}
+
+fn agent(ip: &str) -> DetectedAgent {
+    let mut a = DetectedAgent::new(ip.to_string(), ip.parse().unwrap());
+    a.confidence_score = 0.8;
+    a
+}
+
+#[test]
+fn test_apply_services_agent_like_adds_signal() {
+    let mut a = agent("192.0.2.10");
+    let services: Vec<ObservedService> = parse_httpx_json(HTTPX)
+        .into_iter()
+        .filter(|(ip, _)| ip == "192.0.2.10")
+        .map(|(_, s)| s)
+        .collect();
+    apply_services(
+        &mut a,
+        &services,
+        DetectorType::ServiceEnricher,
+        "service_match",
+    );
+    assert!(a
+        .signals
+        .iter()
+        .any(|s| s.detector == DetectorType::ServiceEnricher && s.signal_type == "service_match"));
+}
+
+#[test]
+fn test_apply_services_all_non_agent_adds_no_signal() {
+    let mut a = agent("192.0.2.20");
+    let mut services: Vec<ObservedService> = parse_httpx_json(HTTPX)
+        .into_iter()
+        .chain(parse_zgrab2_json(ZGRAB2))
+        .filter(|(ip, _)| ip == "192.0.2.20")
+        .map(|(_, s)| s)
+        .collect();
+    services.sort_by_key(|s| s.port);
+    apply_services(
+        &mut a,
+        &services,
+        DetectorType::ServiceEnricher,
+        "service_match",
+    );
+    assert_eq!(services.len(), 2);
+    assert!(a.signals.is_empty());
+}
+
+#[test]
+fn test_apply_services_empty_leaves_agent_unchanged() {
+    let mut a = agent("192.0.2.30");
+    apply_services(&mut a, &[], DetectorType::ServiceEnricher, "service_match");
+    assert_eq!(a.confidence_score, 0.8);
+}
+
+#[test]
+fn test_apply_nmap_xml_import() {
+    let xml = r#"<nmaprun><host><address addr="192.0.2.10" addrtype="ipv4"/><ports>
+<port protocol="tcp" portid="8000"><state state="open"/><service name="http" product="uvicorn"/></port>
+</ports></host></nmaprun>"#;
+    let mut agents = vec![agent("192.0.2.10"), agent("192.0.2.99")];
+    apply_nmap_xml(&mut agents, xml);
+    assert!(
+        agents[0]
+            .signals
+            .iter()
+            .any(|s| s.detector == DetectorType::NmapEnricher
+                && s.signal_type == "nmap_service_match")
+    );
+    assert!(agents[0].metadata["nmap_services"].is_array());
+    assert!(agents[1].signals.is_empty());
 }

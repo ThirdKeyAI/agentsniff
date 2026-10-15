@@ -33,10 +33,20 @@ Common options:
 | `--continuous SECS` | Repeat interval |
 | `--db PATH` | SQLite path |
 | `--zeek-logs PATH` | Zeek JSON log directory |
-| `--nmap` | Enable nmap enrichment |
-| `--nmap-args ARGS` | nmap arguments |
+| `--enrich` | Enrich detected agents with naabu, httpx and zgrab2 |
+| `--nmap-xml FILE` | Import your own Nmap XML results (never runs Nmap) |
+
+`--nmap` and `--nmap-args` were removed in 2.3.0 and now exit with an error.
 
 Networks resolving above 65,536 targets are rejected before expansion.
+
+## enrich
+
+```bash
+agentsniff enrich --input scan.json --nmap-xml scan.xml [-o enriched.json]
+```
+
+Applies your own Nmap XML results to a saved JSON scan (`scan -f json`). Makes no network connections and never runs Nmap.
 
 ## serve
 

@@ -55,7 +55,7 @@ callers cannot replace those trust inputs.
 - **Traffic Analyzer** — Behavioral pattern analysis
 - **SSE Detector** — LLM streaming connection detection
 
-Plus optional integrations: Zeek log ingestion (`--zeek-logs`) and Nmap enrichment (`--nmap`).
+Plus optional integrations: Zeek log ingestion (`--zeek-logs`) service enrichment with naabu, httpx and zgrab2 (`--enrich`), and import of your own Nmap XML results (`--nmap-xml`).
 
 Signals are correlated into deterministic `(IP, port, transport)` service assets. Presence confidence, cryptographic identity assurance, and risk are reported separately. Completed scans are compared with the latest persisted scan of the same target/detector scope, and alerts default to new, changed, or removed assets only.
 

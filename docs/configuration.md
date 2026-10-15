@@ -101,9 +101,9 @@ zeek_enabled: false
 zeek_log_path: ""
 zeek_time_window: 300
 
-nmap_enabled: false
-nmap_scan_args: "-sV"
-nmap_timeout: 120
+enrich_enabled: false   # naabu + httpx + zgrab2
+enrich_timeout: 300
+nmap_xml_import: ""     # your own `nmap -oX` results
 ```
 
 ## Environment Variables

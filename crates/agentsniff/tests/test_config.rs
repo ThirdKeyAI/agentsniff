@@ -70,11 +70,11 @@ fn test_config_zeek_defaults() {
 }
 
 #[test]
-fn test_config_nmap_defaults() {
+fn test_config_enrich_defaults() {
     let config = ScanConfig::default();
-    assert!(!config.nmap_enabled);
-    assert_eq!(config.nmap_scan_args, "-sV");
-    assert_eq!(config.nmap_timeout, 120);
+    assert!(!config.enrich_enabled);
+    assert_eq!(config.enrich_timeout, 300);
+    assert!(config.nmap_xml_import.is_empty());
 }
 
 #[test]
@@ -90,17 +90,43 @@ zeek_time_window: 600
     assert_eq!(config.zeek_time_window, 600);
 }
 
+fn write_temp_yaml(name: &str, yaml: &str) -> String {
+    let path = std::env::temp_dir().join(format!(
+        "agentsniff-config-{}-{name}.yaml",
+        std::process::id()
+    ));
+    std::fs::write(&path, yaml).unwrap();
+    path.to_string_lossy().into_owned()
+}
+
 #[test]
-fn test_config_nmap_from_yaml() {
-    let yaml = r#"
-nmap_enabled: true
-nmap_scan_args: "-sV -sC"
-nmap_timeout: 60
-"#;
-    let config: ScanConfig = serde_yaml::from_str(yaml).unwrap();
-    assert!(config.nmap_enabled);
-    assert_eq!(config.nmap_scan_args, "-sV -sC");
-    assert_eq!(config.nmap_timeout, 60);
+fn test_config_enrich_from_yaml() {
+    let path = write_temp_yaml(
+        "enrich",
+        "enrich_enabled: true\nenrich_timeout: 60\nnmap_xml_import: \"scan.xml\"\n",
+    );
+    let config = ScanConfig::from_yaml_file(&path).unwrap();
+    assert!(config.enrich_enabled);
+    assert_eq!(config.enrich_timeout, 60);
+    assert_eq!(config.nmap_xml_import, "scan.xml");
+}
+
+#[test]
+fn test_config_rejects_removed_nmap_enabled_true() {
+    let path = write_temp_yaml("nmap-on", "nmap_enabled: true\n");
+    let err = ScanConfig::from_yaml_file(&path).unwrap_err().to_string();
+    assert!(err.contains("enrich_enabled"), "{err}");
+    assert!(err.contains("--nmap-xml"), "{err}");
+}
+
+#[test]
+fn test_config_ignores_disabled_nmap_keys() {
+    let path = write_temp_yaml(
+        "nmap-off",
+        "nmap_enabled: false\nnmap_scan_args: \"-sV\"\nnmap_timeout: 120\n",
+    );
+    let config = ScanConfig::from_yaml_file(&path).unwrap();
+    assert!(!config.enrich_enabled);
 }
 
 #[test]
@@ -109,7 +135,8 @@ fn test_default_config_yaml_contains_sections() {
     assert!(yaml.contains("target_network"));
     assert!(yaml.contains("enable_dns_monitor"));
     assert!(yaml.contains("zeek_enabled"));
-    assert!(yaml.contains("nmap_enabled"));
+    assert!(yaml.contains("enrich_enabled"));
+    assert!(!yaml.contains("nmap_enabled"));
     assert!(yaml.contains("ebpf_interface"));
     assert!(yaml.contains("alert_enabled"));
     assert!(yaml.contains("alert_changes_only"));

@@ -27,6 +27,9 @@ use agentsniff::server::run_server;
 use agentsniff::signatures::{SignatureData, VerificationStatus};
 use agentsniff::storage::{create_storage, StorageBackend};
 
+/// Largest saved scan JSON accepted by `enrich`.
+const MAX_SCAN_JSON_BYTES: usize = 256 * 1024 * 1024;
+
 const ANSI_RESET: &str = "\x1b[0m";
 const ANSI_BOLD: &str = "\x1b[1m";
 const ANSI_DIM: &str = "\x1b[2m";
@@ -47,6 +50,8 @@ enum OutputFormat {
 
 #[derive(Parser)]
 #[command(name = "agentsniff", version, about = "AI Agent Network Scanner")]
+// Parsed once at startup; boxing the Scan variant buys nothing.
+#[allow(clippy::large_enum_variant)]
 enum Cli {
     /// Scan a network for AI agents
     Scan {
@@ -110,13 +115,21 @@ enum Cli {
         #[arg(long = "zeek-logs")]
         zeek_logs: Option<String>,
 
-        /// Enable nmap enrichment of detected agents (requires nmap)
+        /// Enrich detected agents with naabu, httpx and zgrab2 (must be on PATH)
         #[arg(long)]
+        enrich: bool,
+
+        /// Import your own Nmap XML results (`nmap -oX`); AgentSniff never runs Nmap
+        #[arg(long = "nmap-xml", value_name = "FILE")]
+        nmap_xml: Option<String>,
+
+        /// Removed in 2.3.0; fails with a pointer to --enrich and --nmap-xml
+        #[arg(long, hide = true)]
         nmap: bool,
 
-        /// Arguments to pass to nmap
-        #[arg(long = "nmap-args", default_value = "-sV")]
-        nmap_args: String,
+        /// Removed in 2.3.0; fails with a pointer to --enrich and --nmap-xml
+        #[arg(long = "nmap-args", hide = true, allow_hyphen_values = true)]
+        nmap_args: Option<String>,
 
         /// Enable verbose output
         #[arg(long, short = 'v')]
@@ -184,6 +197,20 @@ enum Cli {
         #[arg(long)]
         audience: Option<String>,
     },
+    /// Apply your own Nmap XML results to a saved JSON scan (never runs Nmap)
+    Enrich {
+        /// Scan result JSON from `agentsniff scan -f json`
+        #[arg(long, value_name = "FILE")]
+        input: String,
+
+        /// Your own Nmap XML results (`nmap -oX`)
+        #[arg(long = "nmap-xml", value_name = "FILE")]
+        nmap_xml: String,
+
+        /// Write output to a file instead of stdout
+        #[arg(long, short = 'o')]
+        output: Option<String>,
+    },
     /// Generate a default configuration file
     InitConfig {
         /// Output file path
@@ -217,11 +244,19 @@ async fn main() -> anyhow::Result<()> {
             db,
             log_file,
             zeek_logs,
+            enrich,
+            nmap_xml,
             nmap,
             nmap_args,
             verbose,
             quiet,
         } => {
+            if nmap || nmap_args.is_some() {
+                anyhow::bail!(
+                    "--nmap and --nmap-args were removed in 2.3.0: AgentSniff no longer runs Nmap. \
+                     Use --enrich (naabu, httpx, zgrab2) or import your own results with --nmap-xml <file>."
+                );
+            }
             // 1. Build config from YAML (or env) and apply CLI overrides.
             let mut scan_config = if let Some(path) = config {
                 ScanConfig::from_yaml_file(&path)?
@@ -264,11 +299,11 @@ async fn main() -> anyhow::Result<()> {
                 scan_config.zeek_enabled = true;
                 scan_config.zeek_log_path = z;
             }
-            if nmap {
-                scan_config.nmap_enabled = true;
+            if enrich {
+                scan_config.enrich_enabled = true;
             }
-            if nmap_args != "-sV" {
-                scan_config.nmap_scan_args = nmap_args;
+            if let Some(x) = nmap_xml {
+                scan_config.nmap_xml_import = x;
             }
             if let Some(d) = detectors {
                 apply_detector_filter(&mut scan_config, &d);
@@ -391,6 +426,26 @@ async fn main() -> anyhow::Result<()> {
             println!("{}", serde_json::to_string_pretty(&report)?);
             if !report.valid {
                 std::process::exit(2);
+            }
+        }
+
+        Cli::Enrich {
+            input,
+            nmap_xml,
+            output,
+        } => {
+            init_logging(false, true, "")?;
+            let bytes = read_bounded_path(Path::new(&input), MAX_SCAN_JSON_BYTES, "scan JSON")?;
+            let mut result: ScanResult = serde_json::from_slice(&bytes)?;
+            let xml = agentsniff::integrations::nmap::read_nmap_xml(&nmap_xml)?;
+            agentsniff::integrations::nmap::apply_nmap_xml(&mut result.agents, &xml);
+            for agent in &mut result.agents {
+                agent.update_status();
+            }
+            let json = serde_json::to_string_pretty(&result)?;
+            match output {
+                Some(path) => fs::write(path, json)?,
+                None => println!("{json}"),
             }
         }
 

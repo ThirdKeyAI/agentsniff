@@ -210,7 +210,8 @@ SQLite is the default persistent backend. Set `backend: "postgres"` for shared P
 
 ## Optional integrations
 
-- `--nmap` enriches detections with a locally installed `nmap` binary.
+- `--enrich` enriches detections with naabu, httpx and zgrab2 (included in the container image).
+- `--nmap-xml FILE` imports your own Nmap XML results. AgentSniff never runs Nmap, and the image does not include it.
 - `--zeek-logs PATH` consumes Zeek JSON logs.
 - `--features ebpf` builds Linux eBPF passive-capture support.
 

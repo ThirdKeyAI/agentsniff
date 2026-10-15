@@ -1,0 +1,5 @@
+{"ip":"192.0.2.10","timestamp":"2026-10-15T00:00:00Z","port":8000,"protocol":"tcp","tls":false}
+{"ip":"192.0.2.10","timestamp":"2026-10-15T00:00:00Z","port":22,"protocol":"tcp","tls":false}
+{"ip":"192.0.2.10","timestamp":"2026-10-15T00:00:02Z","port":8000,"protocol":"tcp","tls":false}
+{"ip":"192.0.2.20","timestamp":"2026-10-15T00:00:00Z","port":631,"protocol":"tcp","tls":false}
+{"ip":"192.0.2.20","timestamp":"2026-10-15T00:00:00Z","port":6379,"protocol":"tcp","tls":false}

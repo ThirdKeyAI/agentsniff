@@ -120,9 +120,12 @@ pub struct ScanConfig {
     pub zeek_enabled: bool,
     pub zeek_log_path: String,
     pub zeek_time_window: u64,
-    pub nmap_enabled: bool,
-    pub nmap_scan_args: String,
-    pub nmap_timeout: u64,
+    /// Run naabu/httpx/zgrab2 against detected agents.
+    pub enrich_enabled: bool,
+    /// Per-tool timeout for enrichment, in seconds.
+    pub enrich_timeout: u64,
+    /// Path to the user's own Nmap XML results to import (never runs Nmap).
+    pub nmap_xml_import: String,
 }
 
 impl Default for ScanConfig {
@@ -207,9 +210,9 @@ impl Default for ScanConfig {
             zeek_enabled: false,
             zeek_log_path: String::new(),
             zeek_time_window: 300,
-            nmap_enabled: false,
-            nmap_scan_args: "-sV".to_string(),
-            nmap_timeout: 120,
+            enrich_enabled: false,
+            enrich_timeout: 300,
+            nmap_xml_import: String::new(),
         }
     }
 }
@@ -230,7 +233,9 @@ impl ScanConfig {
     /// Load configuration from a YAML file on disk.
     pub fn from_yaml_file(path: &str) -> anyhow::Result<Self> {
         let contents = std::fs::read_to_string(path)?;
-        let config: Self = serde_yaml::from_str(&contents)?;
+        let value: serde_yaml::Value = serde_yaml::from_str(&contents)?;
+        check_removed_nmap_keys(&value)?;
+        let config: Self = serde_yaml::from_value(value)?;
         Ok(config)
     }
 
@@ -297,6 +302,28 @@ impl ScanConfig {
 }
 
 /// Generate a well-commented default YAML configuration template.
+/// Keys removed in 2.3.0 when live Nmap execution was dropped.
+const REMOVED_NMAP_KEYS: &[&str] = &["nmap_enabled", "nmap_scan_args", "nmap_timeout"];
+
+/// Refuse configs that ask for live Nmap (`nmap_enabled: true`); warn about
+/// and ignore the other removed keys so configs that disabled Nmap still load.
+pub fn check_removed_nmap_keys(value: &serde_yaml::Value) -> anyhow::Result<()> {
+    if value.get("nmap_enabled").and_then(|v| v.as_bool()) == Some(true) {
+        anyhow::bail!(
+            "nmap_enabled was removed in 2.3.0: AgentSniff no longer runs Nmap. \
+             Use enrich_enabled (naabu, httpx, zgrab2) or import your own results \
+             with nmap_xml_import / --nmap-xml <file>."
+        );
+    }
+    for key in REMOVED_NMAP_KEYS {
+        if value.get(*key).is_some() {
+            // Logging is not initialized yet when configs load.
+            eprintln!("warning: config key `{key}` was removed in 2.3.0 and is ignored");
+        }
+    }
+    Ok(())
+}
+
 pub fn default_config_yaml() -> String {
     r#"# AgentSniff v2 Configuration
 # See https://agentsniff.org/docs/configuration for full reference.
@@ -376,9 +403,9 @@ dns_monitor_duration: 60      # seconds to monitor DNS
 # zeek_log_path: "/opt/zeek/logs/current"
 # zeek_time_window: 300       # seconds of history to load
 
-# nmap_enabled: false
-# nmap_scan_args: "-sV"
-# nmap_timeout: 120           # seconds
+# enrich_enabled: false      # naabu + httpx + zgrab2 against detected agents
+# enrich_timeout: 300         # seconds per tool
+# nmap_xml_import: ""         # your own `nmap -oX` results; AgentSniff never runs Nmap
 
 # ── Alerting ────────────────────────────────────────────────────────
 # alert_enabled: false

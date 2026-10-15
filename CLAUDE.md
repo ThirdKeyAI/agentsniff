@@ -9,7 +9,7 @@ AgentSniff is a Rust workspace for authorized AI-agent network discovery.
 - Reqwest active probes
 - SQLite persistence through rusqlite
 - Single-file embedded HTML/JS/CSS dashboard
-- Optional eBPF, Zeek, and nmap integrations
+- Optional eBPF, Zeek, service enrichment (naabu/httpx/zgrab2), and Nmap XML import
 
 ## Layout
 

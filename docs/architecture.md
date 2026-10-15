@@ -9,7 +9,7 @@ CLI / loopback dashboard
           |
       scan manager
           |
-  detector registry -------- optional Zeek/nmap/eBPF
+  detector registry -------- optional Zeek/enrich/eBPF
           |
  signals by service asset
           |
@@ -37,7 +37,7 @@ CLI / loopback dashboard
 | `crates/agentsniff/src/storage*.rs` | SQLite/PostgreSQL persistence and Redis event fan-out |
 | `crates/agentsniff/src/fusion.rs` | Cross-detector fusion |
 | `crates/agentsniff/src/detectors/` | Nine detector modules |
-| `crates/agentsniff/src/integrations/` | Zeek and nmap |
+| `crates/agentsniff/src/integrations/` | Zeek, service enrichment, Nmap XML import |
 | `crates/agentsniff/src/signatures/` | Pinned-key dataset verification and updates |
 | `crates/agentsniff/assets/` | Embedded dashboard and signed data |
 | `crates/agentsniff-common/` | Shared eBPF/user-space types |
@@ -46,7 +46,7 @@ CLI / loopback dashboard
 
 Scanned hosts and all response content are untrusted. Detection datasets cross a distribution boundary and are accepted only under the packaged public key. The management API binds loopback by default, disables cross-origin access, and requires JSON POST for scan creation. Non-loopback binding requires a strong API token that authenticates every non-health route; remote deployments must add TLS and may use a reverse proxy for additional authorization and rate limiting.
 
-Passive capture, host networking, eBPF, and nmap expand local privilege and resource boundaries. The default Compose service omits those privileges, while the passive profile opts in explicitly.
+Passive capture, host networking, eBPF, and service enrichment expand local privilege and resource boundaries. The default Compose service omits those privileges, while the passive profile opts in explicitly.
 
 ## Identity semantics
 

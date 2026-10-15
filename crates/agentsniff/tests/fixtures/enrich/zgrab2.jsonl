@@ -1,0 +1,2 @@
+{"ip":"192.0.2.10","port":22,"data":{"ssh":{"status":"success","protocol":"ssh","port":22},"redis":{"status":"io-timeout","protocol":"redis","port":22}}}
+{"ip":"192.0.2.20","port":6379,"data":{"redis":{"status":"success","protocol":"redis","port":6379},"ssh":{"status":"handshake-error","protocol":"ssh","port":6379}}}

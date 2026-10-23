@@ -163,7 +163,7 @@ impl McpDetector {
         if protocols.is_empty() {
             tracing::error!("signed MCP protocol catalog unavailable; MCP probing disabled");
         }
-        let ports = load_mcp_ports(&signatures);
+        let ports = config.ports_or(&load_mcp_ports(&signatures));
         let agentpin_binding = load_agentpin_binding(&signatures.mcp_methods);
         Self {
             client,
@@ -197,6 +197,7 @@ impl McpDetector {
         if let Some(session_id) = session_id {
             request = request.header("Mcp-Session-Id", session_id);
         }
+        crate::ratelimit::acquire().await;
         let response = request.json(body).send().await.ok()?;
         if !response.status().is_success() {
             return None;
@@ -223,6 +224,7 @@ impl McpDetector {
         if let Some(session_id) = session_id {
             request = request.header("Mcp-Session-Id", session_id);
         }
+        crate::ratelimit::acquire().await;
         let _ = request
             .json(&serde_json::json!({
                 "jsonrpc": "2.0",
@@ -466,6 +468,7 @@ impl McpDetector {
 
     async fn is_port_open(ip: IpAddr, port: u16) -> bool {
         let addr = std::net::SocketAddr::new(ip, port);
+        crate::ratelimit::acquire().await;
         tokio::time::timeout(
             Duration::from_millis(500),
             tokio::net::TcpStream::connect(addr),

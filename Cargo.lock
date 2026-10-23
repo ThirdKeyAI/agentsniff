@@ -23,7 +23,7 @@ dependencies = [
 
 [[package]]
 name = "agentsniff"
-version = "2.3.1"
+version = "2.4.0"
 dependencies = [
  "agentpin",
  "agentsniff-common",
@@ -60,7 +60,7 @@ dependencies = [
 
 [[package]]
 name = "agentsniff-common"
-version = "2.3.1"
+version = "2.4.0"
 
 [[package]]
 name = "aho-corasick"

@@ -154,6 +154,7 @@ pub struct A2aDetector {
     concurrency: usize,
     client: Client,
     trusted_keys: HashMap<String, String>,
+    ports: Vec<u16>,
 }
 
 impl A2aDetector {
@@ -170,10 +171,12 @@ impl A2aDetector {
             concurrency: config.http_concurrency,
             client,
             trusted_keys: config.a2a_trusted_keys.clone(),
+            ports: config.ports_or(A2A_PORTS),
         }
     }
 
     async fn is_port_open(ip: IpAddr, port: u16, timeout: Duration) -> bool {
+        crate::ratelimit::acquire().await;
         tokio::time::timeout(
             timeout.min(Duration::from_millis(500)),
             TcpStream::connect((ip, port)),
@@ -196,6 +199,7 @@ impl A2aDetector {
             ip.to_string()
         };
         let url = format!("{}://{}:{}{}", scheme, host, port, path);
+        crate::ratelimit::acquire().await;
         let response = client.get(&url).send().await.ok()?;
         if response.status() != reqwest::StatusCode::OK {
             return None;
@@ -274,7 +278,7 @@ impl Detector for A2aDetector {
         let semaphore = std::sync::Arc::new(Semaphore::new(self.concurrency.max(1)));
         let mut connect_handles = Vec::new();
         for &ip in targets {
-            for &port in A2A_PORTS {
+            for &port in &self.ports {
                 let permit = semaphore.clone().acquire_owned().await?;
                 let timeout = self.timeout;
                 connect_handles.push(tokio::spawn(async move {

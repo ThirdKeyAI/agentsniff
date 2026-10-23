@@ -231,3 +231,19 @@ fn test_detected_agent_serialization() {
     assert_eq!(deserialized.host, "test-host");
     assert_eq!(deserialized.ip_address.to_string(), "192.168.1.1");
 }
+
+#[test]
+fn test_probe_detector_names_are_stable() {
+    // netred retests match on these strings; renaming one breaks retests.
+    for (detector, name) in [
+        (DetectorType::PortScanner, "port_scanner"),
+        (DetectorType::EndpointProber, "endpoint_prober"),
+        (DetectorType::McpDetector, "mcp_detector"),
+        (DetectorType::A2aDetector, "a2a_detector"),
+        (DetectorType::AgentpinProber, "agentpin_prober"),
+        (DetectorType::TlsFingerprint, "tls_fingerprint"),
+    ] {
+        assert_eq!(serde_json::to_value(detector).unwrap(), name);
+        assert!(agentsniff::scanner::PROBE_DETECTORS.contains(&name));
+    }
+}

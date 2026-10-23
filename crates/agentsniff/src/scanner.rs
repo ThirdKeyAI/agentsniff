@@ -310,6 +310,74 @@ fn correlate_signals(
     }
 }
 
+/// Detectors `agentsniff probe` accepts: the active ones that send traffic to
+/// a host and port. Passive detectors (DNS, traffic, SSE capture) observe the
+/// local network instead and are not a single-target check.
+pub const PROBE_DETECTORS: &[&str] = &[
+    "port_scanner",
+    "endpoint_prober",
+    "mcp_detector",
+    "a2a_detector",
+    "agentpin_prober",
+    "tls_fingerprint",
+];
+
+/// Probe one `ip:port` with the named active detectors and return that
+/// endpoint's agent record. The record has no signals when nothing was found.
+///
+/// Touches only `ip:port`: no discovery, no other hosts or ports, no DNS,
+/// storage or notifications. Callers cap the request rate with
+/// `crate::ratelimit::set_rate`.
+pub async fn run_probe(
+    config: &ScanConfig,
+    ip: IpAddr,
+    port: u16,
+    detector_names: &[String],
+) -> anyhow::Result<DetectedAgent> {
+    for name in detector_names {
+        if !PROBE_DETECTORS.contains(&name.as_str()) {
+            anyhow::bail!(
+                "detector `{name}` cannot probe a single target; choose from: {}",
+                PROBE_DETECTORS.join(", ")
+            );
+        }
+    }
+    let mut config = config.clone();
+    config.probe_port = Some(port);
+    for (name, enabled) in [
+        ("port_scanner", &mut config.enable_port_scanner),
+        ("endpoint_prober", &mut config.enable_endpoint_prober),
+        ("mcp_detector", &mut config.enable_mcp_detector),
+        ("a2a_detector", &mut config.enable_a2a_detector),
+        ("agentpin_prober", &mut config.enable_agentpin_prober),
+        ("tls_fingerprint", &mut config.enable_tls_fingerprint),
+    ] {
+        *enabled = detector_names.iter().any(|n| n == name);
+    }
+    config.enable_dns_monitor = false;
+    config.enable_traffic_analyzer = false;
+    config.enable_sse_detector = false;
+
+    let mut detectors = build_registry().create_enabled(&config, None);
+    let mut signals = Vec::new();
+    for detector in &mut detectors {
+        detector.setup().await?;
+        let result = detector.scan(&[ip]).await;
+        detector.teardown().await?;
+        signals.extend(result?);
+    }
+
+    let mut agents_by_asset = HashMap::new();
+    correlate_signals(signals, &mut agents_by_asset, &None);
+    let asset_id = crate::models::stable_asset_id(ip, Some(port), "tcp");
+    let mut agent = apply_fusion_rules(agents_by_asset.into_values().collect())
+        .into_iter()
+        .find(|agent| agent.id == asset_id)
+        .unwrap_or_else(|| DetectedAgent::for_endpoint(ip.to_string(), ip, Some(port), "tcp"));
+    agent.update_status();
+    Ok(agent)
+}
+
 /// Run a full network scan.
 ///
 /// Resolves targets, runs all enabled detectors concurrently, streams

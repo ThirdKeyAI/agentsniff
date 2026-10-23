@@ -1,5 +1,22 @@
 # Changelog
 
+## 2.4.0
+
+### Added
+
+- `agentsniff probe IP:PORT --detectors ...`: checks a single endpoint with
+  named active detectors and prints its agent record as JSON. It sends traffic
+  only to that address and port, with no discovery, DNS, update checks or
+  telemetry. `--rate` caps connections and requests per second combined, and
+  `--max-time` bounds the whole probe. The exit code is non-zero only for tool
+  failures. Detector and signal identifiers for probe-capable detectors are now
+  documented as stable (see the CLI reference).
+
+### Changed
+
+- The TLS fingerprint detector no longer follows HTTP redirects.
+- AgentPin probe URLs now bracket IPv6 addresses correctly.
+
 ## 2.3.1
 
 ### Fixed

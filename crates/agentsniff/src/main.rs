@@ -197,6 +197,36 @@ enum Cli {
         #[arg(long)]
         audience: Option<String>,
     },
+    /// Probe a single IP:PORT with named detectors and print its agent record as JSON
+    ///
+    /// Sends traffic only to that address and port: no discovery, no other
+    /// ports or hosts, no DNS, no update checks. Exits non-zero only on a tool
+    /// failure; a target that is not an agent prints a record with no signals.
+    Probe {
+        /// Target as IP:PORT (IPv6 as [ADDR]:PORT); hostnames are not accepted
+        target: String,
+
+        /// Comma-separated active detectors: port_scanner, endpoint_prober,
+        /// mcp_detector, a2a_detector, agentpin_prober, tls_fingerprint
+        #[arg(long, required = true)]
+        detectors: String,
+
+        /// Cap on requests and TCP connections per second, combined (e.g. 1 or 0.5)
+        #[arg(long)]
+        rate: Option<f64>,
+
+        /// Per-request and per-connection timeout in seconds
+        #[arg(long, default_value_t = 5.0)]
+        timeout: f64,
+
+        /// Upper bound on the whole probe in seconds; exceeding it is a failure
+        #[arg(long = "max-time", default_value_t = 600.0)]
+        max_time: f64,
+
+        /// Optional YAML config (custom agent ports, trusted A2A keys)
+        #[arg(long)]
+        config: Option<String>,
+    },
     /// Apply your own Nmap XML results to a saved JSON scan (never runs Nmap)
     Enrich {
         /// Scan result JSON from `agentsniff scan -f json`
@@ -427,6 +457,44 @@ async fn main() -> anyhow::Result<()> {
             if !report.valid {
                 std::process::exit(2);
             }
+        }
+
+        Cli::Probe {
+            target,
+            detectors,
+            rate,
+            timeout,
+            max_time,
+            config,
+        } => {
+            init_logging(false, true, "")?;
+            let addr: std::net::SocketAddr = target
+                .parse()
+                .map_err(|_| anyhow::anyhow!("target must be IP:PORT, got `{target}`"))?;
+            if !(timeout.is_finite() && timeout > 0.0 && max_time.is_finite() && max_time > 0.0) {
+                anyhow::bail!("--timeout and --max-time must be positive numbers of seconds");
+            }
+            if let Some(rate) = rate {
+                agentsniff::ratelimit::set_rate(rate)?;
+            }
+            let mut scan_config = match config {
+                Some(path) => ScanConfig::from_yaml_file(&path)?,
+                None => ScanConfig::default(),
+            };
+            scan_config.http_timeout = timeout;
+            scan_config.port_scan_timeout = timeout;
+            let names: Vec<String> = detectors
+                .split(',')
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .collect();
+            let agent = tokio::time::timeout(
+                Duration::from_secs_f64(max_time),
+                agentsniff::scanner::run_probe(&scan_config, addr.ip(), addr.port(), &names),
+            )
+            .await
+            .map_err(|_| anyhow::anyhow!("probe exceeded --max-time of {max_time}s"))??;
+            println!("{}", serde_json::to_string_pretty(&agent)?);
         }
 
         Cli::Enrich {

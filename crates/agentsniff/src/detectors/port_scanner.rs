@@ -64,6 +64,12 @@ impl PortScannerDetector {
         }
         let mut ports: Vec<u16> = services.keys().copied().collect();
         ports.sort_unstable();
+        // A probe port outside the catalog could never yield a signal, so skip it.
+        let ports: Vec<u16> = config
+            .ports_or(&ports)
+            .into_iter()
+            .filter(|port| services.contains_key(port))
+            .collect();
 
         Self {
             ports,
@@ -106,6 +112,7 @@ impl Detector for PortScannerDetector {
                 handles.push(tokio::spawn(async move {
                     let _permit = permit;
                     let addr = std::net::SocketAddr::new(ip, port);
+                    crate::ratelimit::acquire().await;
                     let mut stream = match tokio::time::timeout(timeout, TcpStream::connect(addr)).await {
                         Ok(Ok(stream)) => stream,
                         _ => return None,

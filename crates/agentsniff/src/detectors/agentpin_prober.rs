@@ -103,6 +103,10 @@ pub struct AgentpinProber {
     #[allow(dead_code)]
     timeout: Duration,
     client: reqwest::Client,
+    /// HTTPS ports to probe.
+    ports: Vec<u16>,
+    /// Whether to also try plain HTTP on port 80.
+    http_80: bool,
 }
 
 impl AgentpinProber {
@@ -116,7 +120,12 @@ impl AgentpinProber {
             .build()
             .expect("failed to build reqwest client");
 
-        Self { timeout, client }
+        Self {
+            timeout,
+            client,
+            ports: config.ports_or(AGENTPIN_PORTS),
+            http_80: config.probe_port.is_none_or(|port| port == 80),
+        }
     }
 
     /// Build a discovery signal from a structurally valid, unsigned AgentPin document.
@@ -205,12 +214,14 @@ impl Detector for AgentpinProber {
         let mut handles: Vec<tokio::task::JoinHandle<(IpAddr, u16, &'static str, Option<Value>)>> =
             Vec::new();
         for &ip in targets {
-            for &port in AGENTPIN_PORTS {
+            for &port in &self.ports {
                 let permit = sem.clone().acquire_owned().await?;
                 let client = client.clone();
                 handles.push(tokio::spawn(async move {
                     let _permit = permit;
-                    let url = format!("https://{}:{}{}", ip, port, AGENTPIN_PATH);
+                    let addr = std::net::SocketAddr::new(ip, port);
+                    let url = format!("https://{addr}{AGENTPIN_PATH}");
+                    crate::ratelimit::acquire().await;
                     let resp = client.get(&url).send().await.ok();
                     let doc = match resp {
                         Some(r) if r.status().is_success() => {
@@ -225,11 +236,16 @@ impl Detector for AgentpinProber {
                 }));
             }
             // HTTP on port 80
+            if !self.http_80 {
+                continue;
+            }
             let permit = sem.clone().acquire_owned().await?;
             let client = client.clone();
             handles.push(tokio::spawn(async move {
                 let _permit = permit;
-                let url = format!("http://{}:80{}", ip, AGENTPIN_PATH);
+                let addr = std::net::SocketAddr::new(ip, 80);
+                let url = format!("http://{addr}{AGENTPIN_PATH}");
+                crate::ratelimit::acquire().await;
                 let resp = client.get(&url).send().await.ok();
                 let doc = match resp {
                     Some(r) if r.status().is_success() => {

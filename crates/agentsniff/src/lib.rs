@@ -13,6 +13,7 @@ pub(crate) mod http;
 pub mod integrations;
 pub mod models;
 pub mod notifier;
+pub mod ratelimit;
 pub mod sarif_export;
 pub mod scanner;
 pub mod server;

@@ -33,6 +33,8 @@ impl TlsFingerprintDetector {
         let client = reqwest::Client::builder()
             .danger_accept_invalid_certs(true)
             .timeout(timeout)
+            // Only the handshake matters; never follow a redirect off the target.
+            .redirect(reqwest::redirect::Policy::none())
             .build()
             .expect("failed to build reqwest client for TLS fingerprinting");
 
@@ -47,6 +49,7 @@ impl TlsFingerprintDetector {
     /// Quick TCP connect to check if a port is open before attempting TLS.
     async fn is_port_open(ip: IpAddr, port: u16, timeout: Duration) -> bool {
         let addr = std::net::SocketAddr::new(ip, port);
+        crate::ratelimit::acquire().await;
         tokio::time::timeout(timeout, TcpStream::connect(addr))
             .await
             .map(|r| r.is_ok())
@@ -106,6 +109,7 @@ async fn probe_tls(
         format!("https://{}:{}/", ip, port)
     };
 
+    crate::ratelimit::acquire().await;
     match client.get(&url).send().await {
         Ok(resp) => {
             let version = resp.version();
@@ -203,7 +207,7 @@ impl Detector for TlsFingerprintDetector {
 
         let mut handles: Vec<tokio::task::JoinHandle<Option<Signal>>> = Vec::new();
         for &ip in targets {
-            for &port in TLS_PROBE_PORTS {
+            for port in self.config.ports_or(TLS_PROBE_PORTS) {
                 let permit = sem.clone().acquire_owned().await?;
                 let client = client.clone();
                 handles.push(tokio::spawn(async move {

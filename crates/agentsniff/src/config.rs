@@ -126,6 +126,11 @@ pub struct ScanConfig {
     pub enrich_timeout: u64,
     /// Path to the user's own Nmap XML results to import (never runs Nmap).
     pub nmap_xml_import: String,
+
+    /// Set only by `agentsniff probe`: every active detector touches this one
+    /// port instead of its own port list. Never read from YAML.
+    #[serde(skip)]
+    pub probe_port: Option<u16>,
 }
 
 impl Default for ScanConfig {
@@ -213,6 +218,7 @@ impl Default for ScanConfig {
             enrich_enabled: false,
             enrich_timeout: 300,
             nmap_xml_import: String::new(),
+            probe_port: None,
         }
     }
 }
@@ -237,6 +243,15 @@ impl ScanConfig {
         check_removed_nmap_keys(&value)?;
         let config: Self = serde_yaml::from_value(value)?;
         Ok(config)
+    }
+
+    /// The ports an active detector should touch: just `probe_port` when set,
+    /// otherwise the detector's own list.
+    pub fn ports_or(&self, defaults: &[u16]) -> Vec<u16> {
+        match self.probe_port {
+            Some(port) => vec![port],
+            None => defaults.to_vec(),
+        }
     }
 
     /// Map a textual confidence level ("low" | "medium" | "high" | "confirmed")

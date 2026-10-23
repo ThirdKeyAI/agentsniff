@@ -159,3 +159,15 @@ fn test_webhook_destination_change_clears_retained_headers() {
     assert!(config.webhook_headers.is_empty());
     assert_eq!(config.webhook_url, "https://new.example/hook");
 }
+
+#[test]
+fn test_probe_port_overrides_detector_port_lists() {
+    let mut config = ScanConfig::default();
+    assert_eq!(config.ports_or(&[80, 443]), vec![80, 443]);
+    config.probe_port = Some(8765);
+    assert_eq!(config.ports_or(&[80, 443]), vec![8765]);
+    // Runtime-only: never read from or written to YAML.
+    assert!(!serde_yaml::to_string(&config)
+        .unwrap()
+        .contains("probe_port"));
+}

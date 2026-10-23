@@ -255,6 +255,7 @@ pub struct EndpointProberDetector {
     concurrency: usize,
     client: reqwest::Client,
     frameworks: BTreeMap<String, FrameworkSig>,
+    ports: Vec<u16>,
 }
 
 impl EndpointProberDetector {
@@ -275,6 +276,7 @@ impl EndpointProberDetector {
             concurrency: config.http_concurrency,
             client,
             frameworks,
+            ports: config.ports_or(PROBE_PORTS),
         }
     }
 
@@ -299,6 +301,7 @@ impl EndpointProberDetector {
     /// Quick TCP connect check to see if a port is open.
     async fn is_port_open(ip: IpAddr, port: u16) -> bool {
         let addr = std::net::SocketAddr::new(ip, port);
+        crate::ratelimit::acquire().await;
         tokio::time::timeout(Duration::from_millis(500), TcpStream::connect(addr))
             .await
             .map(|r| r.is_ok())
@@ -323,6 +326,7 @@ impl EndpointProberDetector {
         path: &str,
     ) -> Option<(u16, String, reqwest::header::HeaderMap, String)> {
         let url = format!("{}{}", base, path);
+        crate::ratelimit::acquire().await;
         let resp = self.client.get(&url).send().await.ok()?;
         let status = resp.status().as_u16();
         let headers = resp.headers().clone();
@@ -753,7 +757,7 @@ impl Detector for EndpointProberDetector {
         // probing across a /24 turned this detector into a 25-minute loop.
         let mut probe_handles: Vec<tokio::task::JoinHandle<(IpAddr, u16, bool)>> = Vec::new();
         for &ip in targets {
-            for &port in PROBE_PORTS {
+            for &port in &self.ports {
                 let permit = semaphore.clone().acquire_owned().await?;
                 probe_handles.push(tokio::spawn(async move {
                     let _permit = permit;
@@ -782,6 +786,7 @@ impl Detector for EndpointProberDetector {
                 let timeout = self.timeout;
                 let concurrency = self.concurrency;
                 let frameworks = self.frameworks.clone();
+                let ports = self.ports.clone();
 
                 let handle = tokio::spawn(async move {
                     let _permit = permit;
@@ -790,6 +795,7 @@ impl Detector for EndpointProberDetector {
                         concurrency,
                         client,
                         frameworks,
+                        ports,
                     };
                     detector.probe_host_port(ip, port).await
                 });

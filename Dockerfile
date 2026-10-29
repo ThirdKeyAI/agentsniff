@@ -1,4 +1,4 @@
-FROM rust:1.99-bookworm AS builder
+FROM rust:1.99-bookworm@sha256:9181b56c2a21ab1d5e73cffe04fc762426d30aa7fac3c91141dd033f49a7fc8b AS builder
 
 WORKDIR /src
 COPY Cargo.toml Cargo.lock rust-toolchain.toml ./
@@ -7,7 +7,7 @@ RUN cargo build --locked --release -p agentsniff
 
 # Enrichment tools (opt-in via --enrich). Permissive licenses only:
 # naabu and httpx are MIT, zgrab2 is Apache-2.0. The image does not include Nmap.
-FROM golang:1.24.7-bookworm AS zgrab2
+FROM golang:1.24.7-bookworm@sha256:b8bae5bd9ba9b1f89b635c91c24cc75cea335a16fb5076310f38566fc674b1ec AS zgrab2
 # go install verifies every module against go.sum and sum.golang.org.
 ENV CGO_ENABLED=0 GOTOOLCHAIN=local
 RUN go install github.com/zmap/zgrab2/cmd/zgrab2@v1.0.0 \
@@ -15,7 +15,7 @@ RUN go install github.com/zmap/zgrab2/cmd/zgrab2@v1.0.0 \
     && cp /go/pkg/mod/github.com/zmap/zgrab2@v1.0.0/LICENSE /out/third-party/zgrab2/LICENSE \
     && cp /go/bin/zgrab2 /out/zgrab2
 
-FROM debian:bookworm-slim AS pdtools
+FROM debian:bookworm-slim@sha256:99c0b25c46d0214d5a2091092e7908907dcaecd6a962cde0ac700acee222b6f3 AS pdtools
 ARG TARGETARCH=amd64
 ARG NAABU_VERSION=2.6.1
 ARG NAABU_SHA256_AMD64=018c4c9884dea971eda860435ede3021d1150732f34cfd245498c6726d8cab90
@@ -46,7 +46,7 @@ RUN set -eu; \
 # fails if any dependency has a forbidden or restricted (e.g. GPL, AGPL) license,
 # or if a module embedded in a shipped binary has no saved notice.
 # `save` copies notices, plus source for reciprocal (MPL) licenses.
-FROM golang:1.26.0-bookworm AS licenses
+FROM golang:1.26.0-bookworm@sha256:2a0ba12e116687098780d3ce700f9ce3cb340783779646aafbabed748fa6677c AS licenses
 ENV GOTOOLCHAIN=local
 RUN go install github.com/google/go-licenses/v2@v2.0.1
 # The exact binaries that ship, so their embedded module lists can be checked.
@@ -67,7 +67,7 @@ RUN set -eu; mkdir -p /src; \
       verify-go-notices "/bin-check/$3" "/src/$3.csv"; \
     done
 
-FROM debian:bookworm-slim
+FROM debian:bookworm-slim@sha256:99c0b25c46d0214d5a2091092e7908907dcaecd6a962cde0ac700acee222b6f3
 
 LABEL maintainer="ThirdKey AI"
 LABEL description="AgentSniff - AI Agent Network Scanner"

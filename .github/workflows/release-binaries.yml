@@ -14,6 +14,7 @@ permissions:
 
 env:
   CARGO_TERM_COLOR: always
+  RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.event.release.tag_name }}
 
 jobs:
   build:
@@ -42,6 +43,14 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Validate release tag and source
+        id: version
+        shell: bash
+        run: bash scripts/release-version.sh
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # stable (pinned)
@@ -69,26 +78,17 @@ jobs:
             # Thin LTO for cross builds to avoid OOM during linking
             export CARGO_PROFILE_RELEASE_LTO=thin
             export CARGO_PROFILE_RELEASE_CODEGEN_UNITS=4
-            cross build --release --target ${{ matrix.target }} -p agentsniff -j2
+            cross build --locked --release --target ${{ matrix.target }} -p agentsniff -j2
           else
-            cargo build --release --target ${{ matrix.target }} -p agentsniff -j2
-          fi
-
-      - name: Determine version
-        id: version
-        shell: bash
-        run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "version=${{ github.event.inputs.tag }}" >> $GITHUB_OUTPUT
-          else
-            echo "version=${{ github.event.release.tag_name }}" >> $GITHUB_OUTPUT
+            cargo build --locked --release --target ${{ matrix.target }} -p agentsniff -j2
           fi
 
       - name: Package (Unix)
         if: runner.os != 'Windows'
         shell: bash
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
         run: |
-          VERSION="${{ steps.version.outputs.version }}"
           ARCHIVE="agentsniff-${VERSION}-${{ matrix.target }}.tar.gz"
           mkdir -p staging
           cp target/${{ matrix.target }}/release/agentsniff staging/
@@ -101,8 +101,9 @@ jobs:
       - name: Package (Windows)
         if: runner.os == 'Windows'
         shell: bash
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
         run: |
-          VERSION="${{ steps.version.outputs.version }}"
           ARCHIVE="agentsniff-${VERSION}-${{ matrix.target }}.zip"
           mkdir -p staging
           cp target/${{ matrix.target }}/release/agentsniff.exe staging/
@@ -122,10 +123,21 @@ jobs:
     name: Checksums, signatures, and upload
     needs: build
     runs-on: ubuntu-latest
+    environment: release
     permissions:
       contents: write
       id-token: write
     steps:
+      - name: Checkout release source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Validate release tag and source
+        id: tag
+        run: bash scripts/release-version.sh
+
       - name: Download all artifacts
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
@@ -161,19 +173,10 @@ jobs:
         env:
           COSIGN_EXPERIMENTAL: "1"
 
-      - name: Determine tag
-        id: tag
-        run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "tag=${{ github.event.inputs.tag }}" >> $GITHUB_OUTPUT
-          else
-            echo "tag=${{ github.event.release.tag_name }}" >> $GITHUB_OUTPUT
-          fi
-
       - name: Upload to GitHub Release
         uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
         with:
-          tag_name: ${{ steps.tag.outputs.tag }}
+          tag_name: ${{ steps.tag.outputs.version }}
           files: artifacts/*
           body: |
             ## Pre-Built Binaries

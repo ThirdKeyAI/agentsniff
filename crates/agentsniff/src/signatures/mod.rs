@@ -134,7 +134,7 @@ pub fn verify_signature(
         let Some(supplied_key) = load_verifying_key_from_pem(pem) else {
             return VerificationStatus::Invalid;
         };
-        if supplied_key.to_encoded_point(false) != verifying_key.to_encoded_point(false) {
+        if supplied_key.to_sec1_point(false) != verifying_key.to_sec1_point(false) {
             return VerificationStatus::Invalid;
         }
     }

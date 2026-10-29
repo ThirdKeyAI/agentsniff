@@ -13,29 +13,34 @@ services:
       AGENTSNIFF_ENABLE_DNS_MONITOR: "false"
       AGENTSNIFF_ENABLE_TLS_FINGERPRINT: "false"
       AGENTSNIFF_ENABLE_TRAFFIC_ANALYZER: "false"
+      AGENTSNIFF_ENABLE_SSE_DETECTOR: "false"
     restart: unless-stopped
     volumes:
       - agentsniff-state:/home/agentsniff/.agentsniff
 
-  # Opt-in host-network profile for passive capture. The dashboard still binds
-  # only to host loopback; NET_RAW/NET_ADMIN are not granted to the default service.
+  # Opt-in raw-socket SSE capture. This image does not contain eBPF programs.
+  # For kernel DNS/TLS/process capture, use a host build with --features ebpf
+  # and set AGENTSNIFF_EBPF_INTERFACE to the interface to attach.
   agentsniff-passive:
     profiles: ["passive"]
     build: .
     container_name: agentsniff-passive
     network_mode: host
-    # Root is isolated to this explicit profile and receives only the two
-    # network capabilities required by passive capture.
+    # Root and NET_RAW are isolated to this explicit profile.
     user: root
     command: ["serve", "--host", "127.0.0.1", "--port", "9090"]
     environment:
+      HOME: /var/lib/agentsniff
       AGENTSNIFF_TARGET_NETWORK: 192.168.1.0/24
     cap_add:
       - NET_RAW
-      - NET_ADMIN
+    cap_drop:
+      - ALL
     restart: unless-stopped
     volumes:
-      - agentsniff-state:/home/agentsniff/.agentsniff
+      # Separate root-owned state; never chmod/chown the standard service's volume.
+      - agentsniff-passive-state:/var/lib/agentsniff
 
 volumes:
   agentsniff-state:
+  agentsniff-passive-state:

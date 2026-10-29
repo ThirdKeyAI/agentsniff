@@ -56,8 +56,7 @@ enum Cli {
     /// Scan a network for AI agents
     Scan {
         /// Target network in CIDR notation (e.g., 192.168.1.0/24)
-        #[arg(default_value = "192.168.1.0/24")]
-        network: String,
+        network: Option<String>,
 
         /// Comma-separated list of specific hosts to scan
         #[arg(long)]
@@ -68,8 +67,8 @@ enum Cli {
         exclude: Option<String>,
 
         /// Output format
-        #[arg(long, short = 'f', value_enum, default_value = "table")]
-        format: OutputFormat,
+        #[arg(long, short = 'f', value_enum)]
+        format: Option<OutputFormat>,
 
         /// Optional path to a YAML config file
         #[arg(long)]
@@ -84,16 +83,16 @@ enum Cli {
         detectors: Option<String>,
 
         /// HTTP request timeout in seconds
-        #[arg(long, default_value_t = 5.0)]
-        timeout: f64,
+        #[arg(long)]
+        timeout: Option<f64>,
 
         /// Maximum concurrent connections
-        #[arg(long, default_value_t = 100)]
-        concurrency: usize,
+        #[arg(long)]
+        concurrency: Option<usize>,
 
         /// Continuous scanning interval in seconds (0 = one-shot)
-        #[arg(long, default_value_t = 0)]
-        continuous: u64,
+        #[arg(long)]
+        continuous: Option<u64>,
 
         /// Webhook URL for alert notifications (auto-enables alerting)
         #[arg(long = "webhook-url")]
@@ -142,12 +141,12 @@ enum Cli {
     /// Start the web dashboard server
     Serve {
         /// Port to listen on
-        #[arg(long, default_value_t = 9090)]
-        port: u16,
+        #[arg(long)]
+        port: Option<u16>,
 
         /// Host address to bind to
-        #[arg(long, default_value = "127.0.0.1")]
-        host: String,
+        #[arg(long)]
+        host: Option<String>,
 
         /// Default scan target network
         #[arg(long)]
@@ -294,16 +293,34 @@ async fn main() -> anyhow::Result<()> {
                 ScanConfig::default()
             };
 
-            scan_config.target_network = network;
-            scan_config.output_format = format_to_string(format);
+            scan_config = ScanConfig::from_env_with_defaults(scan_config)?;
+            if let Some(network) = network {
+                scan_config.target_network = network;
+            }
+            if let Some(format) = format {
+                scan_config.output_format = format_to_string(format);
+            }
             if let Some(o) = output {
                 scan_config.output_file = o;
             }
-            scan_config.verbose = verbose;
-            scan_config.quiet = quiet;
-            scan_config.http_timeout = timeout;
-            scan_config.port_scan_concurrency = concurrency;
-            scan_config.scan_interval = continuous;
+            if verbose {
+                scan_config.verbose = true;
+                scan_config.quiet = false;
+            }
+            if quiet {
+                scan_config.quiet = true;
+                scan_config.verbose = false;
+            }
+            if let Some(timeout) = timeout {
+                scan_config.http_timeout = timeout;
+            }
+            if let Some(concurrency) = concurrency {
+                scan_config.port_scan_concurrency = concurrency;
+                scan_config.http_concurrency = concurrency;
+            }
+            if let Some(continuous) = continuous {
+                scan_config.scan_interval = continuous;
+            }
 
             if let Some(lf) = log_file {
                 scan_config.log_file = lf;
@@ -338,7 +355,9 @@ async fn main() -> anyhow::Result<()> {
             if let Some(d) = detectors {
                 apply_detector_filter(&mut scan_config, &d);
             }
-            let scan_config = ScanConfig::from_env_with_defaults(scan_config);
+            scan_config.validate()?;
+            let format = OutputFormat::from_str(&scan_config.output_format, true)
+                .map_err(anyhow::Error::msg)?;
 
             // 2. Initialize logging now (after CLI parse + env-var overrides).
             init_logging(
@@ -348,7 +367,7 @@ async fn main() -> anyhow::Result<()> {
             )?;
 
             // 3. Banner + signature status (unless quiet).
-            if !quiet {
+            if !scan_config.quiet {
                 print_banner();
                 print_signature_status();
             }
@@ -379,8 +398,13 @@ async fn main() -> anyhow::Result<()> {
                 ScanConfig::default()
             };
 
-            scan_config.api_port = port;
-            scan_config.api_host = host;
+            scan_config = ScanConfig::from_env_with_defaults(scan_config)?;
+            if let Some(port) = port {
+                scan_config.api_port = port;
+            }
+            if let Some(host) = host {
+                scan_config.api_host = host;
+            }
             if let Some(n) = network {
                 scan_config.target_network = n;
             }
@@ -390,10 +414,10 @@ async fn main() -> anyhow::Result<()> {
             if let Some(lf) = log_file {
                 scan_config.log_file = lf;
             }
-            scan_config.verbose = verbose;
-            let scan_config = ScanConfig::from_env_with_defaults(scan_config);
+            scan_config.verbose |= verbose;
+            scan_config.validate()?;
 
-            init_logging(verbose, false, &scan_config.log_file)?;
+            init_logging(scan_config.verbose, false, &scan_config.log_file)?;
             tracing::info!(
                 "Starting server on {}:{}",
                 scan_config.api_host,

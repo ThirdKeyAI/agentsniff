@@ -66,9 +66,10 @@ impl Detector for DnsMonitorDetector {
         // Try eBPF passive mode first
         if let Some(ref channels) = self.ebpf_channels {
             let mut rx = channels.dns_tx.subscribe();
-            let duration = std::time::Duration::from_secs(5);
+            let duration = std::time::Duration::from_secs(self.config.dns_monitor_duration);
             let deadline = tokio::time::Instant::now() + duration;
             let mut signals = Vec::new();
+            let mut per_host = std::collections::HashMap::<IpAddr, usize>::new();
             let target_set: std::collections::HashSet<IpAddr> = targets.iter().copied().collect();
 
             loop {
@@ -78,10 +79,12 @@ impl Detector for DnsMonitorDetector {
                         if !target_set.contains(&IpAddr::V4(src_ip)) {
                             continue;
                         }
-                        let domain =
-                            std::str::from_utf8(&event.query_name[..event.query_len as usize])
-                                .unwrap_or("")
-                                .to_lowercase();
+                        let domain = std::str::from_utf8(
+                            &event.query_name
+                                [..(event.query_len as usize).min(event.query_name.len())],
+                        )
+                        .unwrap_or("")
+                        .to_lowercase();
                         if domain.is_empty() {
                             continue;
                         }
@@ -96,7 +99,13 @@ impl Detector for DnsMonitorDetector {
                             } else {
                                 ("agent_infrastructure_domain_query", Confidence::Medium)
                             };
-                            signals.push(Signal::new(
+                            let count = per_host.entry(IpAddr::V4(src_ip)).or_default();
+                            anyhow::ensure!(
+                                *count < crate::limits::MAX_AGENT_SIGNALS,
+                                "DNS event budget exceeded; capture incomplete"
+                            );
+                            *count += 1;
+                            let signal = Signal::new(
                                 DetectorType::DnsMonitor,
                                 signal_type.into(),
                                 format!("DNS query matching {} signature: {}", category, domain),
@@ -107,11 +116,19 @@ impl Detector for DnsMonitorDetector {
                                     "category": category,
                                     "source": "ebpf",
                                 }),
-                            ));
+                            );
+                            anyhow::ensure!(
+                                self.config.evidence_budget.reserve(&signal),
+                                "DNS evidence budget exceeded; capture incomplete"
+                            );
+                            signals.push(signal);
                         }
                     }
-                    Ok(Err(_)) => break, // channel closed
-                    Err(_) => break,     // timeout
+                    Ok(Err(tokio::sync::broadcast::error::RecvError::Lagged(_))) => {
+                        anyhow::bail!("DNS events dropped; capture incomplete")
+                    }
+                    Ok(Err(tokio::sync::broadcast::error::RecvError::Closed)) => break,
+                    Err(_) => break, // timeout
                 }
             }
 

@@ -216,6 +216,34 @@ pub struct DetectedAgent {
 }
 
 impl DetectedAgent {
+    /// Bounded live progress record; full evidence is fetched through result pages.
+    pub fn progress_summary(&self) -> Self {
+        Self {
+            id: self.id.clone(),
+            host: self.host.clone(),
+            ip_address: self.ip_address,
+            port: self.port,
+            transport: self.transport.clone(),
+            agent_type: self.agent_type.clone(),
+            framework: self.framework.clone(),
+            status: self.status,
+            presence_status: self.presence_status,
+            identity_assurance: self.identity_assurance,
+            risk_level: self.risk_level,
+            change_status: self.change_status,
+            confidence_score: self.confidence_score,
+            confidence_level: self.confidence_level.clone(),
+            signal_count: self.signal_count,
+            signals: Vec::new(),
+            agentpin_identity: None,
+            mcp_capabilities: None,
+            tls_fingerprint: None,
+            metadata: serde_json::json!({"evidence_in_result_pages":true}),
+            fingerprint: self.fingerprint.clone(),
+            first_seen: self.first_seen,
+            last_seen: self.last_seen,
+        }
+    }
     pub fn new(host: String, ip_address: IpAddr) -> Self {
         Self::for_endpoint(host, ip_address, None, "network")
     }

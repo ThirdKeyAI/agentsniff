@@ -6,6 +6,19 @@ For API clients, send the token as a Bearer credential. Browsers can use HTTP Ba
 
 ## Endpoints
 
+Credential-free requests must address a literal loopback IP or `localhost` at
+the configured listener port. DNS aliases are rejected to prevent DNS rebinding.
+For a reverse proxy or custom hostname, configure an API token. Browser requests
+must have a same-authority Origin. Dashboard/API responses cannot be framed.
+
+Result endpoints (`/api/scan/results` and `/api/scan/{scan_id}`) accept
+`?limit=100&offset=0` and return at most 100 agents plus
+`pagination: {total, offset, limit, next_offset}`. Follow `next_offset` using the
+returned scan ID to keep pages consistent. `/api/agents` accepts the same page
+parameters and returns an array. History pages are also capped at 100 entries.
+SSE events carry compact progress summaries; fetch result pages for full evidence.
+The dashboard loads all result pages automatically.
+
 | Endpoint | Method | Description |
 |---|---|---|
 | `GET /` | — | Web dashboard |

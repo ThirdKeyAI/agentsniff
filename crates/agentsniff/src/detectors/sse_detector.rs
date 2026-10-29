@@ -80,9 +80,67 @@ struct FlowData {
     timestamps_ns: Vec<u64>,
 }
 
+#[derive(Default)]
+struct FlowSamples {
+    flows: HashMap<FlowKey, FlowData>,
+    count: usize,
+}
+
+impl FlowSamples {
+    fn record(&mut self, key: FlowKey, size: f64, timestamp: u64) -> anyhow::Result<()> {
+        anyhow::ensure!(
+            self.count < 32_768,
+            "SSE total sample budget exceeded; capture incomplete"
+        );
+        anyhow::ensure!(
+            self.flows.contains_key(&key) || self.flows.len() < 1024,
+            "SSE flow budget exceeded; capture incomplete"
+        );
+        let flow = self.flows.entry(key).or_default();
+        anyhow::ensure!(
+            flow.sizes.len() < 2048,
+            "SSE per-flow sample budget exceeded; capture incomplete"
+        );
+        flow.sizes.push(size);
+        flow.timestamps_ns.push(timestamp);
+        self.count += 1;
+        Ok(())
+    }
+}
+
 // ---------------------------------------------------------------------------
 // SSE Detector
 // ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod budget_tests {
+    use super::*;
+    fn key(n: u32) -> FlowKey {
+        FlowKey {
+            src: std::net::Ipv4Addr::from(n).into(),
+            dst: "127.0.0.1".parse().unwrap(),
+        }
+    }
+    #[test]
+    fn bounds_individual_flows_and_aggregate_samples() {
+        let mut samples = FlowSamples::default();
+        for i in 0..2048 {
+            samples.record(key(1), 100.0, i).unwrap();
+        }
+        assert!(samples.record(key(1), 100.0, 2048).is_err());
+        let mut samples = FlowSamples::default();
+        for i in 0..1024 {
+            samples.record(key(i), 100.0, 1).unwrap();
+        }
+        assert!(samples.record(key(1024), 100.0, 1).is_err());
+        let mut samples = FlowSamples::default();
+        for i in 0..32768 {
+            samples.record(key(i % 32), 100.0, i as u64).unwrap();
+        }
+        assert!(samples.record(key(0), 100.0, 1).is_err());
+        assert_eq!(samples.count, 32768);
+    }
+}
 
 /// SSE/LLM streaming detector.
 ///
@@ -148,7 +206,7 @@ impl SseDetector {
         let target_set: HashSet<IpAddr> = targets.iter().copied().collect();
         let llm_ips = self.resolve_llm_ips().await;
 
-        let mut flows: HashMap<FlowKey, FlowData> = HashMap::new();
+        let mut samples = FlowSamples::default();
 
         loop {
             match tokio::time::timeout_at(deadline, rx.recv()).await {
@@ -168,16 +226,17 @@ impl SseDetector {
                         src: src_ip,
                         dst: dst_ip,
                     };
-                    let flow = flows.entry(key).or_default();
-                    flow.sizes.push(event.pkt_len as f64);
-                    flow.timestamps_ns.push(event.timestamp_ns);
+                    samples.record(key, event.pkt_len as f64, event.timestamp_ns)?;
                 }
-                Ok(Err(_)) => break,
+                Ok(Err(tokio::sync::broadcast::error::RecvError::Lagged(_))) => {
+                    anyhow::bail!("SSE events dropped; capture incomplete")
+                }
+                Ok(Err(tokio::sync::broadcast::error::RecvError::Closed)) => break,
                 Err(_) => break, // timeout
             }
         }
 
-        self.analyze_flows(&flows)
+        self.analyze_flows(&samples.flows)
     }
 
     /// Raw socket fallback: capture packets for 30 seconds.
@@ -193,10 +252,12 @@ impl SseDetector {
 
         let duration = std::time::Duration::from_secs(30);
         let start = std::time::Instant::now();
-        let mut flows: HashMap<FlowKey, FlowData> = HashMap::new();
+        let mut samples = FlowSamples::default();
         let mut buf = [0u8; 65535];
 
         while start.elapsed() < duration {
+            // A busy raw socket must still yield for cancellation.
+            tokio::task::yield_now().await;
             // SAFETY: `buf` is a fully-initialized [u8; 65535] on the stack.
             // Casting to [MaybeUninit<u8>] is sound because MaybeUninit<u8> has
             // the same size and alignment as u8, and initialized memory is valid
@@ -253,17 +314,15 @@ impl SseDetector {
                 src: src_ip,
                 dst: dst_ip,
             };
-            let flow = flows.entry(key).or_default();
-            flow.sizes.push(payload_len as f64);
             // Use monotonic clock since raw sockets don't give us kernel timestamps
             let ts = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap_or_default()
                 .as_nanos() as u64;
-            flow.timestamps_ns.push(ts);
+            samples.record(key, payload_len as f64, ts)?;
         }
 
-        self.analyze_flows(&flows)
+        self.analyze_flows(&samples.flows)
     }
 
     /// Analyze collected flows and emit signals.

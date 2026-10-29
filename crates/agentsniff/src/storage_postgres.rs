@@ -4,10 +4,11 @@ use std::time::Duration;
 
 use anyhow::{Context, Result};
 use async_trait::async_trait;
-use serde::Serialize;
 use sqlx::postgres::PgPoolOptions;
 use sqlx::types::Json;
 use sqlx::{PgPool, Postgres, Row, Transaction};
+use std::io::{Seek, Write};
+use tokio_stream::StreamExt;
 
 use crate::models::{DetectedAgent, DetectorType, ScanDiff, ScanResult};
 use crate::storage::{ScanSummary, StorageBackend, StorageBackup};
@@ -45,7 +46,7 @@ impl PostgresBackend {
     }
 
     async fn load_scan(&self, scan_id: &str) -> Result<Option<ScanResult>> {
-        let row = sqlx::query("SELECT result FROM scans WHERE scan_id = $1")
+        let row = sqlx::query("SELECT CASE WHEN octet_length(result::text) <= 16777216 THEN result END AS result FROM scans WHERE scan_id = $1")
             .bind(scan_id)
             .fetch_optional(&self.pool)
             .await?;
@@ -56,7 +57,7 @@ impl PostgresBackend {
         tx: &mut Transaction<'_, Postgres>,
         scan_id: &str,
     ) -> Result<Option<ScanResult>> {
-        let row = sqlx::query("SELECT result FROM scans WHERE scan_id = $1 FOR UPDATE")
+        let row = sqlx::query("SELECT CASE WHEN octet_length(result::text) <= 16777216 THEN result END AS result FROM scans WHERE scan_id = $1 FOR UPDATE")
             .bind(scan_id)
             .fetch_optional(&mut **tx)
             .await?;
@@ -67,10 +68,17 @@ impl PostgresBackend {
 #[async_trait]
 impl StorageBackend for PostgresBackend {
     async fn save_scan(&self, result: &ScanResult) -> Result<()> {
-        upsert_scan(&self.pool, result).await
+        let mut tx = self.pool.begin().await?;
+        sqlx::query("LOCK TABLE scans IN SHARE ROW EXCLUSIVE MODE")
+            .execute(&mut *tx)
+            .await?;
+        upsert_scan(&mut tx, result).await?;
+        tx.commit().await?;
+        Ok(())
     }
 
     async fn list_scans(&self, limit: u32, offset: u32) -> Result<Vec<ScanSummary>> {
+        let limit = limit.clamp(1, crate::limits::MAX_HISTORY_PAGE);
         let rows = sqlx::query(
             "SELECT scan_id, scope_id, target_network, started_at, completed_at,
                     agent_count, status, detectors_run, diff
@@ -123,6 +131,9 @@ impl StorageBackend for PostgresBackend {
 
     async fn save_agent(&self, scan_id: &str, agent: &DetectedAgent) -> Result<()> {
         let mut tx = self.pool.begin().await?;
+        sqlx::query("LOCK TABLE scans IN SHARE ROW EXCLUSIVE MODE")
+            .execute(&mut *tx)
+            .await?;
         let mut scan = Self::load_scan_for_update(&mut tx, scan_id)
             .await?
             .ok_or_else(|| anyhow::anyhow!("scan '{scan_id}' does not exist"))?;
@@ -131,7 +142,7 @@ impl StorageBackend for PostgresBackend {
         } else {
             scan.agents.push(agent.clone());
         }
-        upsert_scan(&mut *tx, &scan).await?;
+        upsert_scan(&mut tx, &scan).await?;
         tx.commit().await?;
         Ok(())
     }
@@ -150,7 +161,7 @@ impl StorageBackend for PostgresBackend {
 
     async fn get_latest_scan(&self, scope_id: &str) -> Result<Option<ScanResult>> {
         let row = sqlx::query(
-            "SELECT result FROM scans
+            "SELECT CASE WHEN octet_length(result::text) <= 16777216 THEN result END AS result FROM scans
              WHERE scope_id = $1 AND status = 'completed'
              ORDER BY started_at DESC, scan_id DESC
              LIMIT 1",
@@ -162,23 +173,39 @@ impl StorageBackend for PostgresBackend {
     }
 
     async fn backup(&self) -> Result<StorageBackup> {
-        let rows = sqlx::query("SELECT result FROM scans ORDER BY started_at, scan_id")
-            .fetch_all(&self.pool)
-            .await?;
-        let scans = rows
-            .into_iter()
-            .map(|row| row.try_get::<Json<ScanResult>, _>("result").map(|v| v.0))
-            .collect::<std::result::Result<Vec<_>, _>>()?;
-        let export = PortableBackup {
-            format: "agentsniff-scan-export-v1",
-            backend: "postgres",
-            created_at: chrono::Utc::now().to_rfc3339(),
-            scans,
-        };
+        let mut file = tempfile::tempfile()?;
+        write!(file, "{{\"format\":\"agentsniff-scan-export-v1\",\"backend\":\"postgres\",\"created_at\":{},\"scans\":[",
+            serde_json::to_string(&chrono::Utc::now().to_rfc3339())?)?;
+        // Export legacy oversized rows too, without materializing a whole row
+        // in this process. JSONB::text is valid JSON; byte chunks concatenate
+        // to the original UTF-8 without reserializing the row for each chunk.
+        // One statement provides a consistent snapshot.
+        let mut rows = sqlx::query(
+            "WITH payloads AS MATERIALIZED (
+                SELECT started_at, scan_id, convert_to(result::text, 'UTF8') AS payload FROM scans)
+             SELECT part, substring(payload FROM part FOR 65536) AS chunk
+             FROM payloads
+             CROSS JOIN LATERAL generate_series(1, octet_length(payload), 65536) AS part
+             ORDER BY started_at, scan_id, part",
+        )
+        .fetch(&self.pool);
+        let mut first = true;
+        while let Some(row) = rows.next().await {
+            let row = row?;
+            if row.try_get::<i32, _>("part")? == 1 {
+                if !first {
+                    file.write_all(b",")?;
+                }
+                first = false;
+            }
+            file.write_all(&row.try_get::<Vec<u8>, _>("chunk")?)?;
+        }
+        file.write_all(b"]}")?;
+        file.rewind()?;
         Ok(StorageBackup {
             filename: "agentsniff-backup.json".to_string(),
             content_type: "application/json".to_string(),
-            data: serde_json::to_vec_pretty(&export)?,
+            file,
         })
     }
 
@@ -186,14 +213,6 @@ impl StorageBackend for PostgresBackend {
         sqlx::query("DELETE FROM scans").execute(&self.pool).await?;
         Ok(())
     }
-}
-
-#[derive(Serialize)]
-struct PortableBackup {
-    format: &'static str,
-    backend: &'static str,
-    created_at: String,
-    scans: Vec<ScanResult>,
 }
 
 fn decode_scan(row: Option<sqlx::postgres::PgRow>) -> Result<Option<ScanResult>> {
@@ -205,10 +224,16 @@ fn decode_scan(row: Option<sqlx::postgres::PgRow>) -> Result<Option<ScanResult>>
     .transpose()
 }
 
-async fn upsert_scan<'e, E>(executor: E, result: &ScanResult) -> Result<()>
-where
-    E: sqlx::Executor<'e, Database = Postgres>,
-{
+async fn upsert_scan(tx: &mut Transaction<'_, Postgres>, result: &ScanResult) -> Result<()> {
+    let bytes = crate::limits::serialized_size(result, crate::limits::MAX_SCAN_BYTES)?;
+    let row = sqlx::query("SELECT COUNT(*) AS count, COALESCE(SUM(octet_length(result::text)), 0)::bigint AS bytes FROM scans WHERE scan_id != $1")
+        .bind(&result.scan_id).fetch_one(&mut **tx).await?;
+    anyhow::ensure!(
+        row.try_get::<i64, _>("count")? < crate::storage::MAX_HISTORY_SCANS as i64
+            && row.try_get::<i64, _>("bytes")?.saturating_add(bytes as i64)
+                <= crate::storage::MAX_HISTORY_BYTES as i64,
+        "scan history quota reached; export/reset history before writing more scans"
+    );
     let detectors_run = result
         .detectors_run
         .iter()
@@ -242,8 +267,22 @@ where
     .bind(Json(&result.errors))
     .bind(Json(&result.diff))
     .bind(Json(result))
-    .execute(executor)
+    .execute(&mut **tx)
     .await?;
+    // JSONB text includes whitespace absent from serde's compact encoding.
+    // Check the representation used by read guards/quotas before committing.
+    let stored_bytes: i64 = sqlx::query_scalar(
+        "SELECT octet_length(result::text)::bigint FROM scans WHERE scan_id = $1",
+    )
+    .bind(&result.scan_id)
+    .fetch_one(&mut **tx)
+    .await?;
+    anyhow::ensure!(
+        stored_bytes <= crate::limits::MAX_SCAN_BYTES as i64
+            && row.try_get::<i64, _>("bytes")?.saturating_add(stored_bytes)
+                <= crate::storage::MAX_HISTORY_BYTES as i64,
+        "stored scan exceeds history evidence budget"
+    );
     Ok(())
 }
 

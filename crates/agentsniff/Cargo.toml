@@ -41,23 +41,25 @@ agentsniff-common = { path = "../agentsniff-common", version = "2.4.0", features
 tokio = { version = "1", features = ["full"] }
 clap = { version = "4", features = ["derive"] }
 anyhow = "1"
-agentpin = "0.3.0"
+agentpin = "0.3.1"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 chrono = { version = "0.4", features = ["serde"] }
 uuid = { version = "1", features = ["v4"] }
-serde_yaml = "0.9"
+serde-saphyr = { version = "2.0", default-features = false, features = ["serialize", "deserialize"] }
 async-trait = "0.1"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
-rusqlite = { version = "0.39", features = ["bundled"] }
+rusqlite = { version = "0.39", features = ["bundled", "backup"] }
 sqlx = { version = "0.9", default-features = false, features = ["runtime-tokio", "tls-rustls", "postgres", "json"] }
 redis = { version = "1.7", default-features = false, features = ["tokio-rustls-comp", "tls-rustls-webpki-roots", "connection-manager"] }
-tokio-util = "0.7"
+tokio-util = { version = "0.7", features = ["io"] }
+tempfile = "3"
+libc = "0.2"
 axum = "0.7"
 tokio-stream = { version = "0.1", features = ["sync"] }
-p256 = { version = "0.13", features = ["ecdsa"] }
+p256 = { version = "0.14", features = ["ecdsa"] }
 sha2 = "0.10"
 base64 = "0.22"
 rust-embed = { version = "8", features = ["include-exclude"] }

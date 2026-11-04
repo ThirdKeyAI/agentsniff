@@ -25,6 +25,7 @@ crates/agentsniff/
     fusion.rs
     storage*.rs
     notifier.rs
+    gate/            # inbound forward-auth agent gate
     detectors/
     integrations/
     signatures/
@@ -46,6 +47,7 @@ docs/
 - SSE is read-only; scan creation is a JSON POST.
 - Network-derived strings must be inert in HTML and terminal output.
 - Enforce target and response-size budgets before allocation.
+- The gate never fetches issuer-controlled URLs (Web Bot Auth key directories); keys are operator-pinned. Forwarded headers count only from trusted proxies. The gate defaults to monitor mode and loopback.
 
 ## Commands
 

@@ -150,6 +150,7 @@ All configuration options can be set via environment variables with the `AGENTSN
 ```bash
 export AGENTSNIFF_TARGET_NETWORK="10.0.0.0/16"
 export AGENTSNIFF_API_TOKEN="$(openssl rand -hex 32)"
+export AGENTSNIFF_GATE_TOKEN="$(openssl rand -hex 32)"   # agentsniff gate
 export AGENTSNIFF_AGENTPIN_TRUST_BUNDLE="/etc/agentsniff/agentpin-trust-bundle.json"
 export AGENTSNIFF_AGENTPIN_PIN_STORE="/var/lib/agentsniff/agentpin-pins.json"
 export AGENTSNIFF_AGENTPIN_AUDIENCE="verifier.example"

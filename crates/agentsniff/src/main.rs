@@ -19,6 +19,8 @@ use agentsniff::agentpin::{
 use agentsniff::baseline::apply_scan_diff;
 use agentsniff::config::ScanConfig;
 use agentsniff::ebpf::try_load_ebpf;
+use agentsniff::gate::server::run_gate;
+use agentsniff::gate::{GateEngine, GateMode};
 use agentsniff::models::ScanResult;
 use agentsniff::notifier::Notifier;
 use agentsniff::sarif_export::to_sarif;
@@ -163,6 +165,41 @@ enum Cli {
         /// Optional path to a YAML config file
         #[arg(long)]
         config: Option<String>,
+
+        /// Enable verbose output
+        #[arg(long, short = 'v')]
+        verbose: bool,
+    },
+    /// Run the inbound agent gate: a forward-auth endpoint for your reverse proxy
+    ///
+    /// nginx auth_request, Envoy ext_authz, Traefik ForwardAuth and Caddy
+    /// forward_auth call /check per request; the gate answers allow (200),
+    /// challenge (401) or block (403). Starts in monitor mode, which logs what
+    /// it would do and always allows, unless --enforce is given.
+    Gate {
+        /// Port to listen on (default from config: 9091)
+        #[arg(long)]
+        port: Option<u16>,
+
+        /// Host address to bind to (default from config: 127.0.0.1)
+        #[arg(long)]
+        host: Option<String>,
+
+        /// Optional YAML config; settings live under `gate:`
+        #[arg(long)]
+        config: Option<String>,
+
+        /// Enforce decisions instead of only logging them
+        #[arg(long, conflicts_with = "monitor")]
+        enforce: bool,
+
+        /// Log decisions but always allow (overrides gate.mode: enforce)
+        #[arg(long)]
+        monitor: bool,
+
+        /// Decision log: "-" for stdout, "off", or a file path
+        #[arg(long = "decision-log")]
+        decision_log: Option<String>,
 
         /// Enable verbose output
         #[arg(long, short = 'v')]
@@ -449,6 +486,71 @@ async fn main() -> anyhow::Result<()> {
             );
 
             run_server(scan_config, ebpf_channels).await?;
+        }
+
+        Cli::Gate {
+            port,
+            host,
+            config,
+            enforce,
+            monitor,
+            decision_log,
+            verbose,
+        } => {
+            let scan_config = if let Some(path) = config {
+                ScanConfig::from_yaml_file(&path)?
+            } else {
+                ScanConfig::default()
+            };
+            let scan_config = ScanConfig::from_env_with_defaults(scan_config)?;
+            let mut gate = scan_config.gate;
+            if let Some(p) = port {
+                gate.port = p;
+            }
+            if let Some(h) = host {
+                gate.host = h;
+            }
+            if enforce {
+                gate.mode = GateMode::Enforce;
+            }
+            if monitor {
+                gate.mode = GateMode::Monitor;
+            }
+            if let Some(d) = decision_log {
+                gate.decision_log = d;
+            }
+            // Tracing writes to stderr; decision lines own stdout.
+            init_logging(verbose, false, &scan_config.log_file)?;
+
+            let signatures = SignatureData::load_with_overlay();
+            let engine = GateEngine::from_signatures(gate, &signatures)?;
+            let gate = engine.config();
+            eprintln!("agentsniff v{} gate", env!("CARGO_PKG_VERSION"));
+            eprintln!(
+                "  Mode:                 {}",
+                match gate.mode {
+                    GateMode::Monitor => "monitor (logs, always allows)",
+                    GateMode::Enforce => "enforce",
+                }
+            );
+            eprintln!("  Listening:            {}:{}", gate.host, gate.port);
+            eprintln!("  Catalog agents:       {}", engine.catalog().len());
+            eprintln!("  Pinned agent keys:    {}", engine.trusted_key_count());
+            eprintln!(
+                "  Rate limits:          {}",
+                if gate.rate.enabled {
+                    format!(
+                        "{}/{}ms burst, {}/{}s sustained",
+                        gate.rate.burst_limit,
+                        gate.rate.burst_window_ms,
+                        gate.rate.sustained_limit,
+                        gate.rate.sustained_window_secs
+                    )
+                } else {
+                    "disabled".to_string()
+                }
+            );
+            run_gate(engine).await?;
         }
 
         Cli::UpdateSignatures { url } => {

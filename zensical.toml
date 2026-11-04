@@ -13,6 +13,7 @@ nav = [
   {"Detectors" = "detectors.md"},
   {"CLI Reference" = "cli-reference.md"},
   {"AgentPin Verification" = "agentpin-verification.md"},
+  {"Agent Gate" = "gate.md"},
   {"Dashboard" = "dashboard.md"},
   {"Configuration" = "configuration.md"},
   {"Alerting" = "alerting.md"},

@@ -966,3 +966,25 @@ async fn read_endpoints_refuse_rebound_hosts_without_a_token() {
         "/check is proxied with the site host"
     );
 }
+
+#[test]
+fn unsigned_claim_cannot_lift_a_user_agent_block() {
+    let mut config = enforce();
+    config.default_agent_action = GateAction::Allow;
+    config
+        .agent_actions
+        .insert("meta_muse".into(), GateAction::Block);
+    let gate = engine(config);
+    let f = facts(
+        "198.51.100.9",
+        headers(&[
+            ("user-agent", "muse-agent/1.0"),
+            ("signature-agent", "\"https://unknown.example\""),
+        ]),
+        None,
+    );
+    let decision = decide(&gate, &f);
+    assert_eq!(decision.action, GateAction::Block);
+    assert_eq!(decision.agent.as_ref().unwrap().id, "meta_muse");
+    assert!(signal_ids(&decision).contains(&"known_agent_user_agent"));
+}

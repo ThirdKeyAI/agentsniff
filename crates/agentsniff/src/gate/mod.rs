@@ -504,24 +504,32 @@ impl GateEngine {
             }
         }
 
-        // 3. Self-declared user agents.
-        if agent.is_none() {
+        // 3. Self-declared user agents. An unverified claim does not switch
+        // this off: the stricter of the two policies applies, so an unsigned
+        // Signature-Agent cannot lift a block on the agent the user agent names.
+        let verified = agent
+            .as_ref()
+            .is_some_and(|a| a.assurance == Assurance::TrustedVerified);
+        if !verified {
             if let Some((entry, token)) = self.catalog.match_user_agent(user_agent) {
                 signals.push(GateSignal {
                     id: "known_agent_user_agent",
                     weight: 0.0,
                     detail: format!("user agent contains {token}"),
                 });
-                agent = Some(self.attribution(&entry.id, Assurance::SelfDeclared));
-                agent_action = Some(self.policy_for(Some(entry), &entry.id));
+                let ua_action = self.policy_for(Some(entry), &entry.id);
+                agent_action = Some(agent_action.map_or(ua_action, |a| a.max(ua_action)));
+                if agent
+                    .as_ref()
+                    .is_none_or(|a| a.id == UNIDENTIFIED_SIGNED_AGENT)
+                {
+                    agent = Some(self.attribution(&entry.id, Assurance::SelfDeclared));
+                }
             }
         }
 
         // 4. Behavior and origin, for everything short of verified identity.
         // A claim cannot switch these checks off.
-        let verified = agent
-            .as_ref()
-            .is_some_and(|a| a.assurance == Assurance::TrustedVerified);
         let mut heuristic: Vec<GateSignal> = Vec::new();
         if !verified {
             let mut suspected = None;

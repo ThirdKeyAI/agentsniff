@@ -59,7 +59,7 @@ redis = { version = "1.7", default-features = false, features = ["tokio-rustls-c
 tokio-util = { version = "0.7", features = ["io"] }
 tempfile = "3"
 libc = "0.2"
-axum = "0.7"
+axum = "0.8"
 tokio-stream = { version = "0.1", features = ["sync"] }
 p256 = { version = "0.14", features = ["ecdsa"] }
 sha2 = "0.10"

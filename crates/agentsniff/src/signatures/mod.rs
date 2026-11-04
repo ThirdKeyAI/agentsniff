@@ -42,6 +42,9 @@ pub struct SignatureData {
     pub tls_fingerprints: serde_json::Value,
     pub mcp_methods: serde_json::Value,
     pub mcp_remote_domains: serde_json::Value,
+    /// Known AI-agent HTTP clients and request-gate heuristics, used by
+    /// `agentsniff gate`.
+    pub agent_clients: serde_json::Value,
     pub verification_status: HashMap<String, VerificationStatus>,
 }
 
@@ -71,6 +74,7 @@ pub(crate) const SIGNATURE_FILES: &[(&str, &str, &str)] = &[
         "mcp_remote_domains.json",
         "mcp_remote_domains.sig",
     ),
+    ("agent_clients", "agent_clients.json", "agent_clients.sig"),
 ];
 
 /// Canonicalize a JSON value by sorting object keys recursively and
@@ -365,6 +369,10 @@ impl SignatureData {
             .remove("mcp_remote_domains")
             .unwrap_or_else(|| serde_json::json!({"entries": []}));
 
+        let agent_clients = data_map
+            .remove("agent_clients")
+            .unwrap_or(serde_json::Value::Object(serde_json::Map::new()));
+
         let frameworks = data_map
             .remove("frameworks")
             .unwrap_or(serde_json::Value::Object(serde_json::Map::new()));
@@ -406,6 +414,7 @@ impl SignatureData {
             tls_fingerprints,
             mcp_methods,
             mcp_remote_domains,
+            agent_clients,
             verification_status,
         }
     }

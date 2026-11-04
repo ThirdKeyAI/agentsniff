@@ -39,6 +39,7 @@ CLI / loopback dashboard
 | `crates/agentsniff/src/detectors/` | Nine detector modules |
 | `crates/agentsniff/src/integrations/` | Zeek, service enrichment, Nmap XML import |
 | `crates/agentsniff/src/signatures/` | Pinned-key dataset verification and updates |
+| `crates/agentsniff/src/gate/` | Inbound forward-auth agent gate: catalog matching, rate limits, behavior scoring, Web Bot Auth |
 | `crates/agentsniff/assets/` | Embedded dashboard and signed data |
 | `crates/agentsniff-common/` | Shared eBPF/user-space types |
 
@@ -47,6 +48,10 @@ CLI / loopback dashboard
 Scanned hosts and all response content are untrusted. Detection datasets cross a distribution boundary and are accepted only under the packaged public key. The management API binds loopback by default, disables cross-origin access, and requires JSON POST for scan creation. Non-loopback binding requires a strong API token that authenticates every non-health route; remote deployments must add TLS and may use a reverse proxy for additional authorization and rate limiting.
 
 Passive capture, host networking, eBPF, and service enrichment expand local privilege and resource boundaries. The default Compose service omits those privileges, while the passive profile opts in explicitly.
+
+## Inbound gate
+
+`agentsniff gate` is a separate process from the scanner and dashboard. Proxies call it per request; it holds no persistent state beyond bounded in-memory rate counters, a nonce cache, and a ring of recent decisions. Forwarded client headers are honored only from configured trusted proxies. Web Bot Auth keys are operator-pinned; `Signature-Agent` URLs are matched against the catalog but never fetched. Attribution uses the same assurance split as the scanner: `trusted_verified` for a verified signature, `self_declared` for a user-agent or `Signature-Agent` claim, and `suspected` for behavior or network inference.
 
 ## Identity semantics
 

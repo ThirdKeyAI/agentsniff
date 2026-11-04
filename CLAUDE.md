@@ -25,14 +25,17 @@ crates/agentsniff/
     fusion.rs
     storage*.rs
     notifier.rs
-    gate/            # inbound forward-auth agent gate
+    gate/            # forward-auth server; engine lives in agentsniff-gate
     detectors/
     integrations/
-    signatures/
+    signatures/      # dataset updater; data + verifier live in agentsniff-signatures
   assets/
     index.html
-    signatures/
   tests/
+crates/agentsniff-signatures/
+  src/lib.rs
+  assets/signatures/   # signed datasets + signing_key.pub
+crates/agentsniff-gate/
 crates/agentsniff-common/
 scripts/
 docs/

@@ -102,6 +102,7 @@ agentsniff <command> [options]
 Commands:
   scan                 Run a network scan
   serve                Start the dashboard and API
+  gate                 Run the inbound agent gate (forward-auth)
   verify-agentpin      Verify a presented AgentPin credential
   init-config          Generate a configuration file
   update-signatures    Download a complete verified signature set
@@ -128,6 +129,22 @@ A scan is limited to 65,536 resolved targets. Larger ranges are rejected before 
 `POST /api/agentpin/verify` and as the `verify_agentpin_credential` tool on the
 `POST /mcp` endpoint. The operator configures the trust bundle, expected
 audience, and durable pin store; callers submit only the credential.
+
+## Inbound agent gate
+
+`agentsniff gate` blocks AI agents coming *in* to a site. It runs as a forward-auth endpoint for nginx `auth_request`, Envoy `ext_authz`, Traefik ForwardAuth, or Caddy `forward_auth`, and answers allow, challenge, or block per request.
+
+- **Self-identifying agents** (xAI Grok Bot, ChatGPT agent, Claude-User, Perplexity-User, and others) are matched by user agent or `Signature-Agent` from the agent catalog and blocked by default.
+- **Rapid traffic** trips per-client burst and sustained limits and lands in a penalty box.
+- **Agents that do not identify themselves** are scored from behavior: browser user agents without browser headers, stale browser versions, hosting and proxy networks, the networks agents run on (Meta Muse from Meta's AS32934, when your edge supplies the ASN), and TLS fingerprints that contradict the user agent. These catch common patterns, not every agent: one driving a real browser from a residential address at human pace still passes.
+- **Verified agents** can be admitted with Web Bot Auth signatures checked against keys you pin. The gate never fetches agent key directories.
+
+```bash
+agentsniff gate             # monitor mode: logs decisions, always allows
+agentsniff gate --enforce
+```
+
+See [Agent gate](docs/gate.md) for proxy configurations, signals, and tuning.
 
 ## Dashboard security
 

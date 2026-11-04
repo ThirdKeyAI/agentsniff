@@ -87,6 +87,16 @@ agentsniff serve [--host 127.0.0.1] [--port 9090]
 
 Loopback is the credential-free default. Non-loopback binding is refused unless `AGENTSNIFF_API_TOKEN` contains at least 32 bytes. The token protects all non-health routes through HTTP Basic authentication (username `agentsniff`) or an API Bearer token; remote deployments must use TLS.
 
+## gate
+
+```bash
+agentsniff gate [--host 127.0.0.1] [--port 9091] [--config agentsniff.yaml] [--enforce | --monitor] [--decision-log PATH]
+```
+
+Runs the inbound agent gate, a forward-auth endpoint for nginx `auth_request`, Envoy `ext_authz`, Traefik ForwardAuth, and Caddy `forward_auth`. `/check` answers `200` (allow), `401` (challenge), or `403` (block). Both statuses are configurable, but nginx `auth_request` accepts only 401 and 403.
+
+The gate starts in monitor mode, logging decisions and always allowing, unless `--enforce` or `gate.mode: enforce` is set. Decisions are written as JSON lines to stdout, or to `--decision-log PATH`; `off` disables the log. Non-loopback binding requires `AGENTSNIFF_GATE_TOKEN` of at least 32 bytes. The gate refuses to start unless the signed `agent_clients` and `tls_fingerprints` datasets verify. See [Agent gate](gate.md).
+
 ## verify-agentpin
 
 ```bash

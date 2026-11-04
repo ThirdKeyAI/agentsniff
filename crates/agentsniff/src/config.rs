@@ -134,6 +134,10 @@ pub struct ScanConfig {
     /// port instead of its own port list. Never read from YAML.
     #[serde(skip)]
     pub probe_port: Option<u16>,
+
+    // ── Inbound agent gate ───────────────────────────────────────────
+    /// Settings for `agentsniff gate`, the forward-auth agent gate.
+    pub gate: crate::gate::GateConfig,
 }
 
 impl Default for ScanConfig {
@@ -223,6 +227,7 @@ impl Default for ScanConfig {
             enrich_timeout: 300,
             nmap_xml_import: String::new(),
             probe_port: None,
+            gate: crate::gate::GateConfig::default(),
         }
     }
 }
@@ -311,6 +316,12 @@ impl ScanConfig {
                     {
                         *current = serde_json::Value::String(raw);
                     }
+                }
+                continue;
+            }
+            if key == "gate" {
+                if let Some(raw) = lookup("AGENTSNIFF_GATE_TOKEN") {
+                    current["token"] = serde_json::Value::String(raw);
                 }
                 continue;
             }
@@ -411,6 +422,16 @@ mod environment_tests {
         assert_eq!(config.target_network, "10.0.0.1/32");
         assert_eq!(config.storage.backend, "postgres");
         assert_eq!(config.target_hosts, ["127.0.0.1", "::1"]);
+    }
+
+    #[test]
+    fn gate_token_comes_from_the_environment() {
+        let token = "0123456789abcdef0123456789abcdef";
+        let config = ScanConfig::apply_env(ScanConfig::default(), |key| {
+            (key == "AGENTSNIFF_GATE_TOKEN").then(|| token.into())
+        })
+        .unwrap();
+        assert_eq!(config.gate.token, token);
     }
 
     #[test]
@@ -567,6 +588,44 @@ dns_monitor_duration: 60      # seconds to monitor DNS
 # smtp_use_tls: true
 # smtp_from: ""
 # smtp_to: []
+
+# ── Inbound agent gate (`agentsniff gate`) ──────────────────────────
+# Forward-auth endpoint for nginx auth_request, Envoy ext_authz, Traefik
+# ForwardAuth and Caddy forward_auth. See docs/gate.md.
+# gate:
+#   mode: monitor             # monitor (log only) | enforce
+#   host: "127.0.0.1"
+#   port: 9091
+#   token: ""                 # required for non-loopback; prefer AGENTSNIFF_GATE_TOKEN
+#   trusted_proxies: ["127.0.0.1/32", "::1/128"]
+#   client_ip_header: "x-forwarded-for"
+#   ja4_header: "x-ja4"       # set by your edge, if it computes JA4
+#   asn_header: "x-asn"       # set by your edge, if it knows the origin ASN
+#   default_agent_action: block
+#   kind_actions: {}          # cloud_browser_agent | user_triggered_agent | crawler -> action
+#   agent_actions: {}         # e.g. meta_muse: block
+#   allow_verified_agents: [] # ids allowed only with a verified Web Bot Auth signature
+#   challenge_threshold: 0.5
+#   block_threshold: 0.8
+#   stale_browser_lag: 6
+#   rate:
+#     key: ip                 # ip | ip_user_agent
+#     ipv6_prefix: 64         # IPv6 clients are counted per /64
+#     burst_window_ms: 1000
+#     burst_limit: 20
+#     sustained_window_secs: 60
+#     sustained_limit: 300
+#     action: block
+#     penalty_secs: 300
+#   web_bot_auth:
+#     trusted_keys: []        # pinned Ed25519 JWKs; the gate never fetches key directories
+#     require_nonce: true
+#     max_lifetime_secs: 3600
+#     authorities: []         # e.g. ["bank.example"]; empty accepts any host
+#   challenge_status: 401     # keep 401/403 with nginx auth_request
+#   block_status: 403
+#   deny_details: false       # score/agent/reason headers on denials (proxies relay them to clients)
+#   decision_log: ""          # "" or "-" = stdout, "off", or a file path
 "#
     .to_string()
 }

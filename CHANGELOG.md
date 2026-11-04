@@ -21,6 +21,29 @@ Release maintainers should configure the GitHub `release` environment with
 required reviewers and protected release-tag rules. Dispatch releases from the
 matching tag ref; branch-dispatched releases are rejected.
 
+### Added
+
+- `agentsniff gate`: an inbound agent gate for reverse proxies (nginx
+  `auth_request`, Envoy `ext_authz`, Traefik ForwardAuth, Caddy
+  `forward_auth`). Per request it answers allow (200), challenge (401) or block
+  (403), and starts in monitor mode. It blocks agents that name themselves in
+  their user agent or `Signature-Agent` header (such as xAI Grok Bot, ChatGPT
+  agent, Claude-User and Perplexity-User); enforces per-client burst and
+  sustained rate limits with a penalty box, counting IPv6 clients per /64;
+  and scores every unverified client from behavior (browser user agents
+  without browser headers, stale browser versions, hosting and proxy ASNs,
+  agent operator networks such as Meta's for Muse, JA4/user-agent
+  mismatches). A claimed agent gets the stricter of its policy and its score.
+  Web Bot Auth (RFC 9421, Ed25519) signatures verified against
+  operator-pinned keys, with a required nonce, can admit named agents; the
+  gate never fetches key directories. Denials carry no scoring detail unless
+  `deny_details` is set. See `docs/gate.md`.
+- New signed dataset `agent_clients.json`. It is part of the complete
+  signature set, so `update-signatures` and runtime overlays now require it.
+  A runtime overlay in `~/.agentsniff/signatures` from an earlier release
+  lacks the file; AgentSniff warns and uses the embedded set until you run
+  `agentsniff update-signatures`.
+
 ## 2.4.0
 
 ### Added

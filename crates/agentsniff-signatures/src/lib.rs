@@ -3,7 +3,6 @@
 //! Loads detection signatures from embedded assets or runtime directories,
 //! and verifies their ECDSA P-256 signatures to detect tampering.
 
-
 use std::collections::HashMap;
 use std::path::Path;
 

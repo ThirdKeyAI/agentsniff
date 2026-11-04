@@ -1,0 +1,23 @@
+[package]
+name = "agentsniff-signatures"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "Signed detection datasets for AgentSniff: embedded, verified against a pinned ECDSA P-256 key, with runtime overlay loading."
+repository = "https://github.com/ThirdKeyAI/agentsniff"
+homepage = "https://agentsniff.org"
+documentation = "https://docs.agentsniff.org/"
+readme = "README.md"
+keywords = ["agentsniff", "ai", "security", "signatures"]
+categories = ["network-programming"]
+include = ["src/**/*", "assets/**/*", "README.md", "Cargo.toml"]
+
+[dependencies]
+anyhow = "1"
+base64 = "0.23"
+p256 = { version = "0.14", features = ["ecdsa"] }
+rust-embed = { version = "8", features = ["include-exclude"] }
+serde_json = "1"
+sha2 = "0.10"
+tracing = "0.1"

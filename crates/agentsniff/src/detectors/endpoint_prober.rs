@@ -251,6 +251,7 @@ pub fn match_request_user_agent(frameworks: &Value, user_agent: &str) -> Vec<Str
 
 /// Endpoint prober detector that fingerprints AI agent frameworks via HTTP probing.
 pub struct EndpointProberDetector {
+    budget: std::sync::Arc<crate::limits::EvidenceBudget>,
     timeout: Duration,
     concurrency: usize,
     client: reqwest::Client,
@@ -272,6 +273,7 @@ impl EndpointProberDetector {
         let frameworks = Self::load_frameworks(config);
 
         Self {
+            budget: config.evidence_budget.clone(),
             timeout,
             concurrency: config.http_concurrency,
             client,
@@ -755,11 +757,11 @@ impl Detector for EndpointProberDetector {
 
         // Probe all (host, port) pairs concurrently — sequential per-port
         // probing across a /24 turned this detector into a 25-minute loop.
-        let mut probe_handles: Vec<tokio::task::JoinHandle<(IpAddr, u16, bool)>> = Vec::new();
+        let mut probe_handles: Vec<crate::limits::ScopedTask<(IpAddr, u16, bool)>> = Vec::new();
         for &ip in targets {
             for &port in &self.ports {
                 let permit = semaphore.clone().acquire_owned().await?;
-                probe_handles.push(tokio::spawn(async move {
+                probe_handles.push(crate::limits::spawn(async move {
                     let _permit = permit;
                     (ip, port, Self::is_port_open(ip, port).await)
                 }));
@@ -776,6 +778,7 @@ impl Detector for EndpointProberDetector {
         }
 
         for (ip, open_ports) in open_by_host {
+            self.budget.check()?;
             if open_ports.is_empty() {
                 continue;
             }
@@ -787,10 +790,12 @@ impl Detector for EndpointProberDetector {
                 let concurrency = self.concurrency;
                 let frameworks = self.frameworks.clone();
                 let ports = self.ports.clone();
+                let budget = self.budget.clone();
 
-                let handle = tokio::spawn(async move {
+                let handle = crate::limits::spawn_signals(self.budget.clone(), async move {
                     let _permit = permit;
                     let detector = EndpointProberDetector {
+                        budget,
                         timeout,
                         concurrency,
                         client,
@@ -811,6 +816,7 @@ impl Detector for EndpointProberDetector {
             }
         }
 
+        self.budget.check()?;
         Ok(deduplicate(signals))
     }
 

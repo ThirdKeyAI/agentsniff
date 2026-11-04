@@ -142,6 +142,8 @@ fn load_mcp_ports(signatures: &SignatureData) -> Vec<u16> {
 
 #[derive(Clone)]
 pub struct McpDetector {
+    budget: std::sync::Arc<crate::limits::EvidenceBudget>,
+    concurrency: usize,
     client: Client,
     protocols: Vec<McpProtocolSignature>,
     ports: Vec<u16>,
@@ -166,6 +168,8 @@ impl McpDetector {
         let ports = config.ports_or(&load_mcp_ports(&signatures));
         let agentpin_binding = load_agentpin_binding(&signatures.mcp_methods);
         Self {
+            budget: config.evidence_budget.clone(),
+            concurrency: config.http_concurrency.clamp(1, 32),
             client,
             protocols,
             ports,
@@ -305,16 +309,15 @@ impl McpDetector {
                 .await;
             }
 
-            let result = body.get("result").cloned().unwrap_or(Value::Null);
-            let server_info = result
-                .get("serverInfo")
-                .or_else(|| result.get("server"))
-                .cloned()
-                .unwrap_or(Value::Null);
-            let capabilities = result
-                .get("capabilities")
-                .cloned()
-                .unwrap_or_else(|| serde_json::json!({}));
+            let result = body.get("result").unwrap_or(&Value::Null);
+            let (server_info, server_info_truncated) = crate::limits::sample_json(
+                result
+                    .get("serverInfo")
+                    .or_else(|| result.get("server"))
+                    .unwrap_or(&Value::Null),
+            );
+            let (capabilities, capabilities_truncated) =
+                crate::limits::sample_json(result.get("capabilities").unwrap_or(&Value::Null));
 
             let mut signals = vec![Signal::new(
                 DetectorType::McpDetector,
@@ -332,13 +335,14 @@ impl McpDetector {
                     "discovery_method": protocol.discovery_method,
                     "server_info": server_info,
                     "capabilities": capabilities,
+                    "evidence_truncated": server_info_truncated || capabilities_truncated,
                     "version_confirmed_by_server": version_confirmed,
                     "session_established": session_id.is_some(),
                 }),
             )];
 
             if let Some(binding) = &self.agentpin_binding {
-                if let Some(advertised) = agentpin_capability(&result, &binding.capability_path) {
+                if let Some(advertised) = agentpin_capability(result, &binding.capability_path) {
                     let advertised_version = advertised.get("version").and_then(Value::as_str);
                     let required = advertised
                         .get("required")
@@ -353,7 +357,7 @@ impl McpDetector {
                             port,
                             path,
                             advertised_version
-                                .map(|version| format!(" version {version}"))
+                                .map(|version| format!(" version {}", version.chars().take(128).collect::<String>()))
                                 .unwrap_or_default()
                         ),
                         Confidence::High,
@@ -365,7 +369,8 @@ impl McpDetector {
                             "capability_path": binding.capability_path,
                             "credential_meta_key": binding.credential_meta_key,
                             "expected_binding_version": binding.version,
-                            "advertised_binding": advertised,
+                            "advertised_binding": crate::limits::sample_json(advertised).0,
+                            "evidence_truncated": crate::limits::sample_json(advertised).1,
                             "binding_version_matches": advertised_version == Some(binding.version.as_str()),
                             "required": required,
                             "identity_verified": false,
@@ -387,7 +392,11 @@ impl McpDetector {
                 )
                 .await,
             );
-            return signals;
+            // Reserve before a completed task can retain its output.
+            if signals.iter().all(|signal| self.budget.reserve(signal)) {
+                return signals;
+            }
+            return Vec::new();
         }
         Vec::new()
     }
@@ -436,22 +445,18 @@ impl McpDetector {
             if !is_valid_jsonrpc_response(&body) {
                 continue;
             }
-            let items = body
+            let raw_items = body
                 .get("result")
                 .and_then(|result| result.get(result_key))
-                .cloned()
-                .unwrap_or_else(|| serde_json::json!([]));
+                .unwrap_or(&Value::Null);
+            let item_count = raw_items.as_array().map_or(0, Vec::len);
+            let (items, truncated) = crate::limits::sample_json(raw_items);
             signals.push(Signal::new(
                 DetectorType::McpDetector,
                 signal_type.to_string(),
                 format!(
                     "MCP {} enumerated on {}:{}{} ({} {})",
-                    label,
-                    ip,
-                    port,
-                    path,
-                    items.as_array().map_or(0, Vec::len),
-                    label
+                    label, ip, port, path, item_count, label
                 ),
                 Confidence::High,
                 serde_json::json!({
@@ -459,6 +464,8 @@ impl McpDetector {
                     "port": port,
                     "path": path,
                     "protocol_version": protocol.version,
+                    "item_count": item_count,
+                    "evidence_truncated": truncated,
                     result_key: items,
                 }),
             ));
@@ -500,7 +507,7 @@ impl Detector for McpDetector {
         for &ip in targets {
             for &port in &self.ports {
                 let permit = connect_sem.clone().acquire_owned().await?;
-                connect_handles.push(tokio::spawn(async move {
+                connect_handles.push(crate::limits::spawn(async move {
                     let _permit = permit;
                     (ip, port, Self::is_port_open(ip, port).await)
                 }));
@@ -517,13 +524,17 @@ impl Detector for McpDetector {
             return Ok(Vec::new());
         }
 
-        let rpc_sem = std::sync::Arc::new(Semaphore::new(64));
-        let mut rpc_handles = Vec::new();
+        let mut rpc_handles = tokio::task::JoinSet::new();
+        let mut signals = Vec::new();
         for (ip, port) in open_pairs {
-            let permit = rpc_sem.clone().acquire_owned().await?;
+            self.budget.check()?;
+            if rpc_handles.len() >= self.concurrency {
+                if let Some(Ok(mut found)) = rpc_handles.join_next().await {
+                    signals.append(&mut found);
+                }
+            }
             let detector = self.clone();
-            rpc_handles.push(tokio::spawn(async move {
-                let _permit = permit;
+            rpc_handles.spawn(async move {
                 for &path in MCP_PATHS {
                     let found = detector.probe_one(ip, port, path).await;
                     if !found.is_empty() {
@@ -531,14 +542,14 @@ impl Detector for McpDetector {
                     }
                 }
                 Vec::new()
-            }));
+            });
         }
-        let mut signals = Vec::new();
-        for handle in rpc_handles {
-            if let Ok(mut found) = handle.await {
+        while let Some(handle) = rpc_handles.join_next().await {
+            if let Ok(mut found) = handle {
                 signals.append(&mut found);
             }
         }
+        self.budget.check()?;
         Ok(signals)
     }
 

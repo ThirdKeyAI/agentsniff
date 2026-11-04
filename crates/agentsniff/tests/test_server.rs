@@ -22,6 +22,7 @@ fn test_router_with_config(config: ScanConfig) -> axum::Router {
 
 fn bearer_request(method: &str, uri: &str, token: &str) -> Request<Body> {
     Request::builder()
+        .header("Host", "localhost:9090")
         .method(method)
         .uri(uri)
         .header("Authorization", format!("Bearer {token}"))
@@ -46,6 +47,7 @@ async fn test_health_endpoint() {
     let response = app
         .oneshot(
             Request::builder()
+                .header("Host", "localhost:9090")
                 .uri("/api/health")
                 .body(Body::empty())
                 .unwrap(),
@@ -61,6 +63,7 @@ async fn test_scan_status_idle() {
     let response = app
         .oneshot(
             Request::builder()
+                .header("Host", "localhost:9090")
                 .uri("/api/scan/status")
                 .body(Body::empty())
                 .unwrap(),
@@ -76,6 +79,7 @@ async fn test_scan_history_empty() {
     let response = app
         .oneshot(
             Request::builder()
+                .header("Host", "localhost:9090")
                 .uri("/api/scan/history?limit=10&offset=0")
                 .body(Body::empty())
                 .unwrap(),
@@ -91,6 +95,7 @@ async fn test_agents_empty() {
     let response = app
         .oneshot(
             Request::builder()
+                .header("Host", "localhost:9090")
                 .uri("/api/agents")
                 .body(Body::empty())
                 .unwrap(),
@@ -104,7 +109,13 @@ async fn test_agents_empty() {
 async fn test_dashboard_serves() {
     let app = test_router();
     let response = app
-        .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
+        .oneshot(
+            Request::builder()
+                .header("Host", "localhost:9090")
+                .uri("/")
+                .body(Body::empty())
+                .unwrap(),
+        )
         .await
         .unwrap();
     assert_eq!(response.status(), StatusCode::OK);
@@ -123,6 +134,7 @@ async fn test_cross_origin_requests_are_not_enabled() {
     let response = test_router()
         .oneshot(
             Request::builder()
+                .header("Host", "localhost:9090")
                 .uri("/api/health")
                 .header("Origin", "https://attacker.example")
                 .body(Body::empty())
@@ -141,6 +153,7 @@ async fn test_scan_start_requires_json_body() {
     let response = test_router()
         .oneshot(
             Request::builder()
+                .header("Host", "localhost:9090")
                 .method("POST")
                 .uri("/api/scan?network=192.0.2.1/32")
                 .body(Body::empty())
@@ -157,6 +170,7 @@ async fn test_local_mutations_reject_simple_cross_origin_forms() {
         let response = test_router()
             .oneshot(
                 Request::builder()
+                    .header("Host", "localhost:9090")
                     .method("POST")
                     .uri(uri)
                     .header("Origin", "https://attacker.example")
@@ -185,6 +199,7 @@ async fn test_api_token_protects_every_non_health_route_class() {
     let public_health = test_router_with_config(config.clone())
         .oneshot(
             Request::builder()
+                .header("Host", "localhost:9090")
                 .uri("/api/health")
                 .body(Body::empty())
                 .unwrap(),
@@ -208,6 +223,7 @@ async fn test_api_token_protects_every_non_health_route_class() {
         let response = test_router_with_config(config.clone())
             .oneshot(
                 Request::builder()
+                    .header("Host", "localhost:9090")
                     .method(method)
                     .uri(uri)
                     .body(Body::empty())
@@ -233,6 +249,7 @@ async fn test_api_token_protects_every_non_health_route_class() {
     let authorized = test_router_with_config(config)
         .oneshot(
             Request::builder()
+                .header("Host", "localhost:9090")
                 .uri("/")
                 .header("Authorization", format!("Basic {basic}"))
                 .body(Body::empty())
@@ -258,6 +275,7 @@ async fn test_api_token_rejects_malformed_or_wrong_credentials() {
         let response = test_router_with_config(config.clone())
             .oneshot(
                 Request::builder()
+                    .header("Host", "localhost:9090")
                     .uri("/api/scan/status")
                     .header("Authorization", authorization)
                     .body(Body::empty())
@@ -307,6 +325,7 @@ async fn test_destination_changes_clear_retained_credentials() {
     let response = test_router_with_config(config)
         .oneshot(
             Request::builder()
+                .header("Host", "localhost:9090")
                 .method("PUT")
                 .uri("/api/settings")
                 .header("Content-Type", "application/json")
@@ -345,7 +364,7 @@ async fn test_destination_change_accepts_replacement_smtp_credentials() {
     let response = app
         .clone()
         .oneshot(
-            Request::builder()
+            Request::builder().header("Host", "localhost:9090")
                 .method("PUT")
                 .uri("/api/settings")
                 .header("Content-Type", "application/json")
@@ -361,6 +380,7 @@ async fn test_destination_change_accepts_replacement_smtp_credentials() {
     let response = app
         .oneshot(
             Request::builder()
+                .header("Host", "localhost:9090")
                 .uri("/api/settings")
                 .body(Body::empty())
                 .unwrap(),

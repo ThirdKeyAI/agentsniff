@@ -261,10 +261,22 @@ fn correlate_signals(
     signals: Vec<Signal>,
     agents_by_asset: &mut HashMap<String, DetectedAgent>,
     on_agent: &Option<OnAgentCallback>,
-) {
+) -> anyhow::Result<()> {
     let mut updated_assets = Vec::new();
+    let mut retained_bytes =
+        crate::limits::serialized_size(agents_by_asset, crate::limits::MAX_SCAN_BYTES)?;
+    let mut signal_count: usize = agents_by_asset.values().map(|a| a.signals.len()).sum();
 
     for signal in signals {
+        // Allow for promoted metadata/fingerprint copies before adding a signal.
+        let size = crate::limits::serialized_size(&signal, 256 * 1024)?;
+        retained_bytes = retained_bytes.saturating_add(size * 3 + 4096);
+        signal_count += 1;
+        anyhow::ensure!(
+            retained_bytes <= crate::limits::MAX_SCAN_BYTES
+                && signal_count <= crate::limits::MAX_SIGNALS,
+            "scan evidence budget exceeded; results are incomplete"
+        );
         let ip_str = signal
             .evidence
             .get("ip")
@@ -294,6 +306,10 @@ fn correlate_signals(
         let agent = agents_by_asset
             .entry(asset_id.clone())
             .or_insert_with(|| DetectedAgent::for_endpoint(ip_str.clone(), ip, port, transport));
+        anyhow::ensure!(
+            agent.signals.len() < crate::limits::MAX_AGENT_SIGNALS,
+            "per-asset signal budget exceeded; results are incomplete"
+        );
         agent.add_signal(signal);
 
         if agent.signal_count > prev_count && !updated_assets.contains(&asset_id) {
@@ -308,6 +324,7 @@ fn correlate_signals(
             }
         }
     }
+    Ok(())
 }
 
 /// Detectors `agentsniff probe` accepts: the active ones that send traffic to
@@ -334,6 +351,7 @@ pub async fn run_probe(
     port: u16,
     detector_names: &[String],
 ) -> anyhow::Result<DetectedAgent> {
+    config.validate()?;
     for name in detector_names {
         if !PROBE_DETECTORS.contains(&name.as_str()) {
             anyhow::bail!(
@@ -343,6 +361,7 @@ pub async fn run_probe(
         }
     }
     let mut config = config.clone();
+    config.evidence_budget = Arc::default();
     config.probe_port = Some(port);
     for (name, enabled) in [
         ("port_scanner", &mut config.enable_port_scanner),
@@ -368,7 +387,7 @@ pub async fn run_probe(
     }
 
     let mut agents_by_asset = HashMap::new();
-    correlate_signals(signals, &mut agents_by_asset, &None);
+    correlate_signals(signals, &mut agents_by_asset, &None)?;
     let asset_id = crate::models::stable_asset_id(ip, Some(port), "tcp");
     let mut agent = apply_fusion_rules(agents_by_asset.into_values().collect())
         .into_iter()
@@ -389,6 +408,11 @@ pub async fn run_scan(
     cancel: Option<CancellationToken>,
     on_agent: Option<OnAgentCallback>,
 ) -> anyhow::Result<ScanResult> {
+    config.validate()?;
+    let mut config = config.clone();
+    config.evidence_budget = Arc::default();
+    let config = &config;
+    let cancel = cancel.unwrap_or_default();
     let mut result = ScanResult::new();
     result.target_network = config.target_network.clone();
 
@@ -397,8 +421,8 @@ pub async fn run_scan(
     tracing::info!("Resolved {} target(s)", targets.len());
 
     // Check cancellation
-    if let Some(ref token) = cancel {
-        if token.is_cancelled() {
+    {
+        if cancel.is_cancelled() {
             result.completed_at = Some(Utc::now());
             result.cancelled = true;
             return Ok(result);
@@ -425,8 +449,8 @@ pub async fn run_scan(
     }
 
     // Check cancellation
-    if let Some(ref token) = cancel {
-        if token.is_cancelled() {
+    {
+        if cancel.is_cancelled() {
             result.completed_at = Some(Utc::now());
             result.cancelled = true;
             return Ok(result);
@@ -448,17 +472,19 @@ pub async fn run_scan(
     // 5. Process results incrementally as each detector completes
     let mut agents_by_asset: HashMap<String, DetectedAgent> = HashMap::new();
 
-    while let Some(task_result) = join_set.join_next().await {
-        // Check cancellation between detectors
-        if let Some(ref token) = cancel {
-            if token.is_cancelled() {
+    loop {
+        let task_result = tokio::select! {
+            biased;
+            _ = cancel.cancelled() => {
+                join_set.shutdown().await;
                 result.completed_at = Some(Utc::now());
                 result.cancelled = true;
                 // Return whatever we have so far
                 result.agents = agents_by_asset.into_values().collect();
                 return Ok(result);
-            }
-        }
+            },
+            item = join_set.join_next() => match item { Some(item) => item, None => break },
+        };
 
         match task_result {
             Ok((detector_type, Ok(signals))) => {
@@ -469,7 +495,9 @@ pub async fn run_scan(
                     signals.len()
                 );
                 // Incrementally correlate and stream to dashboard
-                correlate_signals(signals, &mut agents_by_asset, &on_agent);
+                if let Err(error) = correlate_signals(signals, &mut agents_by_asset, &on_agent) {
+                    result.errors.push(error.to_string());
+                }
             }
             Ok((detector_type, Err(error))) => {
                 result.detectors_run.push(detector_type);
@@ -493,7 +521,17 @@ pub async fn run_scan(
         let sigs = crate::signatures::SignatureData::load_embedded();
 
         // Convert Zeek DNS records to signals
-        match zeek.load_dns(&targets, time_window).await {
+        let dns_records = tokio::select! {
+            biased;
+            _ = cancel.cancelled() => {
+                result.agents = agents_by_asset.into_values().collect();
+                result.completed_at = Some(Utc::now());
+                result.cancelled = true;
+                return Ok(result);
+            },
+            records = zeek.load_dns(&targets, time_window) => records,
+        };
+        match dns_records {
             Ok(dns_records) => {
                 let mut infra_domains = sigs.agent_infra_domains.clone();
                 infra_domains.extend(sigs.verified_mcp_remote_domains());
@@ -540,7 +578,11 @@ pub async fn run_scan(
                         zeek_signals.len()
                     );
                     result.detectors_run.push(DetectorType::Zeek);
-                    correlate_signals(zeek_signals, &mut agents_by_asset, &on_agent);
+                    if let Err(error) =
+                        correlate_signals(zeek_signals, &mut agents_by_asset, &on_agent)
+                    {
+                        result.errors.push(error.to_string());
+                    }
                 }
             }
             Err(error) => {
@@ -551,7 +593,17 @@ pub async fn run_scan(
         }
 
         // Convert Zeek TLS records to signals (only matching fingerprints or LLM domains)
-        match zeek.load_tls(&targets, time_window).await {
+        let tls_records = tokio::select! {
+            biased;
+            _ = cancel.cancelled() => {
+                result.agents = agents_by_asset.into_values().collect();
+                result.completed_at = Some(Utc::now());
+                result.cancelled = true;
+                return Ok(result);
+            },
+            records = zeek.load_tls(&targets, time_window) => records,
+        };
+        match tls_records {
             Ok(tls_records) => {
                 let mut zeek_tls_signals = Vec::new();
                 for rec in &tls_records {
@@ -600,7 +652,11 @@ pub async fn run_scan(
                     }
                 }
                 if !zeek_tls_signals.is_empty() {
-                    correlate_signals(zeek_tls_signals, &mut agents_by_asset, &on_agent);
+                    if let Err(error) =
+                        correlate_signals(zeek_tls_signals, &mut agents_by_asset, &on_agent)
+                    {
+                        result.errors.push(error.to_string());
+                    }
                 }
             }
             Err(error) => {
@@ -619,7 +675,17 @@ pub async fn run_scan(
     if config.enrich_enabled {
         tracing::info!("Running service enrichment");
         let enricher = ServiceEnricher::new(config.enrich_timeout);
-        match enricher.enrich(agents.clone()).await {
+        let enriched = tokio::select! {
+            biased;
+            _ = cancel.cancelled() => {
+                result.agents = agents;
+                result.completed_at = Some(Utc::now());
+                result.cancelled = true;
+                return Ok(result);
+            },
+            enriched = enricher.enrich(agents.clone()) => enriched,
+        };
+        match enriched {
             Ok(enriched) => {
                 result.detectors_run.push(DetectorType::ServiceEnricher);
                 agents = enriched;
@@ -659,6 +725,7 @@ pub async fn run_scan(
 
     result.agents = final_agents;
     result.completed_at = Some(Utc::now());
+    crate::limits::serialized_size(&result, crate::limits::MAX_SCAN_BYTES)?;
 
     Ok(result)
 }
@@ -687,7 +754,8 @@ mod correlation_tests {
             ],
             &mut assets,
             &None,
-        );
+        )
+        .unwrap();
 
         assert_eq!(assets.len(), 2);
         assert!(assets.values().any(|agent| agent.port == Some(3000)));
@@ -704,7 +772,8 @@ mod correlation_tests {
             ],
             &mut assets,
             &None,
-        );
+        )
+        .unwrap();
 
         assert_eq!(assets.len(), 1);
         let asset = assets.values().next().unwrap();

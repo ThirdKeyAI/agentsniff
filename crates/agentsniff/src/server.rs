@@ -5,7 +5,7 @@ use std::time::Duration;
 
 use axum::body::Bytes;
 use axum::extract::{DefaultBodyLimit, Path, Query, Request, State};
-use axum::http::header::{AUTHORIZATION, CONTENT_TYPE, WWW_AUTHENTICATE};
+use axum::http::header::{AUTHORIZATION, CONTENT_TYPE, HOST, ORIGIN, WWW_AUTHENTICATE};
 use axum::http::{HeaderMap, HeaderValue, Method, StatusCode};
 use axum::middleware::{self, Next};
 use axum::response::sse::{Event, KeepAlive, Sse};
@@ -15,7 +15,7 @@ use axum::Router;
 use base64::Engine;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use tokio::sync::{broadcast, Mutex};
+use tokio::sync::{broadcast, Mutex, Semaphore};
 use tokio_stream::wrappers::BroadcastStream;
 use tokio_stream::StreamExt;
 use tokio_util::sync::CancellationToken;
@@ -29,7 +29,7 @@ use crate::baseline::apply_scan_diff;
 use crate::config::ScanConfig;
 use crate::ebpf::EbpfChannels;
 use crate::models::{DetectedAgent, IdentityAssurance, ScanResult};
-use crate::notifier::{send_alerts, Notifier};
+use crate::notifier::{send_alerts, send_payload, Notifier};
 use crate::scanner::{resolve_targets, run_scan};
 use crate::storage::{create_storage, StorageBackend};
 use crate::storage_redis::RedisEventBus;
@@ -168,6 +168,7 @@ pub struct AppState {
     pub scan_status: Mutex<ScanStatus>,
     pub latest_result: Mutex<Option<ScanResult>>,
     pub notifier: Mutex<Notifier>,
+    notification_slot: Arc<Semaphore>,
     pub cancel_token: Mutex<Option<CancellationToken>>,
     pub sse_tx: broadcast::Sender<SseEvent>,
     pub event_bus: Option<Arc<RedisEventBus>>,
@@ -774,7 +775,13 @@ async fn require_api_auth(
     request: Request,
     next: Next,
 ) -> Response {
-    let expected = state.config.lock().await.api_token.clone();
+    let config = state.config.lock().await;
+    if validate_api_security(&config).is_err() || !config.api_enabled {
+        return StatusCode::SERVICE_UNAVAILABLE.into_response();
+    }
+    let expected = config.api_token.clone();
+    let port = config.api_port;
+    drop(config);
     if !expected.is_empty()
         && !matches!(
             supplied_api_token(request.headers()),
@@ -782,6 +789,21 @@ async fn require_api_auth(
         )
     {
         return unauthorized_response();
+    }
+
+    // Check the HTTP authority, not its resolved IP. DNS rebinding keeps the
+    // browser origin unchanged while sending the connection to loopback.
+    let authority = request_authority(&request);
+    if expected.is_empty()
+        && !authority.as_ref().is_some_and(|authority| {
+            let host = authority
+                .host()
+                .trim_start_matches('[')
+                .trim_end_matches(']');
+            is_loopback_host(host) && authority.port_u16().unwrap_or(80) == port
+        })
+    {
+        return StatusCode::FORBIDDEN.into_response();
     }
 
     // Loopback may run without a token, and browsers may cache Basic auth.
@@ -808,7 +830,77 @@ async fn require_api_auth(
             .into_response();
     }
 
+    // Browser requests (including cached Basic credentials) must come from
+    // the same authority. Non-browser clients need not supply an Origin.
+    if request.headers().contains_key(ORIGIN) {
+        let valid_origin = request.headers().get_all(ORIGIN).iter().count() == 1
+            && request
+                .headers()
+                .get(ORIGIN)
+                .and_then(|v| v.to_str().ok())
+                .and_then(|v| v.parse::<axum::http::Uri>().ok())
+                .is_some_and(|origin| {
+                    matches!(origin.scheme_str(), Some("http" | "https"))
+                        && origin.path() == "/"
+                        && origin.query().is_none()
+                        && origin
+                            .authority()
+                            .zip(authority.as_ref())
+                            .is_some_and(|(a, b)| {
+                                !a.as_str().contains('@')
+                                    && a.as_str().eq_ignore_ascii_case(b.as_str())
+                            })
+                });
+        if !valid_origin {
+            return StatusCode::FORBIDDEN.into_response();
+        }
+    }
+
     next.run(request).await
+}
+
+fn request_authority(request: &Request) -> Option<axum::http::uri::Authority> {
+    let hosts = request.headers().get_all(HOST);
+    if hosts.iter().count() > 1 {
+        return None;
+    }
+    let header = hosts.iter().next().map(|host| {
+        host.to_str()
+            .ok()?
+            .parse::<axum::http::uri::Authority>()
+            .ok()
+    });
+    let header = match header {
+        Some(Some(host)) => Some(host),
+        Some(None) => return None,
+        None => None,
+    };
+    let uri = request.uri().authority();
+    if let (Some(header), Some(uri)) = (&header, uri) {
+        if !header.as_str().eq_ignore_ascii_case(uri.as_str()) {
+            return None;
+        }
+    }
+    let authority = header.or_else(|| uri.cloned())?;
+    if authority.as_str().contains('@') {
+        return None;
+    }
+    Some(authority)
+}
+
+async fn security_headers(request: Request, next: Next) -> Response {
+    let mut response = next.run(request).await;
+    let headers = response.headers_mut();
+    headers.insert(
+        "content-security-policy",
+        HeaderValue::from_static("frame-ancestors 'none'"),
+    );
+    headers.insert("x-frame-options", HeaderValue::from_static("DENY"));
+    headers.insert(
+        "x-content-type-options",
+        HeaderValue::from_static("nosniff"),
+    );
+    response
 }
 
 /// Apply detector toggle overrides from a comma-separated list of detector names.
@@ -913,7 +1005,7 @@ fn spawn_scan(
                 &on_agent_tx,
                 on_agent_bus.as_ref(),
                 SseEvent::AgentDetected {
-                    agent: Box::new(agent.clone()),
+                    agent: Box::new(agent.progress_summary()),
                 },
             );
         });
@@ -942,26 +1034,38 @@ fn spawn_scan(
                     apply_scan_diff(&mut result, previous.as_ref());
                 }
                 let agent_count = result.agents.len();
-                let summary = ScanSummary::from_result(&result);
 
                 // Save to storage
                 if let Err(e) = state.storage.save_scan(&result).await {
                     tracing::error!("Failed to save scan result: {}", e);
+                    result
+                        .errors
+                        .push(format!("Failed to save scan result: {e}"));
                 }
+                let summary = ScanSummary::from_result(&result);
 
-                if !was_cancelled {
+                let notification = if !was_cancelled {
+                    let slot = state.notification_slot.clone().try_acquire_owned().ok();
                     let alert_config = state.config.lock().await.clone();
                     let mut notifier = state.notifier.lock().await;
                     notifier.set_config(&alert_config);
-                    if let Err(error) = notifier.check_and_notify(&result).await {
-                        tracing::error!("Failed to dispatch scan alert: {}", error);
-                    }
-                }
+                    slot.and_then(|slot| {
+                        notifier
+                            .prepare(&result)
+                            .map(|payload| (slot, payload, alert_config))
+                    })
+                } else {
+                    None
+                };
 
                 // Update state
                 {
                     let mut latest = state.latest_result.lock().await;
                     *latest = Some(result);
+                }
+                {
+                    let mut token = state.cancel_token.lock().await;
+                    *token = None;
                 }
                 {
                     let mut status = state.scan_status.lock().await;
@@ -974,10 +1078,6 @@ fn spawn_scan(
                             scan_id: scan_id_clone.clone(),
                         }
                     };
-                }
-                {
-                    let mut token = state.cancel_token.lock().await;
-                    *token = None;
                 }
 
                 let event = if was_cancelled {
@@ -994,18 +1094,24 @@ fn spawn_scan(
                     }
                 };
                 emit_sse_event(&sse_tx, event_bus.as_ref(), event);
+                if let Some((slot, payload, config)) = notification {
+                    tokio::spawn(async move {
+                        let _slot = slot;
+                        send_payload(&payload, &config).await;
+                    });
+                }
             }
             Err(e) => {
                 let msg = format!("Scan failed: {}", e);
                 tracing::error!("{}", msg);
 
                 {
-                    let mut status = state.scan_status.lock().await;
-                    *status = ScanStatus::Idle;
-                }
-                {
                     let mut token = state.cancel_token.lock().await;
                     *token = None;
+                }
+                {
+                    let mut status = state.scan_status.lock().await;
+                    *status = ScanStatus::Idle;
                 }
 
                 emit_sse_event(
@@ -1045,13 +1151,11 @@ async fn start_scan_handler(
         if matches!(*status, ScanStatus::Running { .. }) {
             return Err(StatusCode::CONFLICT);
         }
+        let mut token = state.cancel_token.lock().await;
+        *token = Some(cancel_token.clone());
         *status = ScanStatus::Running {
             scan_id: scan_id.clone(),
         };
-    }
-    {
-        let mut token = state.cancel_token.lock().await;
-        *token = Some(cancel_token.clone());
     }
 
     spawn_scan(
@@ -1074,12 +1178,28 @@ async fn scan_status_handler(State(state): State<Arc<AppState>>) -> Json<ScanSta
 
 async fn scan_results_handler(
     State(state): State<Arc<AppState>>,
-) -> Result<Json<ScanResult>, StatusCode> {
+    Query(query): Query<HistoryQuery>,
+) -> Result<Json<Value>, StatusCode> {
     let latest = state.latest_result.lock().await;
     match latest.as_ref() {
-        Some(result) => Ok(Json(result.clone())),
-        None => Ok(Json(ScanResult::new())),
+        Some(result) => Ok(Json(result_page(result, &query))),
+        None => Ok(Json(result_page(&ScanResult::new(), &query))),
     }
+}
+
+fn result_page(result: &ScanResult, query: &HistoryQuery) -> Value {
+    let offset = query.offset.unwrap_or(0) as usize;
+    let limit = query.limit.unwrap_or(100).clamp(1, 100) as usize;
+    let agents: Vec<&DetectedAgent> = result.agents.iter().skip(offset).take(limit).collect();
+    let next = offset.saturating_add(agents.len());
+    json!({
+        "scan_id": result.scan_id, "scope_id": result.scope_id, "target_network": result.target_network,
+        "agents": agents, "detectors_run": result.detectors_run, "errors": result.errors,
+        "started_at": result.started_at, "completed_at": result.completed_at, "cancelled": result.cancelled,
+        "diff": result.diff, "summary": ScanSummary::from_result(result),
+        "pagination": {"total": result.agents.len(), "offset": offset, "limit": limit,
+            "next_offset": if next < result.agents.len() { Some(next) } else { None }},
+    })
 }
 
 async fn scan_sarif_handler(
@@ -1129,7 +1249,7 @@ async fn scan_history_handler(
     State(state): State<Arc<AppState>>,
     Query(query): Query<HistoryQuery>,
 ) -> Result<impl IntoResponse, StatusCode> {
-    let limit = query.limit.unwrap_or(10);
+    let limit = query.limit.unwrap_or(10).clamp(1, 100);
     let offset = query.offset.unwrap_or(0);
 
     match state.storage.list_scans(limit, offset).await {
@@ -1144,23 +1264,16 @@ async fn scan_history_handler(
 async fn get_scan_handler(
     State(state): State<Arc<AppState>>,
     Path(scan_id): Path<String>,
+    Query(query): Query<HistoryQuery>,
 ) -> Result<impl IntoResponse, StatusCode> {
-    match state.storage.get_scan(&scan_id).await {
-        Ok(Some(scan)) => {
-            let summary = ScanSummary::from_result(&scan);
-            Ok(Json(serde_json::json!({
-                "scan_id": scan.scan_id,
-                "scope_id": scan.scope_id,
-                "target_network": scan.target_network,
-                "agents": scan.agents,
-                "diff": scan.diff,
-                "started_at": scan.started_at,
-                "completed_at": scan.completed_at,
-                "cancelled": scan.cancelled,
-                "detectors_run": scan.detectors_run,
-                "summary": summary,
-            })))
+    {
+        let latest = state.latest_result.lock().await;
+        if let Some(result) = latest.as_ref().filter(|result| result.scan_id == scan_id) {
+            return Ok(Json(result_page(result, &query)));
         }
+    }
+    match state.storage.get_scan(&scan_id).await {
+        Ok(Some(scan)) => Ok(Json(result_page(&scan, &query))),
         Ok(None) => Err(StatusCode::NOT_FOUND),
         Err(e) => {
             tracing::error!("Failed to load scan {}: {}", scan_id, e);
@@ -1169,10 +1282,21 @@ async fn get_scan_handler(
     }
 }
 
-async fn agents_handler(State(state): State<Arc<AppState>>) -> Json<Vec<DetectedAgent>> {
+async fn agents_handler(
+    State(state): State<Arc<AppState>>,
+    Query(query): Query<HistoryQuery>,
+) -> Json<Vec<DetectedAgent>> {
     let latest = state.latest_result.lock().await;
     match latest.as_ref() {
-        Some(result) => Json(result.agents.clone()),
+        Some(result) => Json(
+            result
+                .agents
+                .iter()
+                .skip(query.offset.unwrap_or(0) as usize)
+                .take(query.limit.unwrap_or(100).clamp(1, 100) as usize)
+                .cloned()
+                .collect(),
+        ),
         None => Json(Vec::new()),
     }
 }
@@ -1388,7 +1512,8 @@ async fn db_backup_handler(
                     format!("attachment; filename=\"{}\"", backup.filename),
                 ),
             ];
-            Ok((headers, backup.data))
+            let stream = tokio_util::io::ReaderStream::new(tokio::fs::File::from_std(backup.file));
+            Ok((headers, axum::body::Body::from_stream(stream)))
         }
         Err(e) => {
             tracing::error!("Database backup failed: {}", e);
@@ -1434,6 +1559,12 @@ pub async fn create_router(
     config: ScanConfig,
     ebpf_channels: Arc<EbpfChannels>,
 ) -> anyhow::Result<Router> {
+    validate_api_security(&config)?;
+    validate_agentpin_server_config(&config)?;
+    anyhow::ensure!(
+        config.api_enabled,
+        "API server is disabled by configuration"
+    );
     let storage = create_storage(&config.storage).await?;
     let event_bus = if config.storage.redis_url.trim().is_empty() {
         None
@@ -1481,6 +1612,7 @@ fn create_router_with_components(
         scan_status: Mutex::new(ScanStatus::Idle),
         latest_result: Mutex::new(None),
         notifier: Mutex::new(notifier),
+        notification_slot: Arc::new(Semaphore::new(1)),
         cancel_token: Mutex::new(None),
         sse_tx,
         event_bus,
@@ -1523,6 +1655,7 @@ fn create_router_with_components(
     Router::new()
         .route("/api/health", get(health_handler))
         .merge(protected_routes)
+        .layer(middleware::from_fn(security_headers))
         .with_state(state)
 }
 

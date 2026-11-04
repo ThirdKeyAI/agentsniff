@@ -703,7 +703,7 @@ async fn mcp_handler(
     }
 }
 
-fn is_loopback_host(host: &str) -> bool {
+pub(crate) fn is_loopback_host(host: &str) -> bool {
     host.eq_ignore_ascii_case("localhost")
         || host
             .parse::<IpAddr>()
@@ -725,7 +725,7 @@ pub fn validate_api_security(config: &ScanConfig) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn constant_time_eq(left: &[u8], right: &[u8]) -> bool {
+pub(crate) fn constant_time_eq(left: &[u8], right: &[u8]) -> bool {
     let mut difference = left.len() ^ right.len();
     let max_len = left.len().max(right.len());
     for index in 0..max_len {

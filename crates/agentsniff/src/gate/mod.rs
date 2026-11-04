@@ -146,8 +146,7 @@ impl GateConfig {
         if !self.token.is_empty() && self.token.len() < 32 {
             anyhow::bail!("gate.token must contain at least 32 bytes");
         }
-        let loopback = self.host.eq_ignore_ascii_case("localhost")
-            || self.host.parse::<IpAddr>().is_ok_and(|ip| ip.is_loopback());
+        let loopback = crate::server::is_loopback_host(&self.host);
         if !loopback && self.token.is_empty() {
             anyhow::bail!(
                 "refusing to bind the gate to {} without AGENTSNIFF_GATE_TOKEN",
@@ -631,15 +630,17 @@ impl GateEngine {
 
         if let Some(asn) = facts.asn {
             if let Some(entry) = self.catalog.operator_asn_agent(asn) {
+                // A non-browser client from an operator network is at least as
+                // suspect as one from a plain hosting network.
+                out.push(GateSignal {
+                    id: "agent_operator_network",
+                    weight: if browser_like { 0.6 } else { 0.25 },
+                    detail: format!(
+                        "request from AS{asn}, the network {} runs {} on",
+                        entry.operator, entry.name
+                    ),
+                });
                 if browser_like {
-                    out.push(GateSignal {
-                        id: "agent_operator_network",
-                        weight: 0.6,
-                        detail: format!(
-                            "browser user agent from AS{asn}, the network {} runs {} on",
-                            entry.operator, entry.name
-                        ),
-                    });
                     *agent = Some(self.attribution(&entry.id, Assurance::Suspected));
                 }
             } else if let Some(provider) = self.catalog.hosting_asn(asn) {

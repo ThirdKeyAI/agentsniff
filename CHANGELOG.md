@@ -44,6 +44,17 @@ matching tag ref; branch-dispatched releases are rejected.
   lacks the file; AgentSniff warns and uses the embedded set until you run
   `agentsniff update-signatures`.
 
+### Changed
+
+- Detection datasets and their verification now live in the
+  `agentsniff-signatures` crate, and the gate engine in `agentsniff-gate`. The
+  `agentsniff` binary re-exports both, so library paths such as
+  `agentsniff::gate` and `agentsniff::signatures` are unchanged.
+- The signed datasets moved to `crates/agentsniff-signatures/assets/signatures/`.
+  `agentsniff update-signatures` on 2.4.x and earlier downloads from the old
+  path, gets a 404, and fails closed, keeping its embedded datasets. Upgrade to
+  2.5.0 to receive updates.
+
 ## 2.4.0
 
 ### Added

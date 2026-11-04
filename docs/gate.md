@@ -166,6 +166,15 @@ xff_num_trusted_hops: 0   # raise only for load balancers in front of Envoy
 
 Envoy appends the original path to `/check` (a request for `/` arrives as `/check/`); the gate strips the prefix.
 
+### Apache httpd
+
+Apache httpd has no equivalent of `auth_request` or `forward_auth`. The
+bundled `mod_authnz_fcgi` speaks FastCGI rather than HTTP, and
+`mod_authnz_external` forces Basic authentication, so neither fits a gate that
+answers allow, challenge or block per request. Run one of the four proxies
+above in front of Apache and point its forward-auth at the gate; Apache stays
+the origin.
+
 ## Edge headers
 
 Two optional signals depend on data only the edge has.

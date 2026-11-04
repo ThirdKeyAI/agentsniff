@@ -255,6 +255,7 @@ crates/agentsniff/                 Main library and binary
 crates/agentsniff-common/          Shared eBPF/user-space types
 crates/agentsniff/assets/          Dashboard
 crates/agentsniff-signatures/      Signed detection data and its verifier
+crates/agentsniff-gate/            Inbound agent gate engine
 crates/agentsniff/tests/           Integration tests
 scripts/                           Installer and maintainer signing tools
 docs/                              Documentation site

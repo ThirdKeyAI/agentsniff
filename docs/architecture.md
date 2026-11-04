@@ -42,6 +42,7 @@ CLI / loopback dashboard
 | `crates/agentsniff/src/gate/` | Inbound forward-auth agent gate: catalog matching, rate limits, behavior scoring, Web Bot Auth |
 | `crates/agentsniff/assets/` | Embedded dashboard |
 | `crates/agentsniff-signatures/` | Signed detection datasets and their verifier |
+| `crates/agentsniff-gate/` | Inbound agent gate engine |
 | `crates/agentsniff-common/` | Shared eBPF/user-space types |
 
 ## Trust boundaries

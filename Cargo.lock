@@ -5,6 +5,8 @@ version = 4
 [[package]]
 name = "agentpin"
 version = "0.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9ded8be0f2c2aae3479be729c8062542158aaded4221e048e20da62531bd1880"
 dependencies = [
  "base64 0.21.7",
  "chrono",

@@ -22,7 +22,7 @@ from pathlib import Path
 from typing import Any
 
 REPO = Path(__file__).resolve().parent.parent
-OUTPUT = REPO / "crates" / "agentsniff" / "assets" / "signatures" / "mcp_remote_domains.json"
+OUTPUT = REPO / "crates" / "agentsniff-signatures" / "assets" / "signatures" / "mcp_remote_domains.json"
 DEFAULT_REGISTRY = "https://registry.modelcontextprotocol.io/v0/servers"
 
 

@@ -502,7 +502,7 @@ async fn main() -> anyhow::Result<()> {
             } else {
                 ScanConfig::default()
             };
-            let scan_config = ScanConfig::from_env_with_defaults(scan_config);
+            let scan_config = ScanConfig::from_env_with_defaults(scan_config)?;
             let mut gate = scan_config.gate;
             if let Some(p) = port {
                 gate.port = p;

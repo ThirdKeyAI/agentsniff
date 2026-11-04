@@ -947,13 +947,13 @@ async function init() {
         if (s.status === 'completed' || s.status === 'cancelled' || s.status === 'failed') {
           clearInterval(poll);
           if (s.status === 'completed') {
-            const resultResp = await fetch('/api/scan/results');
+            const resultResp = await fetchScanPages('/api/scan/results');
             lastResult = await resultResp.json();
             updateResultStats(lastResult);
             renderAgents(lastResult.agents || [], lastResult.diff);
             log('Scan complete: ' + (lastResult.agents || []).length + ' assets found');
           } else if (s.status === 'cancelled') {
-            const resultResp = await fetch('/api/scan/results');
+            const resultResp = await fetchScanPages('/api/scan/results');
             lastResult = await resultResp.json();
             updateResultStats(lastResult);
             renderAgents(lastResult.agents || [], lastResult.diff);
@@ -966,7 +966,7 @@ async function init() {
       }, 2000);
 
     } else if (status.status === 'completed') {
-      const resultResp = await fetch('/api/scan/results');
+      const resultResp = await fetchScanPages('/api/scan/results');
       lastResult = await resultResp.json();
       updateResultStats(lastResult);
       renderAgents(lastResult.agents || [], lastResult.diff);
@@ -975,6 +975,25 @@ async function init() {
   } catch (e) {
     // Server not ready or no prior scan — that's fine
   }
+}
+
+// Fetch bounded result pages, pinning subsequent requests to the first scan ID.
+async function fetchScanPages(url) {
+  const response = await fetch(url);
+  if (!response.ok) return response;
+  const result = await response.json();
+  let next = result.pagination && result.pagination.next_offset;
+  while (next !== null && next !== undefined) {
+    const pageResponse = await fetch('/api/scan/' + encodeURIComponent(result.scan_id) + '?limit=100&offset=' + next);
+    if (!pageResponse.ok) throw new Error('Unable to load result page');
+    const page = await pageResponse.json();
+    if (page.scan_id !== result.scan_id) throw new Error('Scan changed while loading results');
+    result.agents.push(...page.agents);
+    const following = page.pagination && page.pagination.next_offset;
+    if (following != null && following <= next) throw new Error('Invalid result pagination');
+    next = following;
+  }
+  return { ok: true, json: async () => result };
 }
 
 function log(msg) {
@@ -1352,7 +1371,7 @@ async function stopScan() {
       if (s.status !== 'running') {
         clearInterval(poll);
         if (s.status === 'cancelled' || s.status === 'completed') {
-          const resultResp = await fetch('/api/scan/results');
+          const resultResp = await fetchScanPages('/api/scan/results');
           lastResult = await resultResp.json();
           updateResultStats(lastResult);
           renderAgents(lastResult.agents || [], lastResult.diff);
@@ -1458,7 +1477,7 @@ async function startScan() {
       if (data.event === 'scan_completed') {
         evtSource.close();
         try {
-          const resultResp = await fetch('/api/scan/results');
+          const resultResp = await fetchScanPages('/api/scan/results');
           lastResult = resultResp.ok ? await resultResp.json() : { agents, summary: data.summary };
         } catch (_) {
           lastResult = { agents, summary: data.summary };
@@ -1472,7 +1491,7 @@ async function startScan() {
       if (data.event === 'scan_cancelled') {
         evtSource.close();
         try {
-          const resultResp = await fetch('/api/scan/results');
+          const resultResp = await fetchScanPages('/api/scan/results');
           lastResult = resultResp.ok ? await resultResp.json() : { agents, summary: data.summary };
         } catch (_) {
           lastResult = { agents, summary: data.summary };
@@ -1505,7 +1524,7 @@ async function startScan() {
 
           if (status.status === 'completed' || status.status === 'cancelled') {
             clearInterval(poll);
-            const resultResp = await fetch('/api/scan/results');
+            const resultResp = await fetchScanPages('/api/scan/results');
             lastResult = await resultResp.json();
             updateResultStats(lastResult);
             renderAgents(lastResult.agents || [], lastResult.diff);
@@ -1815,7 +1834,7 @@ function renderHistory(scans) {
 async function loadHistoryScan(scanId) {
   try {
     log('Loading scan ' + scanId.substring(0, 8) + '...');
-    const resp = await fetch('/api/scan/' + encodeURIComponent(scanId));
+    const resp = await fetchScanPages('/api/scan/' + encodeURIComponent(scanId));
     if (!resp.ok) { log('Scan not found'); return; }
     const data = await resp.json();
     lastResult = data;

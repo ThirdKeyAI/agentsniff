@@ -43,6 +43,7 @@ pub fn classify_banner(banner: &str) -> Option<&'static str> {
 }
 
 pub struct PortScannerDetector {
+    budget: Arc<crate::limits::EvidenceBudget>,
     ports: Vec<u16>,
     services: Arc<HashMap<u16, Vec<String>>>,
     custom_ports: Arc<HashSet<u16>>,
@@ -72,6 +73,7 @@ impl PortScannerDetector {
             .collect();
 
         Self {
+            budget: config.evidence_budget.clone(),
             ports,
             services: Arc::new(services),
             custom_ports: Arc::new(custom_ports),
@@ -104,12 +106,13 @@ impl Detector for PortScannerDetector {
         let mut handles = Vec::new();
 
         for &ip in targets {
+            self.budget.check()?;
             for &port in &self.ports {
                 let permit = semaphore.clone().acquire_owned().await?;
                 let timeout = self.timeout;
                 let services = Arc::clone(&self.services);
                 let custom_ports = Arc::clone(&self.custom_ports);
-                handles.push(tokio::spawn(async move {
+                handles.push(crate::limits::spawn_signal(self.budget.clone(), async move {
                     let _permit = permit;
                     let addr = std::net::SocketAddr::new(ip, port);
                     crate::ratelimit::acquire().await;
@@ -181,6 +184,7 @@ impl Detector for PortScannerDetector {
                 signals.push(signal);
             }
         }
+        self.budget.check()?;
         Ok(signals)
     }
 

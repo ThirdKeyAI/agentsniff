@@ -150,6 +150,7 @@ pub fn validate_agent_card(
 }
 
 pub struct A2aDetector {
+    budget: std::sync::Arc<crate::limits::EvidenceBudget>,
     timeout: Duration,
     concurrency: usize,
     client: Client,
@@ -167,8 +168,9 @@ impl A2aDetector {
             .build()
             .expect("failed to build reqwest client");
         Self {
+            budget: config.evidence_budget.clone(),
             timeout,
-            concurrency: config.http_concurrency,
+            concurrency: config.http_concurrency.clamp(1, 32),
             client,
             trusted_keys: config.a2a_trusted_keys.clone(),
             ports: config.ports_or(A2A_PORTS),
@@ -281,7 +283,7 @@ impl Detector for A2aDetector {
             for &port in &self.ports {
                 let permit = semaphore.clone().acquire_owned().await?;
                 let timeout = self.timeout;
-                connect_handles.push(tokio::spawn(async move {
+                connect_handles.push(crate::limits::spawn(async move {
                     let _permit = permit;
                     (ip, port, Self::is_port_open(ip, port, timeout).await)
                 }));
@@ -297,14 +299,18 @@ impl Detector for A2aDetector {
 
         let mut handles = Vec::new();
         for (ip, port) in open_pairs {
+            self.budget.check()?;
             for path in [A2A_PATH, LEGACY_A2A_PATH] {
                 let permit = semaphore.clone().acquire_owned().await?;
                 let client = self.client.clone();
                 let trusted_keys = self.trusted_keys.clone();
-                handles.push(tokio::spawn(async move {
-                    let _permit = permit;
-                    Self::probe_path(&client, &trusted_keys, ip, port, path).await
-                }));
+                handles.push(crate::limits::spawn_signal(
+                    self.budget.clone(),
+                    async move {
+                        let _permit = permit;
+                        Self::probe_path(&client, &trusted_keys, ip, port, path).await
+                    },
+                ));
             }
         }
 
@@ -314,6 +320,7 @@ impl Detector for A2aDetector {
                 signals.push(signal);
             }
         }
+        self.budget.check()?;
         Ok(signals)
     }
 

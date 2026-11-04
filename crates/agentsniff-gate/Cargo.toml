@@ -1,0 +1,27 @@
+[package]
+name = "agentsniff-gate"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "AgentSniff's inbound agent gate engine: known-agent catalog, behavior scoring, rate limiting and Web Bot Auth verification for forward-auth proxies."
+repository = "https://github.com/ThirdKeyAI/agentsniff"
+homepage = "https://agentsniff.org"
+documentation = "https://docs.agentsniff.org/"
+readme = "README.md"
+keywords = ["agentsniff", "ai", "security", "bots", "web-bot-auth"]
+categories = ["network-programming", "web-programming"]
+include = ["src/**/*", "README.md", "Cargo.toml"]
+
+[dependencies]
+agentsniff-signatures = { path = "../agentsniff-signatures", version = "2.4.0" }
+anyhow = "1"
+base64 = "0.23"
+chrono = { version = "0.4", features = ["serde"] }
+ed25519-dalek = "2"
+http = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+tokio = { version = "1", features = ["time"] }
+uuid = { version = "1", features = ["v4"] }

@@ -28,6 +28,7 @@ version = "2.4.0"
 dependencies = [
  "agentpin",
  "agentsniff-common",
+ "agentsniff-gate",
  "agentsniff-signatures",
  "anyhow",
  "async-trait",
@@ -66,6 +67,23 @@ dependencies = [
 [[package]]
 name = "agentsniff-common"
 version = "2.4.0"
+
+[[package]]
+name = "agentsniff-gate"
+version = "2.4.0"
+dependencies = [
+ "agentsniff-signatures",
+ "anyhow",
+ "base64 0.23.1",
+ "chrono",
+ "ed25519-dalek",
+ "http",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "tokio",
+ "uuid",
+]
 
 [[package]]
 name = "agentsniff-signatures"

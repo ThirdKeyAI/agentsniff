@@ -39,6 +39,7 @@ ebpf = ["dep:aya", "dep:aya-log", "dep:aya-build"]
 [dependencies]
 agentsniff-common = { path = "../agentsniff-common", version = "2.4.0", features = ["user"] }
 agentsniff-signatures = { path = "../agentsniff-signatures", version = "2.4.0" }
+agentsniff-gate = { path = "../agentsniff-gate", version = "2.4.0" }
 tokio = { version = "1", features = ["full"] }
 clap = { version = "4", features = ["derive"] }
 anyhow = "1"
@@ -61,7 +62,6 @@ libc = "0.2"
 axum = "0.7"
 tokio-stream = { version = "0.1", features = ["sync"] }
 p256 = { version = "0.14", features = ["ecdsa"] }
-ed25519-dalek = "2"
 sha2 = "0.10"
 base64 = "0.23"
 rust-embed = { version = "8", features = ["include-exclude"] }
@@ -76,3 +76,4 @@ aya-build = { version = "0.1", optional = true }
 
 [dev-dependencies]
 tower = { version = "0.5", features = ["util"] }
+ed25519-dalek = "2"

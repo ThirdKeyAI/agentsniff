@@ -1,5 +1,5 @@
+use crate::gate::is_loopback_host;
 use std::convert::Infallible;
-use std::net::IpAddr;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -702,13 +702,6 @@ async fn mcp_handler(
             },
         ),
     }
-}
-
-pub(crate) fn is_loopback_host(host: &str) -> bool {
-    host.eq_ignore_ascii_case("localhost")
-        || host
-            .parse::<IpAddr>()
-            .is_ok_and(|address| address.is_loopback())
 }
 
 /// Refuse remote API exposure unless a sufficiently strong shared secret is

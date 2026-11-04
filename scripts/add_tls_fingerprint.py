@@ -14,7 +14,7 @@ import re
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
-CATALOG = REPO / "crates" / "agentsniff" / "assets" / "signatures" / "tls_fingerprints.json"
+CATALOG = REPO / "crates" / "agentsniff-signatures" / "assets" / "signatures" / "tls_fingerprints.json"
 
 
 def iso8601(value: str) -> str:

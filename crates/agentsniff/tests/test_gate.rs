@@ -22,10 +22,14 @@ const TOKEN: &str = "0123456789abcdef0123456789abcdef-gate";
 fn catalog() -> AgentCatalog {
     // The shipped datasets, parsed directly: this also checks that the
     // catalog file itself is well formed before it is signed.
-    let agents: serde_json::Value =
-        serde_json::from_str(include_str!("../assets/signatures/agent_clients.json")).unwrap();
-    let tls: serde_json::Value =
-        serde_json::from_str(include_str!("../assets/signatures/tls_fingerprints.json")).unwrap();
+    let agents: serde_json::Value = serde_json::from_str(include_str!(
+        "../../agentsniff-signatures/assets/signatures/agent_clients.json"
+    ))
+    .unwrap();
+    let tls: serde_json::Value = serde_json::from_str(include_str!(
+        "../../agentsniff-signatures/assets/signatures/tls_fingerprints.json"
+    ))
+    .unwrap();
     AgentCatalog::from_values(&agents, &tls).unwrap()
 }
 
@@ -987,4 +991,17 @@ fn unsigned_claim_cannot_lift_a_user_agent_block() {
     assert_eq!(decision.action, GateAction::Block);
     assert_eq!(decision.agent.as_ref().unwrap().id, "meta_muse");
     assert!(signal_ids(&decision).contains(&"known_agent_user_agent"));
+}
+
+#[test]
+fn engine_crate_is_what_the_server_uses() {
+    let signatures = agentsniff_signatures::SignatureData::load_embedded();
+    let engine = agentsniff_gate::GateEngine::from_signatures(
+        agentsniff_gate::GateConfig::default(),
+        &signatures,
+    )
+    .unwrap();
+    assert!(engine.catalog().len() > 0);
+    assert!(agentsniff_gate::is_loopback_host("127.0.0.1"));
+    assert!(!agentsniff_gate::is_loopback_host("0.0.0.0"));
 }

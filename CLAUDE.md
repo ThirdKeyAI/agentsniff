@@ -41,7 +41,7 @@ docs/
 ## Invariants
 
 - AgentPin shape validation is discovery only. Do not use “verified” or `CONFIRMED` without cryptographic identity validation.
-- Detection datasets must verify against `assets/signatures/signing_key.pub`; never trust a key supplied by a sidecar.
+- Detection datasets must verify against `crates/agentsniff-signatures/assets/signatures/signing_key.pub`; never trust a key supplied by a sidecar.
 - Signature updates are complete-set, fail-closed, and atomically activated.
 - The dashboard binds to loopback by default. A non-loopback listener requires a 32-byte-or-longer API token, and every non-health route must remain authenticated when a token is configured.
 - SSE is read-only; scan creation is a JSON POST.

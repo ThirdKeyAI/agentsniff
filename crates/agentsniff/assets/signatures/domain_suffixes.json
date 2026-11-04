@@ -19,7 +19,10 @@
   ".volces.com",
   ".run.tools",
   ".e2b.dev",
-  ".gcpp.cursor.sh",
+  ".cursor.sh",
+  ".cursor-cdn.com",
+  ".cursorapi.com",
+  ".cursorvm.com",
   ".pinecone.io",
   ".weaviate.cloud",
   ".cloud.qdrant.io",
@@ -31,5 +34,6 @@
   ".cartesia.ai",
   ".replicate.delivery",
   ".bentoml.ai",
+  ".bentoml.com",
   ".mcp.cloudflare.com"
 ]

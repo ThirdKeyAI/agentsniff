@@ -90,7 +90,7 @@ fn test_tamper_detection() {
     let tampered = serde_json::to_value(&domains).unwrap();
 
     // Load the real sig file
-    let sig_json = include_str!("../assets/signatures/llm_domains.sig");
+    let sig_json = include_str!("../../agentsniff-signatures/assets/signatures/llm_domains.sig");
     let sig_data: serde_json::Value = serde_json::from_str(sig_json).unwrap();
 
     let status = verify_signature(&tampered, &sig_data);
@@ -99,9 +99,9 @@ fn test_tamper_detection() {
 
 #[test]
 fn test_sidecar_key_cannot_replace_pinned_trust_anchor() {
-    let data_json = include_str!("../assets/signatures/llm_domains.json");
+    let data_json = include_str!("../../agentsniff-signatures/assets/signatures/llm_domains.json");
     let data: serde_json::Value = serde_json::from_str(data_json).unwrap();
-    let sig_json = include_str!("../assets/signatures/llm_domains.sig");
+    let sig_json = include_str!("../../agentsniff-signatures/assets/signatures/llm_domains.sig");
     let mut sig_data: serde_json::Value = serde_json::from_str(sig_json).unwrap();
     sig_data["public_key_pem"] = serde_json::Value::String(
         "-----BEGIN PUBLIC KEY-----\ninvalid-replacement-key\n-----END PUBLIC KEY-----".into(),
@@ -111,4 +111,11 @@ fn test_sidecar_key_cannot_replace_pinned_trust_anchor() {
         verify_signature(&data, &sig_data),
         VerificationStatus::Invalid
     );
+}
+
+#[test]
+fn signatures_crate_is_the_source_of_embedded_data() {
+    let data = agentsniff_signatures::SignatureData::load_embedded();
+    assert!(data.all_verified());
+    assert_eq!(agentsniff_signatures::SIGNATURE_FILES.len(), 9);
 }

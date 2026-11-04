@@ -187,7 +187,7 @@ Core endpoints:
 
 ## Detection signatures
 
-Detection data is embedded from `crates/agentsniff/assets/signatures/`. Every dataset is accepted only when its ECDSA P-256 signature verifies against the independently packaged `signing_key.pub`.
+Detection data is embedded from `crates/agentsniff-signatures/assets/signatures/`. Every dataset is accepted only when its ECDSA P-256 signature verifies against the independently packaged `signing_key.pub`.
 
 ```bash
 agentsniff update-signatures
@@ -253,7 +253,9 @@ Useful paths:
 Cargo.toml
 crates/agentsniff/                 Main library and binary
 crates/agentsniff-common/          Shared eBPF/user-space types
-crates/agentsniff/assets/          Dashboard and signed detection data
+crates/agentsniff/assets/          Dashboard
+crates/agentsniff-signatures/      Signed detection data and its verifier
+crates/agentsniff-gate/            Inbound agent gate engine
 crates/agentsniff/tests/           Integration tests
 scripts/                           Installer and maintainer signing tools
 docs/                              Documentation site

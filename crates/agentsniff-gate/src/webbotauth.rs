@@ -9,9 +9,9 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::Mutex;
 
-use axum::http::HeaderMap;
 use base64::Engine;
 use ed25519_dalek::{Signature, VerifyingKey};
+use http::HeaderMap;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
@@ -661,8 +661,8 @@ mod tests {
         let mut map = HeaderMap::new();
         for (name, value) in pairs {
             map.append(
-                axum::http::HeaderName::from_bytes(name.as_bytes()).unwrap(),
-                axum::http::HeaderValue::from_str(value).unwrap(),
+                http::HeaderName::from_bytes(name.as_bytes()).unwrap(),
+                http::HeaderValue::from_str(value).unwrap(),
             );
         }
         map
@@ -764,7 +764,7 @@ mod tests {
         let mut h = h;
         h.insert(
             "signature",
-            axum::http::HeaderValue::from_str(&format!(
+            http::HeaderValue::from_str(&format!(
                 "sig1=:{}:",
                 base64::engine::general_purpose::STANDARD.encode(sig.to_bytes())
             ))

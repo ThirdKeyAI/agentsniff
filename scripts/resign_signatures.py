@@ -21,7 +21,7 @@ from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import ec
 
 REPO = Path(__file__).resolve().parent.parent
-SIG_DIR = REPO / "crates" / "agentsniff" / "assets" / "signatures"
+SIG_DIR = REPO / "crates" / "agentsniff-signatures" / "assets" / "signatures"
 
 JSON_FILES = [
     "llm_domains.json",

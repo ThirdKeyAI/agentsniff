@@ -6,7 +6,7 @@ use crate::http::read_body_limited;
 use crate::signatures::{verify_signature, SignatureData, VerificationStatus, SIGNATURE_FILES};
 
 const DEFAULT_BASE_URL: &str =
-    "https://raw.githubusercontent.com/ThirdKeyAI/agentsniff/main/crates/agentsniff/assets/signatures/";
+    "https://raw.githubusercontent.com/ThirdKeyAI/agentsniff/main/crates/agentsniff-signatures/assets/signatures/";
 
 const MAX_SIGNATURE_DATA_BYTES: usize = 8 * 1024 * 1024;
 const MAX_SIGNATURE_METADATA_BYTES: usize = 64 * 1024;

@@ -28,6 +28,7 @@ version = "2.4.0"
 dependencies = [
  "agentpin",
  "agentsniff-common",
+ "agentsniff-signatures",
  "anyhow",
  "async-trait",
  "axum",
@@ -65,6 +66,19 @@ dependencies = [
 [[package]]
 name = "agentsniff-common"
 version = "2.4.0"
+
+[[package]]
+name = "agentsniff-signatures"
+version = "2.4.0"
+dependencies = [
+ "anyhow",
+ "base64 0.23.1",
+ "p256",
+ "rust-embed",
+ "serde_json",
+ "sha2 0.10.9",
+ "tracing",
+]
 
 [[package]]
 name = "aho-corasick"

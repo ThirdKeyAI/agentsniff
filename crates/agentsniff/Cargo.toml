@@ -38,6 +38,7 @@ ebpf = ["dep:aya", "dep:aya-log", "dep:aya-build"]
 
 [dependencies]
 agentsniff-common = { path = "../agentsniff-common", version = "2.4.0", features = ["user"] }
+agentsniff-signatures = { path = "../agentsniff-signatures", version = "2.4.0" }
 tokio = { version = "1", features = ["full"] }
 clap = { version = "4", features = ["derive"] }
 anyhow = "1"

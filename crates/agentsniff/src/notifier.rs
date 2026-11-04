@@ -1,4 +1,4 @@
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use lettre::message::{header::ContentType, Mailbox, MultiPart, SinglePart};
 use lettre::transport::smtp::authentication::Credentials;
@@ -36,23 +36,28 @@ impl Notifier {
 
     /// Check if alert conditions are met and send notifications.
     pub async fn check_and_notify(&mut self, result: &ScanResult) -> anyhow::Result<()> {
+        if let Some(payload) = self.prepare(result) {
+            send_payload(&payload, &self.config).await;
+        }
+        Ok(())
+    }
+
+    /// Reserve the cooldown before dispatch, so slow or failed destinations
+    /// cannot create an unbounded queue of retries.
+    pub(crate) fn prepare(&mut self, result: &ScanResult) -> Option<serde_json::Value> {
         if !self.should_notify(result) {
-            return Ok(());
+            return None;
         }
 
         // Check cooldown
         if let Some(last) = self.last_alert {
             if last.elapsed().as_secs() < self.config.alert_cooldown {
-                return Ok(());
+                return None;
             }
         }
 
-        let outcomes = send_alerts(result, &self.config).await;
-        if outcomes.iter().any(|o| o.contains("ok")) {
-            self.last_alert = Some(Instant::now());
-        }
-
-        Ok(())
+        self.last_alert = Some(Instant::now());
+        Some(build_payload(result, &self.config))
     }
 }
 
@@ -131,22 +136,38 @@ fn build_payload(result: &ScanResult, config: &ScanConfig) -> serde_json::Value 
 
 /// Dispatch alerts to all configured channels. Returns outcome strings.
 pub async fn send_alerts(result: &ScanResult, config: &ScanConfig) -> Vec<String> {
-    let mut outcomes = Vec::new();
     let payload = build_payload(result, config);
+    send_payload(&payload, config).await
+}
+
+pub(crate) async fn send_payload(payload: &serde_json::Value, config: &ScanConfig) -> Vec<String> {
+    let mut outcomes = Vec::new();
 
     if !config.webhook_url.is_empty() {
-        outcomes.push(send_webhook(&payload, config).await);
+        outcomes.push(send_webhook(payload, config).await);
     }
 
     if !config.smtp_to.is_empty() {
-        outcomes.push(send_email(&payload, config).await);
+        outcomes.push(
+            tokio::time::timeout(Duration::from_secs(20), send_email(payload, config))
+                .await
+                .unwrap_or_else(|_| "email:failed:timeout".into()),
+        );
     }
 
     outcomes
 }
 
 async fn send_webhook(payload: &serde_json::Value, config: &ScanConfig) -> String {
-    let client = reqwest::Client::new();
+    let client = match reqwest::Client::builder()
+        .connect_timeout(Duration::from_secs(3))
+        .timeout(Duration::from_secs(10))
+        .redirect(reqwest::redirect::Policy::none())
+        .build()
+    {
+        Ok(client) => client,
+        Err(error) => return format!("webhook:failed:{error}"),
+    };
     let mut req = client
         .post(&config.webhook_url)
         .header("Content-Type", "application/json")
@@ -159,7 +180,7 @@ async fn send_webhook(payload: &serde_json::Value, config: &ScanConfig) -> Strin
     match req.send().await {
         Ok(resp) => {
             let status = resp.status().as_u16();
-            if status < 400 {
+            if resp.status().is_success() {
                 tracing::info!("Webhook alert sent ({})", status);
                 format!("webhook:ok:{}", status)
             } else {

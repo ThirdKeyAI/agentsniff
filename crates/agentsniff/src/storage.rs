@@ -31,7 +31,90 @@ pub struct ScanSummary {
 pub struct StorageBackup {
     pub filename: String,
     pub content_type: String,
-    pub data: Vec<u8>,
+    pub file: std::fs::File,
+}
+
+pub const MAX_HISTORY_BYTES: u64 = 512 * 1024 * 1024;
+pub const MAX_HISTORY_SCANS: u64 = 1000;
+
+fn check_sqlite_scan_size(conn: &Connection, scan_id: &str) -> Result<()> {
+    let (agent_bytes, agents): (i64, i64) = conn.query_row(
+        "SELECT COALESCE(SUM(length(COALESCE(host,'')) + length(COALESCE(ip_address,'')) +
+         length(COALESCE(framework,'')) + length(COALESCE(agentpin_identity,'')) +
+         length(COALESCE(mcp_capabilities,'')) + length(COALESCE(metadata,'')) +
+         length(COALESCE(tls_fingerprint,''))),0), COUNT(*) FROM agents WHERE scan_id = ?1",
+        [scan_id],
+        |row| Ok((row.get(0)?, row.get(1)?)),
+    )?;
+    let (signal_bytes, signals): (i64, i64) = conn.query_row(
+        "SELECT COALESCE(SUM(length(COALESCE(evidence,'')) + length(COALESCE(description,'')) +
+         length(COALESCE(signal_type,''))),0), COUNT(*) FROM signals WHERE scan_id = ?1",
+        [scan_id],
+        |row| Ok((row.get(0)?, row.get(1)?)),
+    )?;
+    anyhow::ensure!(
+        signals <= crate::limits::MAX_SIGNALS as i64
+            && agent_bytes
+                .saturating_add(signal_bytes)
+                .saturating_add((agents + signals) * 1024)
+                <= crate::limits::MAX_SCAN_BYTES as i64,
+        "stored scan exceeds evidence budget; export/reset this history"
+    );
+    Ok(())
+}
+
+/// Only tighten the application's own directory, never arbitrary existing parents.
+fn prepare_private_database(path: &std::path::Path) -> Result<()> {
+    if path == std::path::Path::new(":memory:") {
+        return Ok(());
+    }
+    if let Some(parent) = path.parent().filter(|p| !p.as_os_str().is_empty()) {
+        let mut builder = std::fs::DirBuilder::new();
+        builder.recursive(true);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::DirBuilderExt;
+            builder.mode(0o700);
+        }
+        builder.create(parent)?;
+        #[cfg(unix)]
+        if parent.file_name().is_some_and(|name| name == ".agentsniff") {
+            anyhow::ensure!(
+                !std::fs::symlink_metadata(parent)?.file_type().is_symlink(),
+                "SQLite state directory must not be a symlink"
+            );
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(parent, std::fs::Permissions::from_mode(0o700))?;
+        }
+    }
+    for suffix in ["", "-wal", "-shm"] {
+        let mut name = path.as_os_str().to_os_string();
+        name.push(suffix);
+        let path = std::path::Path::new(&name);
+        if !suffix.is_empty() && !path.exists() {
+            continue;
+        }
+        if let Ok(meta) = std::fs::symlink_metadata(path) {
+            anyhow::ensure!(
+                !meta.file_type().is_symlink(),
+                "SQLite state must not be a symlink"
+            );
+        }
+        let mut options = std::fs::OpenOptions::new();
+        options.read(true).write(true).create(suffix.is_empty());
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            options.mode(0o600).custom_flags(libc::O_NOFOLLOW);
+        }
+        let file = options.open(path)?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            file.set_permissions(std::fs::Permissions::from_mode(0o600))?;
+        }
+    }
+    Ok(())
 }
 
 /// Async storage backend trait.
@@ -113,16 +196,14 @@ impl SqliteBackend {
             path.to_string()
         };
 
-        // Create parent directories if needed.
-        if let Some(parent) = std::path::Path::new(&expanded).parent() {
-            std::fs::create_dir_all(parent)?;
-        }
+        prepare_private_database(std::path::Path::new(&expanded))?;
 
         let conn = Connection::open(&expanded)?;
         let backend = Self {
             conn: Mutex::new(conn),
         };
         backend.create_tables()?;
+        prepare_private_database(std::path::Path::new(&expanded))?;
         Ok(backend)
     }
 
@@ -138,6 +219,9 @@ impl SqliteBackend {
 
     fn create_tables(&self) -> Result<()> {
         let conn = self.conn.lock().map_err(|e| anyhow::anyhow!("{e}"))?;
+        let page_size: i64 = conn.query_row("PRAGMA page_size", [], |row| row.get(0))?;
+        conn.pragma_update(None, "max_page_count", MAX_HISTORY_BYTES as i64 / page_size)?;
+        conn.pragma_update(None, "journal_size_limit", 16 * 1024 * 1024)?;
         conn.execute_batch("PRAGMA journal_mode=WAL;")?;
         conn.execute_batch(
             "CREATE TABLE IF NOT EXISTS scans (
@@ -215,7 +299,18 @@ impl SqliteBackend {
 #[async_trait]
 impl StorageBackend for SqliteBackend {
     async fn save_scan(&self, result: &ScanResult) -> Result<()> {
-        let conn = self.conn.lock().map_err(|e| anyhow::anyhow!("{e}"))?;
+        crate::limits::serialized_size(result, crate::limits::MAX_SCAN_BYTES)?;
+        let mut guard = self.conn.lock().map_err(|e| anyhow::anyhow!("{e}"))?;
+        let conn = guard.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+        let count: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM scans WHERE scan_id != ?1",
+            [&result.scan_id],
+            |row| row.get(0),
+        )?;
+        anyhow::ensure!(
+            count < MAX_HISTORY_SCANS as i64,
+            "scan history quota reached; export/reset history before writing more scans"
+        );
 
         let completed_at = result.completed_at.map(|dt| dt.to_rfc3339());
 
@@ -262,14 +357,19 @@ impl StorageBackend for SqliteBackend {
         )?;
 
         // Save all agents and their signals.
+        conn.execute("DELETE FROM signals WHERE scan_id = ?1", [&result.scan_id])?;
+        conn.execute("DELETE FROM agents WHERE scan_id = ?1", [&result.scan_id])?;
         for agent in &result.agents {
             self.save_agent_inner(&conn, &result.scan_id, agent)?;
         }
 
+        check_sqlite_scan_size(&conn, &result.scan_id)?;
+        conn.commit()?;
         Ok(())
     }
 
     async fn list_scans(&self, limit: u32, offset: u32) -> Result<Vec<ScanSummary>> {
+        let limit = limit.clamp(1, crate::limits::MAX_HISTORY_PAGE);
         let conn = self.conn.lock().map_err(|e| anyhow::anyhow!("{e}"))?;
         let mut stmt = conn.prepare(
             "SELECT scan_id, scope_id, target_network, started_at, completed_at, agent_count, status, detectors_run, diff
@@ -317,13 +417,18 @@ impl StorageBackend for SqliteBackend {
     }
 
     async fn save_agent(&self, scan_id: &str, agent: &DetectedAgent) -> Result<()> {
-        let conn = self.conn.lock().map_err(|e| anyhow::anyhow!("{e}"))?;
+        crate::limits::serialized_size(agent, crate::limits::MAX_SCAN_BYTES)?;
+        let mut guard = self.conn.lock().map_err(|e| anyhow::anyhow!("{e}"))?;
+        let conn = guard.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
         self.save_agent_inner(&conn, scan_id, agent)?;
+        check_sqlite_scan_size(&conn, scan_id)?;
+        conn.commit()?;
         Ok(())
     }
 
     async fn get_agents(&self, scan_id: &str) -> Result<Vec<DetectedAgent>> {
         let conn = self.conn.lock().map_err(|e| anyhow::anyhow!("{e}"))?;
+        check_sqlite_scan_size(&conn, scan_id)?;
 
         let mut agent_stmt = conn.prepare(
             "SELECT id, asset_id, host, ip_address, port, transport, agent_type, framework, status,
@@ -366,9 +471,8 @@ impl StorageBackend for SqliteBackend {
 
         let mut agents = Vec::new();
         // Collect rows first to release the borrow on agent_stmt.
-        let rows: Vec<AgentRow> = agent_rows.collect::<std::result::Result<Vec<_>, _>>()?;
-
-        for arow in rows {
+        for arow in agent_rows {
+            let arow = arow?;
             let ip_addr: std::net::IpAddr = arow
                 .ip_address
                 .parse()
@@ -594,15 +698,17 @@ impl StorageBackend for SqliteBackend {
             anyhow::bail!("Cannot backup in-memory database");
         }
 
-        // Checkpoint WAL to ensure all data is in the main file
-        let _ = conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE);");
-        drop(conn);
-
-        let data = std::fs::read(&db_path)?;
+        let snapshot = tempfile::NamedTempFile::new()?;
+        let mut destination = Connection::open(snapshot.path())?;
+        {
+            let backup = rusqlite::backup::Backup::new(&conn, &mut destination)?;
+            backup.run_to_completion(128, std::time::Duration::from_millis(1), None)?;
+        }
+        drop(destination);
         Ok(StorageBackup {
             filename: "agentsniff-backup.db".to_string(),
             content_type: "application/x-sqlite3".to_string(),
-            data,
+            file: snapshot.into_file(),
         })
     }
 

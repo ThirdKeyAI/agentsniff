@@ -29,7 +29,7 @@ port_scan_timeout: 5.0
 custom_llm_domains:
   - "my-llm.example.com"
 "#;
-    let config: ScanConfig = serde_yaml::from_str(yaml).unwrap();
+    let config = ScanConfig::from_yaml_file(&write_temp_yaml("basic", yaml)).unwrap();
     assert_eq!(config.target_network, "10.0.0.0/16");
     assert!(!config.enable_dns_monitor);
     assert_eq!(config.api_port, 8080);
@@ -40,8 +40,8 @@ custom_llm_domains:
 #[test]
 fn test_config_serialization_roundtrip() {
     let config = ScanConfig::default();
-    let yaml = serde_yaml::to_string(&config).unwrap();
-    let deserialized: ScanConfig = serde_yaml::from_str(&yaml).unwrap();
+    let yaml = serde_saphyr::to_string(&config).unwrap();
+    let deserialized = ScanConfig::from_yaml_file(&write_temp_yaml("roundtrip", &yaml)).unwrap();
     assert_eq!(config.target_network, deserialized.target_network);
     assert_eq!(config.api_port, deserialized.api_port);
 }
@@ -56,7 +56,7 @@ fn test_storage_config_defaults() {
 #[test]
 fn test_config_env_override() {
     std::env::set_var("AGENTSNIFF_TARGET_NETWORK", "172.16.0.0/12");
-    let config = ScanConfig::from_env_with_defaults(ScanConfig::default());
+    let config = ScanConfig::from_env_with_defaults(ScanConfig::default()).unwrap();
     assert_eq!(config.target_network, "172.16.0.0/12");
     std::env::remove_var("AGENTSNIFF_TARGET_NETWORK");
 }
@@ -84,7 +84,7 @@ zeek_enabled: true
 zeek_log_path: "/opt/zeek/logs/current"
 zeek_time_window: 600
 "#;
-    let config: ScanConfig = serde_yaml::from_str(yaml).unwrap();
+    let config = ScanConfig::from_yaml_file(&write_temp_yaml("zeek", yaml)).unwrap();
     assert!(config.zeek_enabled);
     assert_eq!(config.zeek_log_path, "/opt/zeek/logs/current");
     assert_eq!(config.zeek_time_window, 600);
@@ -167,7 +167,109 @@ fn test_probe_port_overrides_detector_port_lists() {
     config.probe_port = Some(8765);
     assert_eq!(config.ports_or(&[80, 443]), vec![8765]);
     // Runtime-only: never read from or written to YAML.
-    assert!(!serde_yaml::to_string(&config)
+    assert!(!serde_saphyr::to_string(&config)
         .unwrap()
         .contains("probe_port"));
+}
+
+#[test]
+fn yaml_preserves_ports_aliases_pem_and_defaults() {
+    let config = ScanConfig::from_yaml_file(&write_temp_yaml(
+        "yaml-types",
+        r#"
+target_hosts: &hosts ["127.0.0.1"]
+exclude_hosts: *hosts
+custom_agent_ports:
+  8443: custom-agent
+agentpin_trust_bundle_path: bundle.json
+storage:
+  backend: postgres
+webhook_headers:
+  X-Certificate: |
+    -----BEGIN PUBLIC KEY-----
+    example
+    -----END PUBLIC KEY-----
+custom_framework_signatures:
+  example:
+    ports: [8443]
+    enabled: true
+probe_port: 9999
+"#,
+    ))
+    .unwrap();
+    assert_eq!(
+        config.custom_agent_ports.get(&8443).unwrap(),
+        "custom-agent"
+    );
+    assert_eq!(config.target_hosts, config.exclude_hosts);
+    assert_eq!(config.storage.backend, "postgres");
+    assert_eq!(config.storage.redis_channel, "agentsniff:events:v1");
+    assert!(config.webhook_headers["X-Certificate"].ends_with("-----END PUBLIC KEY-----\n"));
+    assert!(config.probe_port.is_none());
+    assert_eq!(
+        config.custom_framework_signatures["example"]["ports"][0],
+        8443
+    );
+    assert_eq!(
+        config.custom_framework_signatures["example"]["enabled"],
+        true
+    );
+}
+
+#[test]
+fn yaml_rejects_ambiguous_or_malformed_config_without_secret_snippets() {
+    for (index, invalid) in [
+        "api_port: 1\napi_port: 2\n",
+        "enable_dns_monitor: yes\n",
+        "enable_dns_monitor: on\n",
+        "enable_dns_monitor: \"false\"\n",
+        "api_port: \"8123\"\n",
+        "api_token: 12345\n",
+        "target_network: true\n",
+        "api_port: [\n",
+        "api_port: 9090\n---\napi_port: 8080\n",
+    ]
+    .iter()
+    .enumerate()
+    {
+        let input = format!("smtp_password: nearby-secret-marker\n{invalid}");
+        let error = ScanConfig::from_yaml_file(&write_temp_yaml(&format!("bad-{index}"), &input))
+            .unwrap_err()
+            .to_string();
+        assert!(!error.contains("nearby-secret-marker"), "{error}");
+    }
+}
+
+#[test]
+fn yaml_does_not_activate_merge_keys() {
+    let config =
+        ScanConfig::from_yaml_file(&write_temp_yaml("merge", "<<: {api_port: 8123}\n")).unwrap();
+    assert_eq!(config.api_port, ScanConfig::default().api_port);
+}
+
+#[test]
+fn yaml_preserves_boolean_case_and_redacts_invalid_secret_values() {
+    for spelling in ["true", "True", "TRUE"] {
+        let path = write_temp_yaml(
+            &format!("nmap-{spelling}"),
+            &format!("nmap_enabled: {spelling}\n"),
+        );
+        assert!(ScanConfig::from_yaml_file(&path)
+            .unwrap_err()
+            .to_string()
+            .contains("enrich_enabled"));
+    }
+    for (index, yaml) in [
+        "smtp_password: 12345678901234567890\n",
+        "api_token: [secret-scalar-marker]\n",
+    ]
+    .iter()
+    .enumerate()
+    {
+        let error = ScanConfig::from_yaml_file(&write_temp_yaml(&format!("secret-{index}"), yaml))
+            .unwrap_err();
+        let rendered = format!("{error:#}");
+        assert!(!rendered.contains("12345678901234567890"));
+        assert!(!rendered.contains("secret-scalar-marker"));
+    }
 }

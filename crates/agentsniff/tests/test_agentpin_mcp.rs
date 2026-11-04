@@ -115,6 +115,7 @@ fn test_router(config: ScanConfig) -> axum::Router {
 
 fn modern_request(method: &str, name: Option<&str>, params: Value) -> Request<Body> {
     let mut request = Request::builder()
+        .header("Host", "localhost:9090")
         .method("POST")
         .uri("/mcp")
         .header("Content-Type", "application/json")
@@ -226,6 +227,7 @@ async fn rest_verifier_enforces_the_operator_configured_audience() {
     let response = test_router(fixture.config.clone())
         .oneshot(
             Request::builder()
+                .header("Host", "localhost:9090")
                 .method("POST")
                 .uri("/api/agentpin/verify")
                 .header("Content-Type", "application/json")
@@ -253,6 +255,7 @@ async fn modern_mcp_rejects_missing_routing_headers() {
     let response = test_router(fixture().config.clone())
         .oneshot(
             Request::builder()
+                .header("Host", "localhost:9090")
                 .method("POST")
                 .uri("/mcp")
                 .header("Content-Type", "application/json")
@@ -273,7 +276,7 @@ async fn legacy_mcp_clients_can_initialize_and_list_tools() {
     let initialize = app
         .clone()
         .oneshot(
-            Request::builder()
+            Request::builder().header("Host", "localhost:9090")
                 .method("POST")
                 .uri("/mcp")
                 .header("Content-Type", "application/json")
@@ -291,6 +294,7 @@ async fn legacy_mcp_clients_can_initialize_and_list_tools() {
     let list = app
         .oneshot(
             Request::builder()
+                .header("Host", "localhost:9090")
                 .method("POST")
                 .uri("/mcp")
                 .header("Content-Type", "application/json")
@@ -330,7 +334,9 @@ async fn live_http_mcp_listener_verifies_a_real_credential() {
     let fixture = fixture();
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let address = listener.local_addr().unwrap();
-    let app = test_router(fixture.config.clone());
+    let mut config = fixture.config.clone();
+    config.api_port = address.port();
+    let app = test_router(config);
     let server = tokio::spawn(async move {
         axum::serve(listener, app).await.unwrap();
     });

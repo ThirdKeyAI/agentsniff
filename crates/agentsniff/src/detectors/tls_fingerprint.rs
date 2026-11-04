@@ -156,6 +156,7 @@ impl Detector for TlsFingerprintDetector {
             let duration = Duration::from_secs(5);
             let deadline = tokio::time::Instant::now() + duration;
             let mut signals = Vec::new();
+            let mut per_host = std::collections::HashMap::<IpAddr, usize>::new();
             let target_set: std::collections::HashSet<IpAddr> = targets.iter().copied().collect();
 
             loop {
@@ -167,11 +168,19 @@ impl Detector for TlsFingerprintDetector {
                         }
                         let ja3 = compute_ja3_string(
                             event.tls_version,
-                            &event.cipher_suites[..event.cipher_count as usize],
-                            &event.extensions[..event.extension_count as usize],
+                            &event.cipher_suites
+                                [..(event.cipher_count as usize).min(event.cipher_suites.len())],
+                            &event.extensions
+                                [..(event.extension_count as usize).min(event.extensions.len())],
                         );
                         let dst_ip = std::net::Ipv4Addr::from(event.dst_addr);
-                        signals.push(Signal::new(
+                        let count = per_host.entry(IpAddr::V4(src_ip)).or_default();
+                        anyhow::ensure!(
+                            *count < crate::limits::MAX_AGENT_SIGNALS,
+                            "TLS event budget exceeded; capture incomplete"
+                        );
+                        *count += 1;
+                        let signal = Signal::new(
                             DetectorType::TlsFingerprint,
                             "tls_fingerprint_captured".to_string(),
                             format!(
@@ -187,9 +196,17 @@ impl Detector for TlsFingerprintDetector {
                                 "tls_version": event.tls_version,
                                 "source": "ebpf",
                             }),
-                        ));
+                        );
+                        anyhow::ensure!(
+                            self.config.evidence_budget.reserve(&signal),
+                            "TLS evidence budget exceeded; capture incomplete"
+                        );
+                        signals.push(signal);
                     }
-                    Ok(Err(_)) => break,
+                    Ok(Err(tokio::sync::broadcast::error::RecvError::Lagged(_))) => {
+                        anyhow::bail!("TLS events dropped; capture incomplete")
+                    }
+                    Ok(Err(tokio::sync::broadcast::error::RecvError::Closed)) => break,
                     Err(_) => break,
                 }
             }
@@ -205,36 +222,40 @@ impl Detector for TlsFingerprintDetector {
         let timeout = self.timeout;
         let client = self.client.clone();
 
-        let mut handles: Vec<tokio::task::JoinHandle<Option<Signal>>> = Vec::new();
+        let mut handles: Vec<crate::limits::ScopedTask<Option<Signal>>> = Vec::new();
         for &ip in targets {
+            self.config.evidence_budget.check()?;
             for port in self.config.ports_or(TLS_PROBE_PORTS) {
                 let permit = sem.clone().acquire_owned().await?;
                 let client = client.clone();
-                handles.push(tokio::spawn(async move {
-                    let _permit = permit;
-                    if !Self::is_port_open(ip, port, timeout).await {
-                        return None;
-                    }
-                    match probe_tls(&client, ip, port).await {
-                        Ok(info) => info.tls_version.map(|v| {
-                            Signal::new(
-                                DetectorType::TlsFingerprint,
-                                "tls_endpoint_detected".to_string(),
-                                format!("TLS endpoint at {}:{} ({})", ip, port, v),
-                                Confidence::Low,
-                                serde_json::json!({
-                                    "ip": ip.to_string(),
-                                    "port": port,
-                                    "tls_version": v,
-                                }),
-                            )
-                        }),
-                        Err(e) => {
-                            tracing::trace!("TLS probe failed for {}:{}: {}", ip, port, e);
-                            None
+                handles.push(crate::limits::spawn_signal(
+                    self.config.evidence_budget.clone(),
+                    async move {
+                        let _permit = permit;
+                        if !Self::is_port_open(ip, port, timeout).await {
+                            return None;
                         }
-                    }
-                }));
+                        match probe_tls(&client, ip, port).await {
+                            Ok(info) => info.tls_version.map(|v| {
+                                Signal::new(
+                                    DetectorType::TlsFingerprint,
+                                    "tls_endpoint_detected".to_string(),
+                                    format!("TLS endpoint at {}:{} ({})", ip, port, v),
+                                    Confidence::Low,
+                                    serde_json::json!({
+                                        "ip": ip.to_string(),
+                                        "port": port,
+                                        "tls_version": v,
+                                    }),
+                                )
+                            }),
+                            Err(e) => {
+                                tracing::trace!("TLS probe failed for {}:{}: {}", ip, port, e);
+                                None
+                            }
+                        }
+                    },
+                ));
             }
         }
 
@@ -245,6 +266,7 @@ impl Detector for TlsFingerprintDetector {
             }
         }
 
+        self.config.evidence_budget.check()?;
         Ok(signals)
     }
 

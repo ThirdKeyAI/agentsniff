@@ -87,7 +87,12 @@ Passive capture is an explicit privileged profile:
 docker compose --profile passive up -d agentsniff-passive
 ```
 
-The passive profile uses host networking plus `NET_RAW` and `NET_ADMIN`. Use it only on a trusted scanner host.
+The passive profile enables raw-socket SSE timing with host networking and
+`NET_RAW` only. The standard image does not contain eBPF programs. For kernel
+DNS/TLS/process capture, use a Linux host build with `--features ebpf` and set
+`AGENTSNIFF_EBPF_INTERFACE`. Use passive capture only on an authorized scanner host.
+The passive profile has its own root-owned state volume; it does not reuse or
+change permissions on the standard service's non-root state.
 
 ## CLI
 

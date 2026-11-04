@@ -100,6 +100,7 @@ pub fn validate_agentpin_document(doc: &Value) -> bool {
 
 /// AgentPin prober that discovers AI agent identities via the AgentPin protocol.
 pub struct AgentpinProber {
+    budget: std::sync::Arc<crate::limits::EvidenceBudget>,
     #[allow(dead_code)]
     timeout: Duration,
     client: reqwest::Client,
@@ -107,6 +108,11 @@ pub struct AgentpinProber {
     ports: Vec<u16>,
     /// Whether to also try plain HTTP on port 80.
     http_80: bool,
+}
+
+fn retain_document(doc: Option<Value>, budget: &crate::limits::EvidenceBudget) -> Option<Value> {
+    doc.filter(validate_agentpin_document)
+        .filter(|doc| budget.reserve(doc))
 }
 
 impl AgentpinProber {
@@ -121,6 +127,7 @@ impl AgentpinProber {
             .expect("failed to build reqwest client");
 
         Self {
+            budget: config.evidence_budget.clone(),
             timeout,
             client,
             ports: config.ports_or(AGENTPIN_PORTS),
@@ -211,13 +218,16 @@ impl Detector for AgentpinProber {
         let sem = std::sync::Arc::new(Semaphore::new(128));
         let client = self.client.clone();
 
-        let mut handles: Vec<tokio::task::JoinHandle<(IpAddr, u16, &'static str, Option<Value>)>> =
-            Vec::new();
+        let mut handles: Vec<
+            crate::limits::ScopedTask<(IpAddr, u16, &'static str, Option<Value>)>,
+        > = Vec::new();
         for &ip in targets {
+            self.budget.check()?;
             for &port in &self.ports {
                 let permit = sem.clone().acquire_owned().await?;
+                let budget = self.budget.clone();
                 let client = client.clone();
-                handles.push(tokio::spawn(async move {
+                handles.push(crate::limits::spawn(async move {
                     let _permit = permit;
                     let addr = std::net::SocketAddr::new(ip, port);
                     let url = format!("https://{addr}{AGENTPIN_PATH}");
@@ -231,7 +241,7 @@ impl Detector for AgentpinProber {
                         }
                         _ => None,
                     };
-                    let doc = doc.filter(validate_agentpin_document);
+                    let doc = retain_document(doc, &budget);
                     (ip, port, "https", doc)
                 }));
             }
@@ -240,8 +250,9 @@ impl Detector for AgentpinProber {
                 continue;
             }
             let permit = sem.clone().acquire_owned().await?;
+            let budget = self.budget.clone();
             let client = client.clone();
-            handles.push(tokio::spawn(async move {
+            handles.push(crate::limits::spawn(async move {
                 let _permit = permit;
                 let addr = std::net::SocketAddr::new(ip, 80);
                 let url = format!("http://{addr}{AGENTPIN_PATH}");
@@ -255,7 +266,7 @@ impl Detector for AgentpinProber {
                     }
                     _ => None,
                 };
-                let doc = doc.filter(validate_agentpin_document);
+                let doc = retain_document(doc, &budget);
                 (ip, 80u16, "http", doc)
             }));
         }
@@ -266,6 +277,7 @@ impl Detector for AgentpinProber {
                 signals.extend(self.signals_from_document(ip, port, scheme, &doc));
             }
         }
+        self.budget.check()?;
         Ok(signals)
     }
 
@@ -305,6 +317,19 @@ mod tests {
 
         let signals =
             detector.signals_from_document("192.0.2.10".parse().unwrap(), 443, "https", &doc);
+
+        let mut padded = doc.clone();
+        padded["padding"] = Value::String("x".repeat(200_000));
+        let budget = crate::limits::EvidenceBudget::default();
+        assert!(retain_document(Some(doc), &budget).is_some());
+        let mut accepted = 0;
+        for _ in 0..100 {
+            if retain_document(Some(padded.clone()), &budget).is_some() {
+                accepted += 1;
+            }
+        }
+        assert!(accepted < 42);
+        assert!(budget.check().is_err());
 
         assert_eq!(signals.len(), 1);
         assert_eq!(signals[0].confidence, Confidence::Medium);

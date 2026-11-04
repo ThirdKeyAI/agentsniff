@@ -31,6 +31,9 @@ impl Default for StorageConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct ScanConfig {
+    #[serde(skip)]
+    #[doc(hidden)]
+    pub evidence_budget: std::sync::Arc<crate::limits::EvidenceBudget>,
     // ── Network targets ──────────────────────────────────────────────
     pub target_network: String,
     pub target_hosts: Vec<String>,
@@ -137,6 +140,7 @@ impl Default for ScanConfig {
     fn default() -> Self {
         Self {
             // Network targets
+            evidence_budget: std::sync::Arc::default(),
             target_network: "192.168.1.0/24".to_string(),
             target_hosts: Vec::new(),
             exclude_hosts: Vec::new(),
@@ -175,7 +179,7 @@ impl Default for ScanConfig {
             api_host: "127.0.0.1".to_string(),
             api_port: 9090,
             api_token: String::new(),
-            api_cors_origins: vec!["*".to_string()],
+            api_cors_origins: Vec::new(),
 
             // AgentPin verifier
             agentpin_trust_bundle_path: String::new(),
@@ -239,9 +243,28 @@ impl ScanConfig {
     /// Load configuration from a YAML file on disk.
     pub fn from_yaml_file(path: &str) -> anyhow::Result<Self> {
         let contents = std::fs::read_to_string(path)?;
-        let value: serde_yaml::Value = serde_yaml::from_str(&contents)?;
+        // Never expand merge keys or print source snippets (which can contain
+        // credentials). Keep parser/alias budgets and duplicate-key rejection.
+        let options = serde_saphyr::options! {
+            strict_booleans: true,
+            merge_keys: serde_saphyr::MergeKeyPolicy::AsOrdinary,
+            with_snippet: false,
+        };
+        // Preserve scalar types before converting to config: direct typed YAML
+        // deserialization would accept quoted booleans/numbers as native values.
+        // JSON's map-key deserializer still supports custom_agent_ports' u16 keys.
+        let value: serde_json::Value = serde_saphyr::from_str_with_options(&contents, options)
+            .map_err(|error| match error.location() {
+                Some(location) => anyhow::anyhow!(
+                    "invalid YAML configuration at line {}, column {}",
+                    location.line(),
+                    location.column()
+                ),
+                None => anyhow::anyhow!("invalid YAML configuration"),
+            })?;
         check_removed_nmap_keys(&value)?;
-        let config: Self = serde_yaml::from_value(value)?;
+        let config: Self = serde_json::from_value(value)
+            .map_err(|_| anyhow::anyhow!("invalid configuration value type; check booleans, numbers, lists, and quoted strings"))?;
         Ok(config)
     }
 
@@ -270,49 +293,160 @@ impl ScanConfig {
     }
 
     /// Apply environment-variable overrides on top of an existing config.
-    pub fn from_env_with_defaults(mut config: Self) -> Self {
-        if let Ok(v) = std::env::var("AGENTSNIFF_TARGET_NETWORK") {
-            config.target_network = v;
-        }
-        if let Ok(v) = std::env::var("AGENTSNIFF_API_PORT") {
-            if let Ok(port) = v.parse::<u16>() {
-                config.api_port = port;
+    pub fn from_env_with_defaults(config: Self) -> anyhow::Result<Self> {
+        Self::apply_env(config, |name| std::env::var(name).ok())
+    }
+
+    fn apply_env(config: Self, lookup: impl Fn(&str) -> Option<String>) -> anyhow::Result<Self> {
+        let mut values = serde_json::to_value(&config).expect("serializable configuration");
+        for (key, current) in values.as_object_mut().expect("configuration object") {
+            if key == "storage" {
+                for (key, current) in current.as_object_mut().expect("storage object") {
+                    let name = match key.as_str() {
+                        "backend" => "STORAGE_BACKEND",
+                        "sqlite_path" => "DB_PATH",
+                        _ => key,
+                    };
+                    if let Some(raw) = lookup(&format!("AGENTSNIFF_{}", name.to_ascii_uppercase()))
+                    {
+                        *current = serde_json::Value::String(raw);
+                    }
+                }
+                continue;
+            }
+            let name = match key.as_str() {
+                "agentpin_trust_bundle_path" => "AGENTPIN_TRUST_BUNDLE",
+                "agentpin_pin_store_path" => "AGENTPIN_PIN_STORE",
+                "agentpin_expected_audience" => "AGENTPIN_AUDIENCE",
+                _ => key,
+            };
+            let name = format!("AGENTSNIFF_{}", name.to_ascii_uppercase());
+            let Some(raw) = lookup(&name) else { continue };
+            let parsed = match current {
+                serde_json::Value::String(_) => Some(serde_json::Value::String(raw)),
+                serde_json::Value::Bool(_) => match raw.to_ascii_lowercase().as_str() {
+                    "1" | "true" | "yes" | "on" => Some(serde_json::Value::Bool(true)),
+                    "0" | "false" | "no" | "off" => Some(serde_json::Value::Bool(false)),
+                    _ => None,
+                },
+                serde_json::Value::Array(_) => Some(serde_json::json!(raw
+                    .split(',')
+                    .map(str::trim)
+                    .filter(|s| !s.is_empty())
+                    .collect::<Vec<_>>())),
+                _ => serde_json::from_str(&raw).ok(),
+            };
+            if let Some(value) = parsed {
+                *current = value;
+            } else {
+                anyhow::bail!("invalid value for {name}");
             }
         }
-        if let Ok(v) = std::env::var("AGENTSNIFF_API_HOST") {
-            config.api_host = v;
+        let mut updated: Self = serde_json::from_value(values)
+            .map_err(|_| anyhow::anyhow!("invalid environment configuration; refusing to start"))?;
+        if updated.webhook_url != config.webhook_url
+            && lookup("AGENTSNIFF_WEBHOOK_HEADERS").is_none()
+        {
+            updated.webhook_headers.clear();
         }
-        if let Ok(v) = std::env::var("AGENTSNIFF_API_TOKEN") {
-            config.api_token = v;
+        if (updated.smtp_host != config.smtp_host
+            || updated.smtp_port != config.smtp_port
+            || updated.smtp_use_tls != config.smtp_use_tls)
+            && lookup("AGENTSNIFF_SMTP_PASSWORD").is_none()
+        {
+            updated.smtp_user.clear();
+            updated.smtp_password.clear();
         }
-        if let Ok(v) = std::env::var("AGENTSNIFF_AGENTPIN_TRUST_BUNDLE") {
-            config.agentpin_trust_bundle_path = v;
+        Ok(updated)
+    }
+
+    pub fn validate(&self) -> anyhow::Result<()> {
+        anyhow::ensure!(
+            self.http_timeout.is_finite() && self.http_timeout > 0.0 && self.http_timeout <= 300.0,
+            "http_timeout must be between 0 and 300 seconds"
+        );
+        anyhow::ensure!(
+            self.port_scan_timeout.is_finite()
+                && self.port_scan_timeout > 0.0
+                && self.port_scan_timeout <= 300.0,
+            "port_scan_timeout must be between 0 and 300 seconds"
+        );
+        anyhow::ensure!(
+            (1..=1024).contains(&self.http_concurrency)
+                && (1..=1024).contains(&self.port_scan_concurrency),
+            "concurrency must be between 1 and 1024"
+        );
+        anyhow::ensure!(
+            self.dns_monitor_duration <= 3600,
+            "dns_monitor_duration cannot exceed 3600 seconds"
+        );
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod environment_tests {
+    use super::*;
+
+    #[test]
+    fn overrides_yaml_and_retains_unset_values() {
+        let base = ScanConfig {
+            target_network: "10.0.0.1/32".into(),
+            http_timeout: 2.0,
+            ..ScanConfig::default()
+        };
+        let values = HashMap::from([
+            ("AGENTSNIFF_ENABLE_DNS_MONITOR", "false"),
+            ("AGENTSNIFF_API_PORT", "9191"),
+            ("AGENTSNIFF_HTTP_TIMEOUT", "3.5"),
+            ("AGENTSNIFF_STORAGE_BACKEND", "postgres"),
+            ("AGENTSNIFF_POSTGRES_URL", "postgres://example/test"),
+            ("AGENTSNIFF_TARGET_HOSTS", "127.0.0.1, ::1"),
+        ]);
+        let config =
+            ScanConfig::apply_env(base, |key| values.get(key).map(|v| v.to_string())).unwrap();
+        assert!(!config.enable_dns_monitor);
+        assert_eq!(config.api_port, 9191);
+        assert_eq!(config.http_timeout, 3.5);
+        assert_eq!(config.target_network, "10.0.0.1/32");
+        assert_eq!(config.storage.backend, "postgres");
+        assert_eq!(config.target_hosts, ["127.0.0.1", "::1"]);
+    }
+
+    #[test]
+    fn invalid_environment_fails_closed_without_exposing_secrets() {
+        for (name, raw) in [
+            ("AGENTSNIFF_API_PORT", "not-a-number"),
+            ("AGENTSNIFF_ENABLE_DNS_MONITOR", "maybe"),
+            ("AGENTSNIFF_WEBHOOK_HEADERS", "{secret broken"),
+        ] {
+            let error = ScanConfig::apply_env(ScanConfig::default(), |key| {
+                (key == name).then(|| raw.into())
+            })
+            .unwrap_err();
+            assert!(!error.to_string().contains(raw));
         }
-        if let Ok(v) = std::env::var("AGENTSNIFF_AGENTPIN_PIN_STORE") {
-            config.agentpin_pin_store_path = v;
-        }
-        if let Ok(v) = std::env::var("AGENTSNIFF_AGENTPIN_AUDIENCE") {
-            config.agentpin_expected_audience = v;
-        }
-        if let Ok(v) = std::env::var("AGENTSNIFF_STORAGE_BACKEND") {
-            config.storage.backend = v;
-        }
-        if let Ok(v) = std::env::var("AGENTSNIFF_POSTGRES_URL") {
-            config.storage.postgres_url = v;
-        }
-        if let Ok(v) = std::env::var("AGENTSNIFF_REDIS_URL") {
-            config.storage.redis_url = v;
-        }
-        if let Ok(v) = std::env::var("AGENTSNIFF_REDIS_CHANNEL") {
-            config.storage.redis_channel = v;
-        }
-        if let Ok(v) = std::env::var("AGENTSNIFF_VERBOSE") {
-            config.verbose = v == "1" || v.eq_ignore_ascii_case("true");
-        }
-        if let Ok(v) = std::env::var("AGENTSNIFF_ALERT_CHANGES_ONLY") {
-            config.alert_changes_only = v == "1" || v.eq_ignore_ascii_case("true");
-        }
-        config
+    }
+
+    #[test]
+    fn destination_environment_changes_clear_retained_credentials() {
+        let base = ScanConfig {
+            webhook_url: "https://old.example".into(),
+            webhook_headers: HashMap::from([("Authorization".into(), "secret".into())]),
+            smtp_host: "old.example".into(),
+            smtp_user: "user".into(),
+            smtp_password: "secret".into(),
+            ..ScanConfig::default()
+        };
+        let config = ScanConfig::apply_env(base, |key| match key {
+            "AGENTSNIFF_WEBHOOK_URL" => Some("https://new.example".into()),
+            "AGENTSNIFF_SMTP_HOST" => Some("new.example".into()),
+            _ => None,
+        })
+        .unwrap();
+        assert!(config.webhook_headers.is_empty());
+        assert!(config.smtp_password.is_empty());
+        assert!(config.smtp_user.is_empty());
     }
 }
 
@@ -320,10 +454,9 @@ impl ScanConfig {
 /// Keys removed in 2.3.0 when live Nmap execution was dropped.
 const REMOVED_NMAP_KEYS: &[&str] = &["nmap_enabled", "nmap_scan_args", "nmap_timeout"];
 
-/// Refuse configs that ask for live Nmap (`nmap_enabled: true`); warn about
-/// and ignore the other removed keys so configs that disabled Nmap still load.
-pub fn check_removed_nmap_keys(value: &serde_yaml::Value) -> anyhow::Result<()> {
-    if value.get("nmap_enabled").and_then(|v| v.as_bool()) == Some(true) {
+/// Refuse live Nmap requests; warn about other removed settings.
+pub fn check_removed_nmap_keys(value: &serde_json::Value) -> anyhow::Result<()> {
+    if value.get("nmap_enabled").and_then(|value| value.as_bool()) == Some(true) {
         anyhow::bail!(
             "nmap_enabled was removed in 2.3.0: AgentSniff no longer runs Nmap. \
              Use enrich_enabled (naabu, httpx, zgrab2) or import your own results \
@@ -379,8 +512,7 @@ dns_monitor_duration: 60      # seconds to monitor DNS
 # api_host: "127.0.0.1"
 # api_port: 9090
 # api_token: ""               # required for non-loopback; prefer AGENTSNIFF_API_TOKEN
-# api_cors_origins:
-#   - "*"
+# Cross-origin management requests are not supported.
 
 # ── AgentPin credential verifier (REST + MCP) ───────────────────────
 # Configure all three values to expose the verifier. The trust bundle must

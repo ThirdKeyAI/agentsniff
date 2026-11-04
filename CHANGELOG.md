@@ -1,5 +1,26 @@
 # Changelog
 
+## Unreleased
+
+### Security and reliability
+
+- Replace unmaintained libyaml parsing with bounded safe-Rust YAML parsing and
+  secret-safe diagnostics; preserve numeric port keys, aliases, and defaults.
+- Upgrade P-256 cryptography and require the compatible AgentPin 0.3.1 security
+  backport; preserve existing signed datasets, identity signatures, and pins.
+
+- Reject DNS-rebinding/cross-origin management requests; deny framing and MIME sniffing.
+- Validate release tags as data and bind packaging/signing to the checked-out tag commit.
+- Bound passive event retention, aggregate MCP evidence, scan storage, API pages, and backups.
+- Cancel detector child tasks promptly and finish scans independently of slow notification servers.
+- Restrict Unix SQLite database and sidecar permissions; preserve existing history on quota failure.
+- Update TLS/runtime dependencies, lock release builds, pin container images, and schedule dependency updates.
+- Honor YAML/environment/explicit CLI precedence, passive DNS duration, and container detector toggles.
+
+Release maintainers should configure the GitHub `release` environment with
+required reviewers and protected release-tag rules. Dispatch releases from the
+matching tag ref; branch-dispatched releases are rejected.
+
 ## 2.4.0
 
 ### Added

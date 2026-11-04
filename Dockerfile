@@ -7,7 +7,7 @@ RUN cargo build --locked --release -p agentsniff
 
 # Enrichment tools (opt-in via --enrich). Permissive licenses only:
 # naabu and httpx are MIT, zgrab2 is Apache-2.0. The image does not include Nmap.
-FROM golang:1.24.7-bookworm@sha256:b8bae5bd9ba9b1f89b635c91c24cc75cea335a16fb5076310f38566fc674b1ec AS zgrab2
+FROM golang:1.27.3-bookworm@sha256:d9b6a1beb9474adc2a1ce842573639b44b2a0dd49b6669f51d3821baf9ec37c9 AS zgrab2
 # go install verifies every module against go.sum and sum.golang.org.
 ENV CGO_ENABLED=0 GOTOOLCHAIN=local
 RUN go install github.com/zmap/zgrab2/cmd/zgrab2@v1.0.0 \
@@ -46,7 +46,7 @@ RUN set -eu; \
 # fails if any dependency has a forbidden or restricted (e.g. GPL, AGPL) license,
 # or if a module embedded in a shipped binary has no saved notice.
 # `save` copies notices, plus source for reciprocal (MPL) licenses.
-FROM golang:1.26.0-bookworm@sha256:2a0ba12e116687098780d3ce700f9ce3cb340783779646aafbabed748fa6677c AS licenses
+FROM golang:1.27.3-bookworm@sha256:d9b6a1beb9474adc2a1ce842573639b44b2a0dd49b6669f51d3821baf9ec37c9 AS licenses
 ENV GOTOOLCHAIN=local
 RUN go install github.com/google/go-licenses/v2@v2.0.1
 # The exact binaries that ship, so their embedded module lists can be checked.

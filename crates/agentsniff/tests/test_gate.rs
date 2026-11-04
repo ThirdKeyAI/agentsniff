@@ -23,9 +23,9 @@ fn catalog() -> AgentCatalog {
     // The shipped datasets, parsed directly: this also checks that the
     // catalog file itself is well formed before it is signed.
     let agents: serde_json::Value =
-        serde_json::from_str(include_str!("../assets/signatures/agent_clients.json")).unwrap();
+        serde_json::from_str(include_str!("../../agentsniff-signatures/assets/signatures/agent_clients.json")).unwrap();
     let tls: serde_json::Value =
-        serde_json::from_str(include_str!("../assets/signatures/tls_fingerprints.json")).unwrap();
+        serde_json::from_str(include_str!("../../agentsniff-signatures/assets/signatures/tls_fingerprints.json")).unwrap();
     AgentCatalog::from_values(&agents, &tls).unwrap()
 }
 

@@ -12,6 +12,7 @@ pub mod fusion;
 pub mod gate;
 pub(crate) mod http;
 pub mod integrations;
+pub(crate) mod limits;
 pub mod models;
 pub mod notifier;
 pub mod ratelimit;

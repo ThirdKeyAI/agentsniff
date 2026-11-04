@@ -2,7 +2,44 @@
 
 AgentSniff can be configured via YAML file, environment variables, or CLI flags.
 
+For `scan` and `serve`, precedence is defaults → YAML → environment → explicitly
+supplied CLI flags. Omitting a flag preserves the YAML/environment value.
+Environment names are `AGENTSNIFF_` plus the upper-case field name; booleans accept
+`true/false`, `yes/no`, `on/off`, or `1/0`; lists are comma-separated and maps
+are JSON. Invalid environment values refuse startup without printing their contents.
+Storage aliases are `AGENTSNIFF_STORAGE_BACKEND`, `AGENTSNIFF_DB_PATH`,
+`AGENTSNIFF_POSTGRES_URL`, `AGENTSNIFF_REDIS_URL`, and `AGENTSNIFF_REDIS_CHANNEL`.
+The AgentPin path/audience aliases remain `AGENTSNIFF_AGENTPIN_TRUST_BUNDLE`,
+`AGENTSNIFF_AGENTPIN_PIN_STORE`, and `AGENTSNIFF_AGENTPIN_AUDIENCE`.
+
+Changing a webhook/SMTP destination via environment overrides clears inherited
+credentials unless replacement credentials are explicitly provided.
+`dns_monitor_duration` controls the passive DNS observation window (maximum
+3600 seconds). HTTP/port timeouts must be positive and no greater than 300 seconds;
+concurrency must be between 1 and 1024.
+
+### Resource and history limits
+
+Scans retain at most 16 MiB of serialized result evidence, 16,384 signals total,
+and 256 signals per asset. Large MCP catalogs and discovery metadata retain a
+bounded sample with explicit truncation metadata. Passive timing capture is
+limited to 1,024 flows, 2,048 samples per flow, and 32,768 samples overall.
+Exceeding a capture/evidence budget marks results incomplete; incomplete results
+cannot produce removal alerts.
+
+History accepts at most 1,000 scans and a 512 MiB storage budget (SQLite database
+pages; PostgreSQL serialized result payloads, excluding indexes and server WAL).
+Oversized writes fail transactionally; existing history is not automatically
+deleted. Export and reset history explicitly when the quota is reached. SQLite
+files and sidecars use owner-only permissions on Unix. Backups use a consistent
+SQLite snapshot or a streamed PostgreSQL JSON export, not an in-memory database copy.
+
 ## YAML Configuration
+
+YAML uses a bounded, safe-Rust parser. Duplicate keys are rejected, merge keys
+(`<<`) are not expanded, and booleans use `true`/`false` (not `yes`/`on`).
+Quote numeric-looking strings such as tokens. Parser diagnostics do not include
+surrounding source lines, which may contain credentials.
 
 Generate a default config:
 
@@ -50,7 +87,7 @@ output_file: ""
 verbose: false
 
 # Web dashboard API
-api_enabled: false
+api_enabled: true
 api_host: "127.0.0.1"
 api_port: 9090
 api_token: ""           # required for non-loopback; prefer AGENTSNIFF_API_TOKEN

@@ -209,10 +209,13 @@ fn client_ip(state: &GateState, peer: IpAddr, headers: &HeaderMap) -> IpAddr {
         }
         return candidate;
     }
-    match values.as_slice() {
-        [single] => parse_forwarded_ip(single).unwrap_or(peer),
-        _ => peer,
-    }
+    // A proxy that appends instead of replacing leaves the client's own value
+    // first, so the last value is the proxy's. Falling back to the proxy
+    // address would switch rate limiting off for that request.
+    values
+        .last()
+        .and_then(|value| parse_forwarded_ip(value))
+        .unwrap_or(peer)
 }
 
 /// Rebuild the original request from forward-auth conventions:
@@ -292,19 +295,38 @@ fn authorized(state: &GateState, headers: &HeaderMap) -> bool {
     }
     let mut values = headers.get_all(GATE_TOKEN_HEADER).iter();
     match (values.next(), values.next()) {
-        (Some(value), None) => constant_time_eq(value.as_bytes(), expected.as_bytes()),
+        (Some(value), None) => {
+            crate::server::constant_time_eq(value.as_bytes(), expected.as_bytes())
+        }
         _ => false,
     }
 }
 
-fn constant_time_eq(left: &[u8], right: &[u8]) -> bool {
-    let mut difference = left.len() ^ right.len();
-    for index in 0..left.len().max(right.len()) {
-        difference |= usize::from(
-            left.get(index).copied().unwrap_or(0) ^ right.get(index).copied().unwrap_or(0),
-        );
+/// On the credential-free loopback listener a browser page can reach the read
+/// endpoints through DNS rebinding: the origin stays remote while the
+/// connection lands on loopback. Browsers always send Host, so a non-loopback
+/// authority is refused; local tools that omit Host are unaffected.
+fn local_authority_or_token(state: &GateState, headers: &HeaderMap) -> bool {
+    if !state.engine.config().token.is_empty() {
+        return true;
     }
-    difference == 0
+    let mut hosts = headers.get_all(axum::http::header::HOST).iter();
+    match (hosts.next(), hosts.next()) {
+        (None, _) => true,
+        (Some(host), None) => host
+            .to_str()
+            .ok()
+            .and_then(|host| host.parse::<axum::http::uri::Authority>().ok())
+            .is_some_and(|authority| {
+                crate::server::is_loopback_host(
+                    authority
+                        .host()
+                        .trim_start_matches('[')
+                        .trim_end_matches(']'),
+                )
+            }),
+        _ => false,
+    }
 }
 
 fn set_header(response: &mut Response, name: &'static str, value: &str) {
@@ -464,6 +486,9 @@ async fn decisions_handler(
     if !authorized(&state, &headers) {
         return (StatusCode::UNAUTHORIZED, "gate authentication required").into_response();
     }
+    if !local_authority_or_token(&state, &headers) {
+        return (StatusCode::FORBIDDEN, "unexpected host").into_response();
+    }
     let limit = query.limit.unwrap_or(100).min(RECENT_DECISIONS);
     let recent: Vec<GateDecision> = state
         .recent
@@ -476,6 +501,9 @@ async fn decisions_handler(
 async fn stats_handler(State(state): State<Arc<GateState>>, headers: HeaderMap) -> Response {
     if !authorized(&state, &headers) {
         return (StatusCode::UNAUTHORIZED, "gate authentication required").into_response();
+    }
+    if !local_authority_or_token(&state, &headers) {
+        return (StatusCode::FORBIDDEN, "unexpected host").into_response();
     }
     let c = &state.counters;
     let engine = &state.engine;
@@ -560,20 +588,25 @@ pub fn spawn_decision_logger(destination: &str) -> anyhow::Result<Option<mpsc::S
 }
 
 /// Run the gate until the process is stopped.
+/// IP literals (including IPv6, which needs brackets in `host:port` form) bind
+/// directly; hostnames go through the system resolver.
+fn bind_addr(host: &str, port: u16) -> anyhow::Result<SocketAddr> {
+    if let Ok(ip) = host.parse::<IpAddr>() {
+        return Ok(SocketAddr::new(ip, port));
+    }
+    use std::net::ToSocketAddrs;
+    (host, port)
+        .to_socket_addrs()?
+        .next()
+        .ok_or_else(|| anyhow::anyhow!("no address for {host}"))
+}
+
 pub async fn run_gate(engine: GateEngine) -> anyhow::Result<()> {
     let config = engine.config().clone();
     let log_tx = spawn_decision_logger(&config.decision_log)?;
     let state = Arc::new(GateState::new(engine, log_tx)?);
     let app = create_gate_router(state);
-    let addr: SocketAddr = format!("{}:{}", config.host, config.port)
-        .parse()
-        .or_else(|_| {
-            use std::net::ToSocketAddrs;
-            format!("{}:{}", config.host, config.port)
-                .to_socket_addrs()?
-                .next()
-                .ok_or_else(|| std::io::Error::other("no address"))
-        })?;
+    let addr = bind_addr(&config.host, config.port)?;
     let listener = tokio::net::TcpListener::bind(addr).await?;
     tracing::info!("AgentSniff gate listening on {}", addr);
     axum::serve(
@@ -587,6 +620,15 @@ pub async fn run_gate(engine: GateEngine) -> anyhow::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn ipv6_literal_binds_with_brackets() {
+        assert_eq!(bind_addr("::1", 9091).unwrap().to_string(), "[::1]:9091");
+        assert_eq!(
+            bind_addr("127.0.0.1", 9091).unwrap().to_string(),
+            "127.0.0.1:9091"
+        );
+    }
 
     #[test]
     fn cidr_matching() {

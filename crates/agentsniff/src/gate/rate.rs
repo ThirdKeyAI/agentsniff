@@ -4,9 +4,9 @@
 //! so memory is constant per client regardless of request rate. A client that
 //! exceeds either limit is held in a penalty box for `penalty_secs`.
 
-use std::collections::hash_map::DefaultHasher;
+use std::collections::hash_map::RandomState;
 use std::collections::HashMap;
-use std::hash::{Hash, Hasher};
+use std::hash::BuildHasher;
 use std::net::{IpAddr, Ipv6Addr};
 use std::sync::{Mutex, MutexGuard, PoisonError};
 use std::time::Duration;
@@ -181,6 +181,9 @@ pub struct RateTracker {
     config: GateRateConfig,
     shards: Vec<Mutex<Shard>>,
     per_shard: usize,
+    // Random keys per process, so a client cannot pick keys that all land in
+    // one shard and crowd out another client's penalty.
+    hasher: RandomState,
 }
 
 impl RateTracker {
@@ -197,6 +200,7 @@ impl RateTracker {
                 })
                 .collect(),
             per_shard,
+            hasher: RandomState::new(),
         }
     }
 
@@ -219,9 +223,7 @@ impl RateTracker {
     /// Lock the shard for `key`. A poisoned lock is recovered rather than
     /// skipped, so a panic elsewhere cannot switch rate limiting off.
     fn shard(&self, key: &str) -> MutexGuard<'_, Shard> {
-        let mut hasher = DefaultHasher::new();
-        key.hash(&mut hasher);
-        self.shards[(hasher.finish() as usize) % SHARDS]
+        self.shards[(self.hasher.hash_one(key) as usize) % SHARDS]
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
     }

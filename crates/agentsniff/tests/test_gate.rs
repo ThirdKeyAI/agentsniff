@@ -898,3 +898,71 @@ fn client_ip_types_round_trip() {
         "127.0.0.1".parse::<IpAddr>().unwrap()
     );
 }
+
+#[test]
+fn non_browser_client_from_operator_network_is_flagged() {
+    let gate = engine(enforce());
+    let decision = decide(
+        &gate,
+        &facts(
+            "31.13.64.1",
+            headers(&[("user-agent", "curl/8.4.0")]),
+            Some(32934),
+        ),
+    );
+    assert!(signal_ids(&decision).contains(&"agent_operator_network"));
+}
+
+#[tokio::test]
+async fn appended_client_ip_header_uses_the_proxy_value() {
+    let mut config = enforce();
+    config.client_ip_header = "x-real-ip".into();
+    let app = router(config, "127.0.0.1");
+    app.clone()
+        .oneshot(check(
+            "/check",
+            &[
+                ("user-agent", "muse-agent/1.0"),
+                // Client-sent value first, proxy-appended value last.
+                ("x-real-ip", "10.9.9.9"),
+                ("x-real-ip", "203.0.113.46"),
+            ],
+        ))
+        .await
+        .unwrap();
+    let logged = recent(&app, &[]).await;
+    assert_eq!(logged[0]["client_ip"], "203.0.113.46");
+}
+
+#[tokio::test]
+async fn read_endpoints_refuse_rebound_hosts_without_a_token() {
+    let app = router(enforce(), "127.0.0.1");
+    for path in ["/decisions", "/stats"] {
+        let response = app
+            .clone()
+            .oneshot(check(path, &[("host", "evil.example:9091")]))
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::FORBIDDEN, "{path}");
+        for host in ["127.0.0.1:9091", "localhost:9091", "[::1]:9091"] {
+            let response = app
+                .clone()
+                .oneshot(check(path, &[("host", host)]))
+                .await
+                .unwrap();
+            assert_eq!(response.status(), StatusCode::OK, "{path} {host}");
+        }
+    }
+    let response = app
+        .oneshot(check(
+            "/check",
+            &[("host", "evil.example:9091"), ("user-agent", CHROME_157)],
+        ))
+        .await
+        .unwrap();
+    assert_ne!(
+        response.status(),
+        StatusCode::FORBIDDEN,
+        "/check is proxied with the site host"
+    );
+}

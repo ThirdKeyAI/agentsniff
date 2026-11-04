@@ -9,6 +9,7 @@ pub mod config;
 pub mod detectors;
 pub mod ebpf;
 pub mod fusion;
+pub mod gate;
 pub(crate) mod http;
 pub mod integrations;
 pub mod models;

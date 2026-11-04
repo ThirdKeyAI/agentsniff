@@ -32,6 +32,7 @@ JSON_FILES = [
     "tls_fingerprints.json",
     "mcp_methods.json",
     "mcp_remote_domains.json",
+    "agent_clients.json",
 ]
 ALGORITHM = "ECDSA-P256-SHA256"
 

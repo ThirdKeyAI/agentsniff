@@ -277,6 +277,35 @@ impl RateTracker {
     }
 }
 
+impl RateTracker {
+    /// Hold `key` in the penalty box for `duration` from `now`, whatever its
+    /// request rate. A longer penalty already in place is kept.
+    pub fn penalize(&self, key: &str, now: Instant, duration: Duration) {
+        let sustained_len = Duration::from_secs(self.config.sustained_window_secs);
+        let mut shard = self.shard(key);
+        if !shard.clients.contains_key(key) && shard.clients.len() >= shard.sweep_at {
+            sweep(
+                &mut shard,
+                now,
+                sustained_len.saturating_mul(2),
+                self.per_shard,
+            );
+        }
+        let state = shard
+            .clients
+            .entry(key.to_string())
+            .or_insert_with(|| ClientState {
+                burst: Window::new(now),
+                sustained: Window::new(now),
+                last_seen: now,
+                penalty_until: None,
+            });
+        state.last_seen = now;
+        let until = now.checked_add(duration).unwrap_or(now);
+        state.penalty_until = Some(state.penalty_until.map_or(until, |u| u.max(until)));
+    }
+}
+
 /// Make room in a full shard.
 ///
 /// Idle clients go first, then a batch of the least recently seen clients
@@ -335,6 +364,25 @@ fn evict_earliest(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn penalize_holds_a_client_without_a_rate_violation() {
+        let tracker = RateTracker::new(GateRateConfig::default());
+        let now = Instant::now();
+        assert!(matches!(
+            tracker.observe("k", now),
+            RateVerdict::Within { .. }
+        ));
+        tracker.penalize("k", now, Duration::from_secs(60));
+        assert!(matches!(
+            tracker.observe("k", now + Duration::from_secs(1)),
+            RateVerdict::Penalized { .. }
+        ));
+        assert!(matches!(
+            tracker.observe("k", now + Duration::from_secs(61)),
+            RateVerdict::Within { .. }
+        ));
+    }
 
     fn tracker(burst_limit: u32, sustained_limit: u32) -> RateTracker {
         RateTracker::new(GateRateConfig {

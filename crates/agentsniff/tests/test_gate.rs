@@ -250,6 +250,65 @@ fn cdn_egress_signal_needs_desktop_linux_chrome_and_an_asn() {
     }
 }
 
+fn tripwired() -> GateConfig {
+    let mut config = enforce();
+    config.tripwires.paths = vec!["/.internal/export.csv".into(), "/private-area/".into()];
+    config
+}
+
+fn facts_at(ip: &str, path: &str) -> RequestFacts {
+    let mut f = facts(ip, human_headers(CHROME_157), None);
+    f.path = path.into();
+    f
+}
+
+#[test]
+fn tripwire_path_blocks_and_penalizes() {
+    let gate = engine(tripwired());
+    let hit = decide(&gate, &facts_at("203.0.113.70", "/.internal/export.csv"));
+    assert_eq!(hit.action, GateAction::Block);
+    assert!(signal_ids(&hit).contains(&"tripwire_hit"));
+    let next = decide(&gate, &facts_at("203.0.113.70", "/accounts"));
+    assert_eq!(next.action, GateAction::Block);
+    assert!(signal_ids(&next).contains(&"rate_penalty"));
+    let prefix = decide(&gate, &facts_at("203.0.113.71", "/private-area/x"));
+    assert_eq!(prefix.action, GateAction::Block);
+    let other = decide(&gate, &facts_at("203.0.113.72", "/accounts"));
+    assert_eq!(other.action, GateAction::Allow);
+}
+
+#[test]
+fn tripwire_in_monitor_mode_logs_and_records_the_penalty() {
+    let mut config = tripwired();
+    config.mode = GateMode::Monitor;
+    let gate = engine(config);
+    let hit = decide(&gate, &facts_at("203.0.113.73", "/.internal/export.csv"));
+    assert_eq!(hit.action, GateAction::Allow);
+    assert_eq!(hit.would_action, GateAction::Block);
+    let next = decide(&gate, &facts_at("203.0.113.73", "/accounts"));
+    assert_eq!(next.would_action, GateAction::Block);
+    assert!(signal_ids(&next).contains(&"rate_penalty"));
+}
+
+#[test]
+fn tripwire_without_rate_tracking_still_denies() {
+    let mut config = tripwired();
+    config.rate.enabled = false;
+    let gate = engine(config);
+    let hit = decide(&gate, &facts_at("203.0.113.74", "/.internal/export.csv"));
+    assert_eq!(hit.action, GateAction::Block);
+    let next = decide(&gate, &facts_at("203.0.113.74", "/accounts"));
+    assert_eq!(next.action, GateAction::Allow);
+
+    let gate = engine(tripwired());
+    let mut proxied = facts_at("127.0.0.1", "/.internal/export.csv");
+    proxied.client_ip_is_proxy = true;
+    assert_eq!(decide(&gate, &proxied).action, GateAction::Block);
+    let mut later = facts_at("127.0.0.1", "/accounts");
+    later.client_ip_is_proxy = true;
+    assert_eq!(decide(&gate, &later).action, GateAction::Allow);
+}
+
 #[test]
 fn automation_client_from_hosting_is_challenged() {
     let gate = engine(enforce());
@@ -458,6 +517,7 @@ fn invalid_configs_are_rejected() {
         mutate(&mut config);
         GateEngine::new(config, catalog()).is_err()
     };
+    assert!(bad(|c| c.tripwires.paths = vec!["no-slash".into()]));
     assert!(bad(|c| c.host = "0.0.0.0".into()));
     assert!(bad(|c| c.token = "short".into()));
     assert!(bad(|c| {

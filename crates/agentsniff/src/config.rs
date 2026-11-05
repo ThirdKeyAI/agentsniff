@@ -617,6 +617,10 @@ dns_monitor_duration: 60      # seconds to monitor DNS
 #     sustained_limit: 300
 #     action: block
 #     penalty_secs: 300
+#   tripwires:
+#     paths: []               # exact paths, or prefixes ending in /; Disallow them in robots.txt too
+#     action: block           # for the hit itself; later requests get rate.action
+#     penalty_secs: 3600
 #   web_bot_auth:
 #     trusted_keys: []        # pinned Ed25519 JWKs; the gate never fetches key directories
 #     require_nonce: true

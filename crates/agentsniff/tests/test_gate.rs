@@ -134,15 +134,35 @@ fn shipped_catalog_names_muse_grok_and_the_chatgpt_cloud_browser() {
 
 #[test]
 fn legacy_agent_ids_are_rejected_at_startup() {
-    for id in ["meta_muse", "xai_grok_agent", "openai_chatgpt_agent"] {
+    for (old, new) in [
+        ("meta_muse", "meta_muse_browser"),
+        ("xai_grok_agent", "xai_grok_bot"),
+        ("openai_chatgpt_agent", "openai_chatgpt_cloud_browser"),
+    ] {
         let mut config = enforce();
-        config.agent_actions.insert(id.into(), GateAction::Block);
+        config.agent_actions.insert(old.into(), GateAction::Block);
         let err = GateEngine::new(config, catalog())
             .err()
-            .expect(id)
+            .expect(old)
             .to_string();
-        assert!(err.contains(id), "{err}");
+        assert!(err.contains(old) && err.contains(new), "{err}");
     }
+    // A pinned key under the old id used to exempt it from the catalog check,
+    // so the pre-rename documented config started cleanly and its
+    // agent_actions entry never fired for unsigned claims.
+    let mut config = enforce();
+    let mut key = pinned_chatgpt_key();
+    key.agent_id = "openai_chatgpt_agent".into();
+    config.web_bot_auth.trusted_keys = vec![key];
+    config.allow_verified_agents = vec!["openai_chatgpt_agent".into()];
+    config
+        .agent_actions
+        .insert("openai_chatgpt_agent".into(), GateAction::Challenge);
+    let err = GateEngine::new(config, catalog())
+        .err()
+        .expect("keyed legacy id")
+        .to_string();
+    assert!(err.contains("openai_chatgpt_cloud_browser"), "{err}");
 }
 
 #[test]

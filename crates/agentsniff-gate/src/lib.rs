@@ -303,6 +303,24 @@ impl GateEngine {
             .agent_actions
             .keys()
             .chain(config.allow_verified_agents.iter())
+            .chain(
+                pinned_ids
+                    .iter()
+                    .copied()
+                    .map(String::from)
+                    .collect::<Vec<_>>()
+                    .iter(),
+            )
+            .chain(config.custom_agents.iter().map(|a| &a.id))
+        {
+            if let Some((old, new)) = catalog::RENAMED_AGENT_IDS.iter().find(|(old, _)| old == id) {
+                anyhow::bail!("gate policy names agent id {old:?}, which is now {new:?}");
+            }
+        }
+        for id in config
+            .agent_actions
+            .keys()
+            .chain(config.allow_verified_agents.iter())
         {
             let reserved = id == UNIDENTIFIED_SIGNED_AGENT && config.agent_actions.contains_key(id);
             if !reserved && catalog.get(id).is_none() && !pinned_ids.contains(&id.as_str()) {

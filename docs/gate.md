@@ -312,6 +312,8 @@ gate:
 - An entry ending in `/` matches every path under it; any other entry matches exactly. `/.internal/export.csv/` and `/%2einternal/export.csv` do not match the exact entry above, so use the prefix form for a directory and keep exact entries for files. Query strings are never compared.
 - Keep traps out of the accessibility tree. A link hidden only with CSS is still read aloud; add `aria-hidden="true"` and `tabindex="-1"`, or use a comment. Screen-reader users must never trip a wire, which matters for a bank.
 - Tripwires catch raw-HTML readers: the Grok fetcher, Muse's text fetch, and scripted crawlers. Agents that act on a rendered page's accessibility tree, as Muse's browser mode does, never see them. Do not make traps visible to widen coverage; that is the trade.
+- `tripwires.action` decides the hit itself. The follow-up requests are answered by the penalty box, which applies `rate.action` (default block). If you route challenges to a step-up flow and want the whole sequence challenged, set both to `challenge`.
+- Compliant crawlers follow hidden links. List every tripwire path under `Disallow` in `robots.txt` as well, so Googlebot and Bingbot never request it; otherwise each visit holds them in the penalty box for `penalty_secs`.
 - With `rate.enabled: false`, or when the client address resolves to a trusted proxy, only the single request is denied; there is no penalty box to hold the client in.
 - Change paths when you rotate pages. A trap that leaks into a sitemap or a real link becomes a false positive for everyone who follows it.
 

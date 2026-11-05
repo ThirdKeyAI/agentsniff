@@ -25,6 +25,15 @@ pub const AGENT_STATUSES: &[&str] = &[
     "third_party_reported",
 ];
 
+/// Catalog ids that were renamed when entries were split by surface. A
+/// policy naming the old id is refused at startup with the new one, instead
+/// of silently matching nothing.
+pub const RENAMED_AGENT_IDS: &[(&str, &str)] = &[
+    ("meta_muse", "meta_muse_browser"),
+    ("xai_grok_agent", "xai_grok_bot"),
+    ("openai_chatgpt_agent", "openai_chatgpt_cloud_browser"),
+];
+
 /// Longest user-agent prefix inspected. Real browser strings are well under this.
 pub const MAX_USER_AGENT_BYTES: usize = 1024;
 

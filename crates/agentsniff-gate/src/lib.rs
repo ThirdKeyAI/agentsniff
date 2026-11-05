@@ -303,14 +303,7 @@ impl GateEngine {
             .agent_actions
             .keys()
             .chain(config.allow_verified_agents.iter())
-            .chain(
-                pinned_ids
-                    .iter()
-                    .copied()
-                    .map(String::from)
-                    .collect::<Vec<_>>()
-                    .iter(),
-            )
+            .chain(config.web_bot_auth.trusted_keys.iter().map(|k| &k.agent_id))
             .chain(config.custom_agents.iter().map(|a| &a.id))
         {
             if let Some((old, new)) = catalog::RENAMED_AGENT_IDS.iter().find(|(old, _)| old == id) {

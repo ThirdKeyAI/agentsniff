@@ -15,6 +15,25 @@ pub const AGENT_KINDS: &[&str] = &[
     "other",
 ];
 
+/// Provenance tiers a catalog entry may declare, most trusted first.
+/// `lab_observed` means the identifiers were captured on an origin we control
+/// with a per-run nonce URL, so attribution is exact.
+pub const AGENT_STATUSES: &[&str] = &[
+    "lab_observed",
+    "operator_documented",
+    "cdn_directory",
+    "third_party_reported",
+];
+
+/// Catalog ids that were renamed when entries were split by surface. A
+/// policy naming the old id is refused at startup with the new one, instead
+/// of silently matching nothing.
+pub const RENAMED_AGENT_IDS: &[(&str, &str)] = &[
+    ("meta_muse", "meta_muse_browser"),
+    ("xai_grok_agent", "xai_grok_bot"),
+    ("openai_chatgpt_agent", "openai_chatgpt_cloud_browser"),
+];
+
 /// Longest user-agent prefix inspected. Real browser strings are well under this.
 pub const MAX_USER_AGENT_BYTES: usize = 1024;
 
@@ -32,6 +51,11 @@ pub struct AgentEntry {
     pub confidence: String,
     pub notes: String,
     pub sources: Vec<String>,
+    /// Other names readers know the agent by (product names, old ids).
+    pub aliases: Vec<String>,
+    /// `YYYY-MM-DD` the identifiers were last checked against a live source,
+    /// or empty when they never were.
+    pub last_confirmed: String,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -39,6 +63,7 @@ pub struct AgentCatalog {
     agents: Vec<AgentEntry>,
     automation_tokens: Vec<String>,
     hosting_asns: HashMap<u32, String>,
+    cdn_egress_asns: HashMap<u32, String>,
     operator_asns: HashMap<u32, usize>,
     signature_agents: HashMap<String, usize>,
     library_ja4: HashMap<String, String>,
@@ -129,6 +154,24 @@ impl AgentCatalog {
                 catalog.hosting_asns.insert(asn, name.to_string());
             }
         }
+        for entry in agent_clients
+            .get("cdn_egress_asns")
+            .and_then(serde_json::Value::as_array)
+            .into_iter()
+            .flatten()
+        {
+            if let Some(asn) = entry
+                .get("asn")
+                .and_then(serde_json::Value::as_u64)
+                .and_then(|n| u32::try_from(n).ok())
+            {
+                let name = entry
+                    .get("name")
+                    .and_then(serde_json::Value::as_str)
+                    .unwrap_or("CDN");
+                catalog.cdn_egress_asns.insert(asn, name.to_string());
+            }
+        }
         for fingerprint in tls_fingerprints
             .get("fingerprints")
             .and_then(serde_json::Value::as_array)
@@ -166,6 +209,23 @@ impl AgentCatalog {
                     entry.id,
                     entry.kind,
                     AGENT_KINDS.join(", ")
+                );
+            }
+            if !entry.status.is_empty() && !AGENT_STATUSES.contains(&entry.status.as_str()) {
+                anyhow::bail!(
+                    "agent {} has unknown status {:?} (expected one of {})",
+                    entry.id,
+                    entry.status,
+                    AGENT_STATUSES.join(", ")
+                );
+            }
+            if !entry.last_confirmed.is_empty()
+                && chrono::NaiveDate::parse_from_str(&entry.last_confirmed, "%Y-%m-%d").is_err()
+            {
+                anyhow::bail!(
+                    "agent {} has last_confirmed {:?}, expected YYYY-MM-DD",
+                    entry.id,
+                    entry.last_confirmed
                 );
             }
             if let Some(token) = entry.user_agent_tokens.iter().find(|t| !valid_token(t)) {
@@ -233,6 +293,11 @@ impl AgentCatalog {
         self.hosting_asns.get(&asn).map(String::as_str)
     }
 
+    /// CDN egress network that cloud browser agents exit from (Cloudflare, Fastly).
+    pub fn cdn_egress_asn(&self, asn: u32) -> Option<&str> {
+        self.cdn_egress_asns.get(&asn).map(String::as_str)
+    }
+
     pub fn operator_asn_agent(&self, asn: u32) -> Option<&AgentEntry> {
         self.operator_asns
             .get(&asn)
@@ -252,6 +317,15 @@ pub fn is_browser_like(user_agent: &str) -> bool {
         && ["Chrome/", "Safari/", "Firefox/", "Edg/"]
             .iter()
             .any(|marker| user_agent.contains(marker))
+}
+
+/// True for user agents that claim Chrome on desktop Linux: the profile the
+/// ChatGPT cloud browser, Muse, and Grok Bot present. Android Chrome and
+/// ChromeOS carry their own platform tokens and are excluded.
+pub fn is_desktop_linux_chrome(user_agent: &str) -> bool {
+    chrome_major(user_agent).is_some()
+        && user_agent.contains("Linux")
+        && !user_agent.contains("Android")
 }
 
 /// Chrome major version from a user agent, if it claims Chrome.
@@ -297,5 +371,45 @@ mod tests {
         assert!(is_browser_like(ua));
         assert_eq!(chrome_major("Mozilla/5.0 HeadlessChrome/120.0.0.0"), None);
         assert!(!is_browser_like("Go-http-client/1.1"));
+    }
+
+    #[test]
+    fn catalog_rejects_unknown_status_and_bad_dates() {
+        fn entry(status: &str, last_confirmed: &str) -> AgentEntry {
+            AgentEntry {
+                id: "x_agent".into(),
+                kind: "crawler".into(),
+                status: status.into(),
+                last_confirmed: last_confirmed.into(),
+                ..AgentEntry::default()
+            }
+        }
+        let mut ok = AgentCatalog::default();
+        ok.add_agents(vec![entry("lab_observed", "2026-11-04")])
+            .unwrap();
+        let mut blank = AgentCatalog::default();
+        blank.add_agents(vec![entry("", "")]).unwrap();
+        let mut bad_status = AgentCatalog::default();
+        assert!(bad_status.add_agents(vec![entry("rumor", "")]).is_err());
+        let mut bad_date = AgentCatalog::default();
+        assert!(bad_date
+            .add_agents(vec![entry("cdn_directory", "yesterday")])
+            .is_err());
+    }
+
+    #[test]
+    fn desktop_linux_chrome() {
+        assert!(is_desktop_linux_chrome(
+            "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/157.0.0.0 Safari/537.36"
+        ));
+        assert!(!is_desktop_linux_chrome(
+            "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/157.0.0.0 Mobile Safari/537.36"
+        ));
+        assert!(!is_desktop_linux_chrome(
+            "Mozilla/5.0 (X11; Linux x86_64; rv:128.0) Gecko/20100101 Firefox/128.0"
+        ));
+        assert!(!is_desktop_linux_chrome(
+            "Mozilla/5.0 (X11; CrOS x86_64 14541.0.0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/157.0.0.0 Safari/537.36"
+        ));
     }
 }

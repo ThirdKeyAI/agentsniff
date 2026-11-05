@@ -2,7 +2,7 @@
   "schema_version": 1,
   "policy": {
     "identity_claims_allowed": false,
-    "notes": "User-agent tokens and Signature-Agent origins are self-asserted presence evidence. Only a Web Bot Auth signature verified against an operator-pinned key establishes identity."
+    "notes": "User-agent tokens and Signature-Agent origins are self-asserted presence evidence. Only a Web Bot Auth signature verified against an operator-pinned key establishes identity. Entries record provenance as lab_observed, operator_documented, cdn_directory, or third_party_reported, and last_confirmed is the date their identifiers were last checked against a live source."
   },
   "browser_baseline": {
     "chrome_stable_major": 157,
@@ -11,37 +11,63 @@
   },
   "agents": [
     {
-      "id": "meta_muse",
-      "name": "Muse",
+      "id": "meta_muse_browser",
+      "name": "Muse (browser mode)",
       "operator": "Meta",
       "kind": "cloud_browser_agent",
-      "user_agent_tokens": ["muse-"],
+      "user_agent_tokens": ["muse-", "Meta-ExternalTest"],
       "signature_agents": [],
       "operator_asns": [32934],
       "status": "third_party_reported",
       "confidence": "medium",
-      "notes": "Runs a cloud Chromium with automation flags suppressed. Retailers report it does not identify itself while browsing; a muse- user-agent prefix is reported from the Cloudflare Radar directory. Meta publishes no IP ranges. The operator ASN is supporting evidence only.",
+      "notes": "Drives a cloud Chromium that presents desktop Chrome on Linux with no agent token. Live captures (DataDome, Q3 2026) exit 81% from Cloudflare and 18% from Fastly addresses, not Meta's AS32934, so the operator ASN is supporting evidence that rarely applies. Meta began signing a small share of requests with Web Bot Auth around 2026-10-12 without publishing a Signature-Agent origin; Meta-ExternalTest is the user agent those early signed requests reportedly carried. The muse- token comes from the Cloudflare Radar directory and is not in Meta's crawler documentation.",
       "sources": [
+        "https://ppc.land/metas-muse-agent-gains-a-signed-id-in-a-quiet-test-datadome-finds/",
+        "https://www.botify.com/blog/meta-muse",
         "https://aicrawlercheck.com/blog/meta-muse-ai-agent-website-guide",
-        "https://fingerprint.com/blog/how-to-detect-meta-muse-ai-agent/",
-        "https://www.thestateofai.com/news/meta-muse-bot-detection-blocked"
-      ]
+        "https://fingerprint.com/blog/how-to-detect-meta-muse-ai-agent/"
+      ],
+      "aliases": ["Meta Muse", "muse"],
+      "last_confirmed": ""
     },
     {
-      "id": "xai_grok_agent",
-      "name": "Grok Bot",
-      "operator": "xAI",
-      "kind": "user_triggered_agent",
-      "user_agent_tokens": ["GrokAgent"],
+      "id": "meta_muse_text_fetch",
+      "name": "Meta-WebIndexer (Muse text fetch)",
+      "operator": "Meta",
+      "kind": "crawler",
+      "user_agent_tokens": ["meta-webindexer"],
       "signature_agents": [],
       "operator_asns": [],
       "status": "third_party_reported",
       "confidence": "medium",
-      "notes": "GrokAgent is reported from the Cloudflare Radar directory, not printed by xAI. Observed Grok fetches have also used spoofed Chrome and Safari user agents and Go-http-client from rotating datacenter and proxy IPs, so behavior signals carry most of the weight.",
+      "notes": "Muse's text-only fetches, which do not run JavaScript, are reported to arrive under Meta's Meta-WebIndexer crawler name. Meta documents the crawler; the link to Muse sessions is a third-party observation. Some of these requests are also signed with Web Bot Auth since 2026-10-12.",
       "sources": [
+        "https://ppc.land/metas-muse-agent-gains-a-signed-id-in-a-quiet-test-datadome-finds/",
+        "https://developers.facebook.com/docs/sharing/webmasters/web-crawlers/"
+      ],
+      "aliases": ["Meta-WebIndexer"],
+      "last_confirmed": ""
+    },
+    {
+      "id": "xai_grok_bot",
+      "name": "Grok Bot",
+      "operator": "xAI",
+      "kind": "user_triggered_agent",
+      "user_agent_tokens": ["GrokAgent"],
+      "signature_agents": ["https://cursorusercontent.com"],
+      "operator_asns": [],
+      "status": "cdn_directory",
+      "confidence": "medium",
+      "notes": "The Grok agent that drives a headful browser. Cloudflare Radar lists it as GrokAgent with a Web Bot Auth key directory on cursorusercontent.com (the cloud computers it runs on); the directory serves one Ed25519 key, and third parties report signing paused since early October 2026. It can route through the user's own connection, which defeats network checks. xAI publishes no bot page; shared static egress IPs are available from xAI on request. The separate Grok chat fetcher has no stable identifier: it rotates spoofed iPhone Safari, macOS Chrome, and Go-http-client user agents from datacenter and proxy networks such as M247 and Datacamp and is caught by behavior signals, not by this entry.",
+      "sources": [
+        "https://radar.cloudflare.com/bots/directory/grok-bot",
         "https://aicrawlercheck.com/directory/ai-bots/grokagent",
-        "https://stackfox.co/research/grok-user-agent"
-      ]
+        "https://aicrawlercheck.com/blog/grok-bot-vs-grokbot",
+        "https://stackfox.co/research/grok-user-agent",
+        "https://fingerprint.com/blog/how-to-detect-grok-bot/"
+      ],
+      "aliases": ["GrokAgent"],
+      "last_confirmed": "2026-11-04"
     },
     {
       "id": "xai_grok_crawlers",
@@ -57,11 +83,13 @@
       "sources": [
         "https://stackfox.co/research/grok-user-agent",
         "https://aicrawlercheck.com/directory/ai-bots/grokagent"
-      ]
+      ],
+      "aliases": [],
+      "last_confirmed": ""
     },
     {
-      "id": "openai_chatgpt_agent",
-      "name": "ChatGPT agent",
+      "id": "openai_chatgpt_cloud_browser",
+      "name": "ChatGPT cloud browser (dots)",
       "operator": "OpenAI",
       "kind": "cloud_browser_agent",
       "user_agent_tokens": [],
@@ -69,10 +97,14 @@
       "operator_asns": [],
       "status": "operator_documented",
       "confidence": "high",
-      "notes": "Uses a standard Chrome user agent and signs requests with Web Bot Auth. Key directory: https://chatgpt.com/.well-known/http-message-signatures-directory",
+      "notes": "Presents stock Chrome on Linux with no agent token and signs requests with Web Bot Auth, Signature-Agent https://chatgpt.com. The same signer covers every ChatGPT cloud-browser session, including dots, so a pinned key admits ChatGPT browsing in general, not one dot. A dot given access to the user's own computer is unsigned and looks like that person's browser. Key directory: https://chatgpt.com/.well-known/http-message-signatures-directory",
       "sources": [
-        "https://help.openai.com/en/articles/11845367-chatgpt-agent-allowlisting"
-      ]
+        "https://help.openai.com/en/articles/11845367-chatgpt-agent-allowlisting",
+        "https://www.verisoul.ai/agents/chatgpt-agent",
+        "https://github.com/adobe/helix-rum-collector/issues/675"
+      ],
+      "aliases": ["dots", "ChatGPT agent", "ChatGPT Work cloud browser"],
+      "last_confirmed": "2026-11-04"
     },
     {
       "id": "openai_chatgpt_user",
@@ -85,7 +117,9 @@
       "status": "cdn_directory",
       "confidence": "high",
       "notes": "",
-      "sources": ["https://developers.cloudflare.com/ai-crawl-control/reference/bots"]
+      "sources": ["https://developers.cloudflare.com/ai-crawl-control/reference/bots"],
+      "aliases": [],
+      "last_confirmed": ""
     },
     {
       "id": "openai_crawlers",
@@ -98,7 +132,9 @@
       "status": "cdn_directory",
       "confidence": "high",
       "notes": "",
-      "sources": ["https://developers.cloudflare.com/ai-crawl-control/reference/bots"]
+      "sources": ["https://developers.cloudflare.com/ai-crawl-control/reference/bots"],
+      "aliases": [],
+      "last_confirmed": ""
     },
     {
       "id": "anthropic_claude_user",
@@ -111,7 +147,9 @@
       "status": "cdn_directory",
       "confidence": "high",
       "notes": "",
-      "sources": ["https://developers.cloudflare.com/ai-crawl-control/reference/bots"]
+      "sources": ["https://developers.cloudflare.com/ai-crawl-control/reference/bots"],
+      "aliases": [],
+      "last_confirmed": ""
     },
     {
       "id": "anthropic_crawlers",
@@ -124,7 +162,9 @@
       "status": "cdn_directory",
       "confidence": "high",
       "notes": "",
-      "sources": ["https://developers.cloudflare.com/ai-crawl-control/reference/bots"]
+      "sources": ["https://developers.cloudflare.com/ai-crawl-control/reference/bots"],
+      "aliases": [],
+      "last_confirmed": ""
     },
     {
       "id": "perplexity_user",
@@ -137,7 +177,9 @@
       "status": "cdn_directory",
       "confidence": "high",
       "notes": "",
-      "sources": ["https://developers.cloudflare.com/ai-crawl-control/reference/bots"]
+      "sources": ["https://developers.cloudflare.com/ai-crawl-control/reference/bots"],
+      "aliases": [],
+      "last_confirmed": ""
     },
     {
       "id": "perplexity_crawlers",
@@ -150,7 +192,9 @@
       "status": "cdn_directory",
       "confidence": "high",
       "notes": "",
-      "sources": ["https://developers.cloudflare.com/ai-crawl-control/reference/bots"]
+      "sources": ["https://developers.cloudflare.com/ai-crawl-control/reference/bots"],
+      "aliases": [],
+      "last_confirmed": ""
     },
     {
       "id": "google_agent",
@@ -163,7 +207,9 @@
       "status": "operator_documented",
       "confidence": "high",
       "notes": "Google lists Google-Agent among its user-triggered fetchers, publishes the egress ranges in user-triggered-agents.json, and says it is experimenting with Web Bot Auth under the https://agent.bot.goog identity.",
-      "sources": ["https://developers.google.com/crawling/docs/crawlers-fetchers/google-agent"]
+      "sources": ["https://developers.google.com/crawling/docs/crawlers-fetchers/google-agent"],
+      "aliases": [],
+      "last_confirmed": ""
     },
     {
       "id": "google_crawlers",
@@ -176,7 +222,9 @@
       "status": "cdn_directory",
       "confidence": "high",
       "notes": "",
-      "sources": ["https://developers.cloudflare.com/ai-crawl-control/reference/bots"]
+      "sources": ["https://developers.cloudflare.com/ai-crawl-control/reference/bots"],
+      "aliases": [],
+      "last_confirmed": ""
     },
     {
       "id": "meta_externalfetcher",
@@ -189,7 +237,9 @@
       "status": "cdn_directory",
       "confidence": "high",
       "notes": "",
-      "sources": ["https://developers.cloudflare.com/ai-crawl-control/reference/bots"]
+      "sources": ["https://developers.cloudflare.com/ai-crawl-control/reference/bots"],
+      "aliases": [],
+      "last_confirmed": ""
     },
     {
       "id": "meta_crawlers",
@@ -202,7 +252,9 @@
       "status": "cdn_directory",
       "confidence": "high",
       "notes": "",
-      "sources": ["https://developers.cloudflare.com/ai-crawl-control/reference/bots"]
+      "sources": ["https://developers.cloudflare.com/ai-crawl-control/reference/bots"],
+      "aliases": [],
+      "last_confirmed": ""
     },
     {
       "id": "mistral_user",
@@ -215,7 +267,9 @@
       "status": "cdn_directory",
       "confidence": "high",
       "notes": "",
-      "sources": ["https://developers.cloudflare.com/ai-crawl-control/reference/bots"]
+      "sources": ["https://developers.cloudflare.com/ai-crawl-control/reference/bots"],
+      "aliases": [],
+      "last_confirmed": ""
     },
     {
       "id": "duckduckgo_duckassist",
@@ -228,7 +282,9 @@
       "status": "cdn_directory",
       "confidence": "high",
       "notes": "",
-      "sources": ["https://developers.cloudflare.com/ai-crawl-control/reference/bots"]
+      "sources": ["https://developers.cloudflare.com/ai-crawl-control/reference/bots"],
+      "aliases": [],
+      "last_confirmed": ""
     },
     {
       "id": "ai_training_crawlers",
@@ -241,7 +297,9 @@
       "status": "cdn_directory",
       "confidence": "high",
       "notes": "",
-      "sources": ["https://developers.cloudflare.com/ai-crawl-control/reference/bots"]
+      "sources": ["https://developers.cloudflare.com/ai-crawl-control/reference/bots"],
+      "aliases": [],
+      "last_confirmed": ""
     },
     {
       "id": "hark_agent",
@@ -254,7 +312,9 @@
       "status": "third_party_reported",
       "confidence": "medium",
       "notes": "Reported to sign requests with Web Bot Auth (Ed25519); no operator documentation located.",
-      "sources": ["https://aicrawlercheck.com/blog/personal-ai-agents-website-guide-2026"]
+      "sources": ["https://aicrawlercheck.com/blog/personal-ai-agents-website-guide-2026"],
+      "aliases": [],
+      "last_confirmed": ""
     }
   ],
   "automation_user_agent_tokens": [
@@ -294,5 +354,9 @@
     {"asn": 60781, "name": "Leaseweb"},
     {"asn": 9009, "name": "M247 (VPN and proxy hosting)"},
     {"asn": 212238, "name": "Datacamp (VPN and proxy hosting)"}
+  ],
+  "cdn_egress_asns": [
+    {"asn": 13335, "name": "Cloudflare"},
+    {"asn": 54113, "name": "Fastly"}
   ]
 }

@@ -1,5 +1,20 @@
 # Changelog
 
+## Unreleased
+
+### Gate
+
+- Catalog entries are split by surface: `meta_muse` is now `meta_muse_browser`
+  (plus `meta_muse_text_fetch`), `xai_grok_agent` is `xai_grok_bot`, and
+  `openai_chatgpt_agent` is `openai_chatgpt_cloud_browser` (aliases `dots`).
+  Configs that name the old ids in `agent_actions`, `allow_verified_agents`, or
+  `web_bot_auth.trusted_keys` fail at startup with the id in the message.
+- Entries carry `aliases`, `last_confirmed`, and a `lab_observed` provenance
+  tier; Grok Bot's `cursorusercontent.com` signer is pinned to its entry.
+- New `cdn_egress_browser` signal (0.50): Chrome on desktop Linux from
+  Cloudflare or Fastly, the exit cloud browser agents use.
+- New `gate.tripwires`: paths that penalty-box any client requesting them.
+
 ## 2.5.0
 
 ### Security and reliability

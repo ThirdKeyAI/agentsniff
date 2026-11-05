@@ -13,13 +13,14 @@ pub mod catalog;
 pub mod cidr;
 pub mod rate;
 pub mod sfv;
+pub mod tripwire;
 pub mod webbotauth;
 
 pub use cidr::{canonical_ip, IpCidr};
 
 use std::collections::HashMap;
 use std::net::IpAddr;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use http::HeaderMap;
 use serde::{Deserialize, Serialize};
@@ -28,6 +29,7 @@ use tokio::time::Instant;
 use agentsniff_signatures::{SignatureData, VerificationStatus};
 use catalog::{AgentCatalog, AgentEntry, MAX_USER_AGENT_BYTES};
 use rate::{address_key, GateRateConfig, RateKey, RateTracker, RateVerdict};
+use tripwire::GateTripwireConfig;
 use webbotauth::{SignedRequest, WebBotAuthConfig, WebBotAuthOutcome, WebBotAuthVerifier};
 
 /// Attribution for a request that carries a Web Bot Auth claim, or a
@@ -106,6 +108,9 @@ pub struct GateConfig {
     /// Chrome majors behind the catalog baseline before a UA counts as stale.
     pub stale_browser_lag: u32,
     pub rate: GateRateConfig,
+    /// Paths only machines find; a client that requests one is denied and
+    /// held in the penalty box.
+    pub tripwires: GateTripwireConfig,
     pub web_bot_auth: WebBotAuthConfig,
 
     pub challenge_status: u16,
@@ -141,6 +146,7 @@ impl Default for GateConfig {
             block_threshold: 0.8,
             stale_browser_lag: 6,
             rate: GateRateConfig::default(),
+            tripwires: GateTripwireConfig::default(),
             web_bot_auth: WebBotAuthConfig::default(),
             challenge_status: 401,
             block_status: 403,
@@ -183,6 +189,7 @@ impl GateConfig {
             IpCidr::parse(proxy)?;
         }
         self.rate.validate()?;
+        self.tripwires.validate()?;
         self.web_bot_auth.validate()?;
         Ok(())
     }
@@ -296,6 +303,17 @@ impl GateEngine {
             .agent_actions
             .keys()
             .chain(config.allow_verified_agents.iter())
+            .chain(config.web_bot_auth.trusted_keys.iter().map(|k| &k.agent_id))
+            .chain(config.custom_agents.iter().map(|a| &a.id))
+        {
+            if let Some((old, new)) = catalog::RENAMED_AGENT_IDS.iter().find(|(old, _)| old == id) {
+                anyhow::bail!("gate policy names agent id {old:?}, which is now {new:?}");
+            }
+        }
+        for id in config
+            .agent_actions
+            .keys()
+            .chain(config.allow_verified_agents.iter())
         {
             let reserved = id == UNIDENTIFIED_SIGNED_AGENT && config.agent_actions.contains_key(id);
             if !reserved && catalog.get(id).is_none() && !pinned_ids.contains(&id.as_str()) {
@@ -401,6 +419,15 @@ impl GateEngine {
 
         // 1. Velocity applies to everyone, verified agents included.
         let mut rate_action = None;
+        let rate_key = if self.config.rate.enabled && !facts.client_ip_is_proxy {
+            let address = address_key(facts.client_ip, self.config.rate.ipv6_prefix);
+            Some(match self.config.rate.key {
+                RateKey::Ip => address,
+                RateKey::IpUserAgent => format!("{address}\u{0}{}", truncate(user_agent, 256)),
+            })
+        } else {
+            None
+        };
         if self.config.rate.enabled && facts.client_ip_is_proxy {
             signals.push(GateSignal {
                 id: "client_ip_unresolved",
@@ -409,13 +436,8 @@ impl GateEngine {
                          set the client IP header at the proxy"
                     .into(),
             });
-        } else if self.config.rate.enabled {
-            let address = address_key(facts.client_ip, self.config.rate.ipv6_prefix);
-            let key = match self.config.rate.key {
-                RateKey::Ip => address,
-                RateKey::IpUserAgent => format!("{address}\u{0}{}", truncate(user_agent, 256)),
-            };
-            match self.rate.observe(&key, now) {
+        } else if let Some(key) = rate_key.as_deref() {
+            match self.rate.observe(key, now) {
                 RateVerdict::Within { .. } => {}
                 RateVerdict::Burst { rate } => {
                     signals.push(GateSignal {
@@ -448,6 +470,32 @@ impl GateEngine {
                     });
                     rate_action = Some(self.config.rate.action);
                 }
+            }
+        }
+
+        // 1b. Tripwires: paths only machines find. Deny this request and hold
+        // the client, verified or not, so the sequence shows in the log.
+        if let Some(path) = self.config.tripwires.matches(&facts.path) {
+            signals.push(GateSignal {
+                id: "tripwire_hit",
+                weight: 1.0,
+                detail: format!(
+                    "requested tripwire path {}; ja4={} asn={}",
+                    truncate(path, 128),
+                    facts.ja4.as_deref().map_or("-", |j| truncate(j, 64)),
+                    facts
+                        .asn
+                        .map_or_else(|| "-".to_string(), |a| format!("AS{a}"))
+                ),
+            });
+            let action = self.config.tripwires.action;
+            rate_action = Some(rate_action.map_or(action, |r: GateAction| r.max(action)));
+            if let Some(key) = rate_key.as_deref() {
+                self.rate.penalize(
+                    key,
+                    now,
+                    Duration::from_secs(self.config.tripwires.penalty_secs),
+                );
             }
         }
 
@@ -667,6 +715,21 @@ impl GateEngine {
                     weight: if browser_like { 0.35 } else { 0.25 },
                     detail: format!("origin AS{asn} is a hosting or proxy network: {provider}"),
                 });
+            } else if let Some(provider) = self.catalog.cdn_egress_asn(asn) {
+                // Private Relay exits from the same CDNs but only for Safari,
+                // so the Linux Chrome test already excludes it. WARP users on
+                // Linux Chrome are the known false positive: challenge, never
+                // block, on this signal alone.
+                if catalog::is_desktop_linux_chrome(user_agent) {
+                    out.push(GateSignal {
+                        id: "cdn_egress_browser",
+                        weight: 0.5,
+                        detail: format!(
+                            "Chrome on Linux from AS{asn} ({provider}), a CDN egress that cloud \
+                             browser agents exit from"
+                        ),
+                    });
+                }
             }
         }
 

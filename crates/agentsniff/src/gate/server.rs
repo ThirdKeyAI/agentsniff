@@ -10,6 +10,7 @@ use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
+use axum::extract::rejection::ExtensionRejection;
 use axum::extract::{ConnectInfo, Query, Request, State};
 use axum::http::{HeaderMap, HeaderName, HeaderValue, StatusCode, Uri};
 use axum::response::{IntoResponse, Response};
@@ -277,9 +278,12 @@ fn set_header(response: &mut Response, name: &'static str, value: &str) {
 
 async fn check_handler(
     State(state): State<Arc<GateState>>,
-    connect: Option<ConnectInfo<SocketAddr>>,
+    connect: Result<ConnectInfo<SocketAddr>, ExtensionRejection>,
     request: Request,
 ) -> Response {
+    // axum 0.8 only accepts `Option<T>` for extractors that opt in; the
+    // `Result` form keeps "no connect info" a soft case for test routers.
+    let connect = connect.ok();
     if !authorized(&state, request.headers()) {
         // 407, not 401: proxies read 401 as a client decision, while any
         // other status surfaces as a gate error in their logs (fail closed).
@@ -474,7 +478,7 @@ pub fn create_gate_router(state: Arc<GateState>) -> Router {
         .route("/check", any(check_handler))
         // Envoy sends `/check/` for a request to `/`.
         .route("/check/", any(check_handler))
-        .route("/check/*rest", any(check_handler))
+        .route("/check/{*rest}", any(check_handler))
         .route("/decisions", get(decisions_handler))
         .route("/stats", get(stats_handler))
         .with_state(state)

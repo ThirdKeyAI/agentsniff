@@ -1629,7 +1629,7 @@ fn create_router_with_components(
         .route("/api/scan/stream", get(scan_stream_handler))
         .route("/api/scan/sarif", get(scan_sarif_handler))
         .route("/api/scan/history", get(scan_history_handler))
-        .route("/api/scan/:scan_id", get(get_scan_handler))
+        .route("/api/scan/{scan_id}", get(get_scan_handler))
         .route("/api/agents", get(agents_handler))
         .route(
             "/api/settings",

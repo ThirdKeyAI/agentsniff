@@ -603,7 +603,7 @@ dns_monitor_duration: 60      # seconds to monitor DNS
 #   asn_header: "x-asn"       # set by your edge, if it knows the origin ASN
 #   default_agent_action: block
 #   kind_actions: {}          # cloud_browser_agent | user_triggered_agent | crawler -> action
-#   agent_actions: {}         # e.g. meta_muse: block
+#   agent_actions: {}         # e.g. meta_muse_browser: block
 #   allow_verified_agents: [] # ids allowed only with a verified Web Bot Auth signature
 #   challenge_threshold: 0.5
 #   block_threshold: 0.8

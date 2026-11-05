@@ -15,6 +15,16 @@ pub const AGENT_KINDS: &[&str] = &[
     "other",
 ];
 
+/// Provenance tiers a catalog entry may declare, most trusted first.
+/// `lab_observed` means the identifiers were captured on an origin we control
+/// with a per-run nonce URL, so attribution is exact.
+pub const AGENT_STATUSES: &[&str] = &[
+    "lab_observed",
+    "operator_documented",
+    "cdn_directory",
+    "third_party_reported",
+];
+
 /// Longest user-agent prefix inspected. Real browser strings are well under this.
 pub const MAX_USER_AGENT_BYTES: usize = 1024;
 
@@ -32,6 +42,11 @@ pub struct AgentEntry {
     pub confidence: String,
     pub notes: String,
     pub sources: Vec<String>,
+    /// Other names readers know the agent by (product names, old ids).
+    pub aliases: Vec<String>,
+    /// `YYYY-MM-DD` the identifiers were last checked against a live source,
+    /// or empty when they never were.
+    pub last_confirmed: String,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -168,6 +183,23 @@ impl AgentCatalog {
                     AGENT_KINDS.join(", ")
                 );
             }
+            if !entry.status.is_empty() && !AGENT_STATUSES.contains(&entry.status.as_str()) {
+                anyhow::bail!(
+                    "agent {} has unknown status {:?} (expected one of {})",
+                    entry.id,
+                    entry.status,
+                    AGENT_STATUSES.join(", ")
+                );
+            }
+            if !entry.last_confirmed.is_empty()
+                && chrono::NaiveDate::parse_from_str(&entry.last_confirmed, "%Y-%m-%d").is_err()
+            {
+                anyhow::bail!(
+                    "agent {} has last_confirmed {:?}, expected YYYY-MM-DD",
+                    entry.id,
+                    entry.last_confirmed
+                );
+            }
             if let Some(token) = entry.user_agent_tokens.iter().find(|t| !valid_token(t)) {
                 anyhow::bail!("agent {} has invalid user-agent token {token:?}", entry.id);
             }
@@ -297,5 +329,29 @@ mod tests {
         assert!(is_browser_like(ua));
         assert_eq!(chrome_major("Mozilla/5.0 HeadlessChrome/120.0.0.0"), None);
         assert!(!is_browser_like("Go-http-client/1.1"));
+    }
+
+    #[test]
+    fn catalog_rejects_unknown_status_and_bad_dates() {
+        fn entry(status: &str, last_confirmed: &str) -> AgentEntry {
+            AgentEntry {
+                id: "x_agent".into(),
+                kind: "crawler".into(),
+                status: status.into(),
+                last_confirmed: last_confirmed.into(),
+                ..AgentEntry::default()
+            }
+        }
+        let mut ok = AgentCatalog::default();
+        ok.add_agents(vec![entry("lab_observed", "2026-11-04")])
+            .unwrap();
+        let mut blank = AgentCatalog::default();
+        blank.add_agents(vec![entry("", "")]).unwrap();
+        let mut bad_status = AgentCatalog::default();
+        assert!(bad_status.add_agents(vec![entry("rumor", "")]).is_err());
+        let mut bad_date = AgentCatalog::default();
+        assert!(bad_date
+            .add_agents(vec![entry("cdn_directory", "yesterday")])
+            .is_err());
     }
 }

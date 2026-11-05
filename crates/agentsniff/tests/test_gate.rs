@@ -88,26 +88,67 @@ fn signal_ids(decision: &GateDecision) -> Vec<&'static str> {
 }
 
 #[test]
-fn shipped_catalog_names_muse_and_grok() {
+fn shipped_catalog_names_muse_grok_and_the_chatgpt_cloud_browser() {
     let catalog = catalog();
-    assert!(catalog.len() >= 15);
-    assert!(catalog.get("meta_muse").is_some());
-    assert!(catalog.get("xai_grok_agent").is_some());
+    assert!(catalog.len() >= 16);
+    for id in [
+        "meta_muse_browser",
+        "meta_muse_text_fetch",
+        "xai_grok_bot",
+        "openai_chatgpt_cloud_browser",
+    ] {
+        assert!(catalog.get(id).is_some(), "{id}");
+    }
+    assert!(catalog.get("meta_muse").is_none());
     assert_eq!(catalog.chrome_stable_major, Some(157));
     assert_eq!(
         catalog
             .match_signature_agent("https://chatgpt.com")
             .map(|a| a.id.as_str()),
-        Some("openai_chatgpt_agent")
+        Some("openai_chatgpt_cloud_browser")
     );
+    assert_eq!(
+        catalog
+            .match_signature_agent("https://cursorusercontent.com")
+            .map(|a| a.id.as_str()),
+        Some("xai_grok_bot")
+    );
+    let dots = catalog.get("openai_chatgpt_cloud_browser").unwrap();
+    assert!(dots.aliases.iter().any(|a| a == "dots"));
+    assert_eq!(dots.last_confirmed, "2026-11-04");
+    assert_eq!(
+        catalog
+            .match_user_agent("meta-webindexer/1.0")
+            .map(|(a, _)| a.id.as_str()),
+        Some("meta_muse_text_fetch")
+    );
+    assert_eq!(
+        catalog
+            .match_user_agent("Meta-ExternalTest/1.0")
+            .map(|(a, _)| a.id.as_str()),
+        Some("meta_muse_browser")
+    );
+}
+
+#[test]
+fn legacy_agent_ids_are_rejected_at_startup() {
+    for id in ["meta_muse", "xai_grok_agent", "openai_chatgpt_agent"] {
+        let mut config = enforce();
+        config.agent_actions.insert(id.into(), GateAction::Block);
+        let err = GateEngine::new(config, catalog())
+            .err()
+            .expect(id)
+            .to_string();
+        assert!(err.contains(id), "{err}");
+    }
 }
 
 #[test]
 fn self_declared_muse_and_grok_are_blocked() {
     let gate = engine(enforce());
     for (ua, id) in [
-        ("muse-agent/1.0", "meta_muse"),
-        ("Mozilla/5.0 (compatible; GrokAgent/1.0)", "xai_grok_agent"),
+        ("muse-agent/1.0", "meta_muse_browser"),
+        ("Mozilla/5.0 (compatible; GrokAgent/1.0)", "xai_grok_bot"),
         (
             "Mozilla/5.0 (compatible; GPTBot/1.2; +https://openai.com/gptbot)",
             "openai_crawlers",
@@ -172,7 +213,7 @@ fn browser_from_meta_network_is_suspected_muse() {
         &facts("198.51.100.30", human_headers(CHROME_157), Some(32934)),
     );
     let agent = decision.agent.as_ref().expect("suspected attribution");
-    assert_eq!(agent.id, "meta_muse");
+    assert_eq!(agent.id, "meta_muse_browser");
     assert_eq!(agent.assurance, Assurance::Suspected);
     assert_eq!(decision.action, GateAction::Challenge);
 }
@@ -239,7 +280,7 @@ fn signing_key() -> ed25519_dalek::SigningKey {
 
 fn pinned_chatgpt_key() -> TrustedAgentKey {
     TrustedAgentKey {
-        agent_id: "openai_chatgpt_agent".into(),
+        agent_id: "openai_chatgpt_cloud_browser".into(),
         keyid: String::new(),
         jwk: OkpJwk {
             kty: "OKP".into(),
@@ -301,13 +342,13 @@ fn signed_facts_with(created: i64, nonce_param: &str) -> RequestFacts {
 fn verified_agent_can_be_allowed_but_claims_cannot() {
     let mut config = enforce();
     config.web_bot_auth.trusted_keys = vec![pinned_chatgpt_key()];
-    config.allow_verified_agents = vec!["openai_chatgpt_agent".into()];
+    config.allow_verified_agents = vec!["openai_chatgpt_cloud_browser".into()];
     let gate = engine(config);
 
     let now = 1_800_000_000;
     let verified = gate.evaluate_at(&signed_facts(now - 5, "n1"), now, Instant::now());
     let agent = verified.agent.as_ref().unwrap();
-    assert_eq!(agent.id, "openai_chatgpt_agent");
+    assert_eq!(agent.id, "openai_chatgpt_cloud_browser");
     assert_eq!(agent.assurance, Assurance::TrustedVerified);
     assert_eq!(verified.action, GateAction::Allow);
 
@@ -323,7 +364,10 @@ fn verified_agent_can_be_allowed_but_claims_cannot() {
     let mut forged = signed_facts(now - 5, "n2");
     forged.authority = "other.example".into();
     let claim = gate.evaluate_at(&forged, now, Instant::now());
-    assert_eq!(claim.agent.as_ref().unwrap().id, "openai_chatgpt_agent");
+    assert_eq!(
+        claim.agent.as_ref().unwrap().id,
+        "openai_chatgpt_cloud_browser"
+    );
     assert_eq!(
         claim.agent.as_ref().unwrap().assurance,
         Assurance::SelfDeclared
@@ -393,7 +437,7 @@ fn invalid_configs_are_rejected() {
             .insert("no_such_agent".into(), GateAction::Allow);
     }));
     assert!(bad(
-        |c| c.allow_verified_agents = vec!["openai_chatgpt_agent".into()]
+        |c| c.allow_verified_agents = vec!["openai_chatgpt_cloud_browser".into()]
     ));
     assert!(bad(|c| {
         c.kind_actions.insert("robot".into(), GateAction::Allow);
@@ -433,14 +477,14 @@ fn a_claim_never_softens_the_behavior_score() {
     config.default_agent_action = GateAction::Challenge;
     config
         .agent_actions
-        .insert("meta_muse".into(), GateAction::Block);
+        .insert("meta_muse_browser".into(), GateAction::Block);
     let gate = engine(config);
 
     // A self-declared Muse stays blocked whatever else it sends.
     let mut muse = human_headers("muse-agent/1.0");
     muse.insert("signature", HeaderValue::from_static("x"));
     let decision = decide(&gate, &facts("203.0.113.90", muse, None));
-    assert_eq!(decision.agent.as_ref().unwrap().id, "meta_muse");
+    assert_eq!(decision.agent.as_ref().unwrap().id, "meta_muse_browser");
     assert_eq!(decision.action, GateAction::Block);
 
     // A score-blocked bot that adds a bogus Web Bot Auth claim gets the
@@ -518,7 +562,7 @@ fn bare_signature_agent_names_a_catalog_agent() {
     );
     let decision = decide(&gate, &facts("198.51.100.93", h, None));
     let agent = decision.agent.as_ref().unwrap();
-    assert_eq!(agent.id, "openai_chatgpt_agent");
+    assert_eq!(agent.id, "openai_chatgpt_cloud_browser");
     assert_eq!(agent.assurance, Assurance::SelfDeclared);
     assert_eq!(decision.action, GateAction::Block);
 }
@@ -561,7 +605,7 @@ fn unresolved_client_address_skips_rate_limits() {
 fn verified_agents_need_a_nonce_by_default() {
     let mut config = enforce();
     config.web_bot_auth.trusted_keys = vec![pinned_chatgpt_key()];
-    config.allow_verified_agents = vec!["openai_chatgpt_agent".into()];
+    config.allow_verified_agents = vec!["openai_chatgpt_cloud_browser".into()];
     let gate = engine(config);
     let now = 1_800_000_000;
     let decision = gate.evaluate_at(&signed_facts_without_nonce(now - 5), now, Instant::now());
@@ -638,7 +682,7 @@ async fn endpoint_blocks_in_enforce_mode() {
     assert_eq!(logged[0]["client_ip"], "203.0.113.9");
     assert_eq!(logged[0]["path"], "/login");
     assert_eq!(logged[0]["host"], "bank.example");
-    assert_eq!(logged[0]["agent"]["id"], "xai_grok_agent");
+    assert_eq!(logged[0]["agent"]["id"], "xai_grok_bot");
 }
 
 #[tokio::test]
@@ -659,7 +703,7 @@ async fn deny_details_can_be_enabled() {
     assert_eq!(response.status(), StatusCode::FORBIDDEN);
     assert_eq!(
         header(&response, "x-agentsniff-agent"),
-        Some("xai_grok_agent")
+        Some("xai_grok_bot")
     );
     assert_eq!(
         header(&response, "x-agentsniff-assurance"),
@@ -703,7 +747,10 @@ async fn endpoint_challenge_status_is_configurable() {
         .await
         .unwrap();
     assert_eq!(response.status(), StatusCode::TOO_MANY_REQUESTS);
-    assert_eq!(header(&response, "x-agentsniff-agent"), Some("meta_muse"));
+    assert_eq!(
+        header(&response, "x-agentsniff-agent"),
+        Some("meta_muse_browser")
+    );
     assert_eq!(
         header(&response, "x-agentsniff-assurance"),
         Some("suspected")
@@ -977,7 +1024,7 @@ fn unsigned_claim_cannot_lift_a_user_agent_block() {
     config.default_agent_action = GateAction::Allow;
     config
         .agent_actions
-        .insert("meta_muse".into(), GateAction::Block);
+        .insert("meta_muse_browser".into(), GateAction::Block);
     let gate = engine(config);
     let f = facts(
         "198.51.100.9",
@@ -989,7 +1036,7 @@ fn unsigned_claim_cannot_lift_a_user_agent_block() {
     );
     let decision = decide(&gate, &f);
     assert_eq!(decision.action, GateAction::Block);
-    assert_eq!(decision.agent.as_ref().unwrap().id, "meta_muse");
+    assert_eq!(decision.agent.as_ref().unwrap().id, "meta_muse_browser");
     assert!(signal_ids(&decision).contains(&"known_agent_user_agent"));
 }
 

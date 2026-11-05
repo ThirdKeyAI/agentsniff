@@ -21,10 +21,11 @@ The gate refuses to start unless the signed `agent_clients` and `tls_fingerprint
 ## How a decision is made
 
 1. **Rate.** Every client has a burst counter (20 requests per second) and a sustained counter (300 per minute). A client is an IPv4 address or an IPv6 `/64` (`rate.ipv6_prefix`), since one host routinely holds a whole `/64`. Exceeding either limit applies `gate.rate.action` (default block) and holds the client in a penalty box for `penalty_secs` (default 300). This applies to every client, verified agents included, and can only make an outcome stricter. If the client address resolves to one of your `trusted_proxies`, the proxy did not forward it; the gate then skips rate limits for that request instead of putting every customer in one bucket, logs a warning, and counts it in `/stats` as `unresolved_client_ip`.
-2. **Web Bot Auth.** A request tagged `web-bot-auth` whose RFC 9421 signature verifies against an operator-pinned Ed25519 key is attributed with `trusted_verified` assurance. A `web-bot-auth` signature that does not verify, or a `Signature-Agent` header with no signature, is still a self-declaration that the client is an agent. HTTP signatures without the `web-bot-auth` tag, such as PSD2 or other API request signing, are ignored.
-3. **Self-declared agents.** User-agent tokens and `Signature-Agent` origins from the catalog (for example `muse-`, `GrokAgent`, `ChatGPT-User`) attribute the request with `self_declared` assurance. A claim that names no catalog agent is attributed to `unidentified_signed_agent`.
-4. **Behavior.** Every request without a verified signature is scored from the signals below, combined with noisy-OR. Naming an agent does not switch these checks off.
-5. **Decision.** A verified agent gets its policy: allow if it is in `allow_verified_agents`, else `agent_actions[id]`, `kind_actions[kind]`, or `default_agent_action` (block). A claimed agent gets the stricter of that policy and its behavior score, so a claim can never soften an outcome. An unattributed request is challenged at `challenge_threshold` (0.5) and blocked at `block_threshold` (0.8).
+2. **Tripwires.** A request for a path in `gate.tripwires` (URLs you plant where only machines read; see [Tripwires](#tripwires)) gets the tripwire action (default block) and its client is held in the penalty box for `tripwires.penalty_secs` (default 3600). Like rate, this applies to every client and can only make an outcome stricter.
+3. **Web Bot Auth.** A request tagged `web-bot-auth` whose RFC 9421 signature verifies against an operator-pinned Ed25519 key is attributed with `trusted_verified` assurance. A `web-bot-auth` signature that does not verify, or a `Signature-Agent` header with no signature, is still a self-declaration that the client is an agent. HTTP signatures without the `web-bot-auth` tag, such as PSD2 or other API request signing, are ignored.
+4. **Self-declared agents.** User-agent tokens and `Signature-Agent` origins from the catalog (for example `muse-`, `meta-webindexer`, `GrokAgent`, `ChatGPT-User`) attribute the request with `self_declared` assurance. A claim that names no catalog agent is attributed to `unidentified_signed_agent`.
+5. **Behavior.** Every request without a verified signature is scored from the signals below, combined with noisy-OR. Naming an agent does not switch these checks off.
+6. **Decision.** A verified agent gets its policy: allow if it is in `allow_verified_agents`, else `agent_actions[id]`, `kind_actions[kind]`, or `default_agent_action` (block). A claimed agent gets the stricter of that policy and its behavior score, so a claim can never soften an outcome. An unattributed request is challenged at `challenge_threshold` (0.5) and blocked at `block_threshold` (0.8).
 
 | Signal | Weight | Fires when |
 |---|---:|---|
@@ -35,16 +36,19 @@ The gate refuses to start unless the signed `agent_clients` and `tls_fingerprint
 | `stale_browser_version` | 0.25 / 0.40 | Chrome at least 6 (or 12) majors behind the catalog's stable baseline |
 | `hosting_network` | 0.35 / 0.25 | Origin ASN is a cloud, VPN, or proxy host (browser UA / other UA) |
 | `agent_operator_network` | 0.60 | A browser user agent from the network an agent runs on, such as Meta's AS32934; attributes the agent as `suspected` |
+| `cdn_egress_browser` | 0.50 | Chrome on desktop Linux from a CDN egress network (Cloudflare, Fastly): the exit the ChatGPT cloud browser, Muse, and Grok Bot use. Challenges alone, never blocks alone |
 | `tls_user_agent_mismatch` | 0.50 | Claims a browser, but the JA4 matches an HTTP library |
 | `tls_client_library` | 0.30 | JA4 matches an HTTP library |
+| `tripwire_hit` | 1.00 | The path is in `gate.tripwires`; the client is held in the penalty box |
 
 The ASN and JA4 signals need your edge to supply those values (see [Edge headers](#edge-headers)). The header and browser-version checks apply only to user agents that claim to be a browser. Other user agents get the automation-token, network, and TLS checks only.
 
 ### What this catches, and what it does not
 
 - **Self-identifying agents and crawlers** are matched by name and blocked by default.
-- **Grok-style fetches** that spoof a browser from rotating datacenter and proxy IPs usually carry several weak signals at once. How far they get depends on how many fire. A Chrome 139 user agent with no browser headers from M247 scores 0.805 and is blocked. The same request with Chrome 150 scores 0.756, and without an ASN header 0.70; both are challenged. Bursty timing adds a rate block on top.
-- **Meta Muse** drives a real cloud Chromium with automation flags suppressed, so header checks will not see it, and retailers report it usually does not identify itself. It is caught when it sends its reported `muse-` token, when it browses from Meta's network (with an ASN header, as a challenge), or when it moves faster than a person.
+- **ChatGPT cloud browser (dots)** presents stock Chrome on Linux with no token and signs requests with Web Bot Auth as `https://chatgpt.com`. A verified signature attributes it as `openai_chatgpt_cloud_browser` and your policy decides; pin the key only if you want every ChatGPT cloud-browser session, dots included, admitted. Unsigned, it is challenged by `cdn_egress_browser` when your edge supplies the ASN. A dot working through the user's own computer is that person's browser and passes.
+- **Meta Muse** in browser mode has the same profile: a cloud Chromium presenting Chrome on Linux with no token, exiting from Cloudflare and Fastly addresses and almost never from Meta's AS32934. It is challenged by `cdn_egress_browser` (with an ASN header), blocked when it sends the reported `muse-` or `Meta-ExternalTest` tokens, and rate-limited when it moves faster than a person. Its text-only fetches arrive as `meta-webindexer` and are blocked by name. Meta signs a small, growing share of requests with Web Bot Auth but publishes no `Signature-Agent` origin, so nothing can be pinned yet.
+- **Grok** is two clients. The chat fetcher spoofs iPhone Safari, macOS Chrome, or Go-http-client from rotating datacenter and proxy IPs and usually carries several weak signals at once; how far it gets depends on how many fire. A Chrome 139 user agent with no browser headers from M247 scores 0.805 and is blocked. The same request with Chrome 150 scores 0.756, and without an ASN header 0.70; both are challenged. Bursty timing adds a rate block on top. Grok Bot, the agent, is blocked by name when it sends `GrokAgent` or signs as `https://cursorusercontent.com`; when it does neither and drives a headful browser through the user's own connection, it is the real-browser case below.
 - **Non-browser clients with an unlisted user agent** (a custom string such as `Go` or `x`) get only network and TLS signals. From a residential address they pass; from a hosting network they score 0.25.
 - **An agent in a real browser, on a residential proxy, at human pace** will pass. No request-level gate stops that alone. Pair the gate with controls at login and transaction time, such as device binding and step-up authentication.
 
@@ -196,14 +200,16 @@ curl -s https://chatgpt.com/.well-known/http-message-signatures-directory | jq '
 
 ```yaml
 gate:
-  allow_verified_agents: [openai_chatgpt_agent]
+  allow_verified_agents: [openai_chatgpt_cloud_browser]
   web_bot_auth:
     trusted_keys:
-      - agent_id: openai_chatgpt_agent
+      - agent_id: openai_chatgpt_cloud_browser
         signature_agent: "https://chatgpt.com"
         jwk: { kty: OKP, crv: Ed25519, x: "<base64url public key>" }
         # keyid defaults to the RFC 7638 JWK thumbprint, which Web Bot Auth requires
 ```
+
+This key signs for every ChatGPT cloud-browser session, dots included, so pinning it admits ChatGPT browsing in general, not one agent. Grok Bot's directory is on `cursorusercontent.com`, the cloud computers it runs on; Muse has no published directory.
 
 Verification requires:
 
@@ -260,6 +266,10 @@ gate:
     action: block
     penalty_secs: 300           # at most 7 days
     max_tracked_clients: 100000 # clients in the penalty box can use up to twice this
+  tripwires:
+    paths: []                   # exact paths, or prefixes ending in /
+    action: block               # challenge | block
+    penalty_secs: 3600          # at most 7 days
   web_bot_auth:
     enabled: true
     trusted_keys: []
@@ -284,8 +294,52 @@ The gate binds to loopback by default. A non-loopback listener requires a token 
 - **Scope.** Gate the pages that matter (login, accounts, payments) rather than static assets, which browsers fetch in bursts.
 - **Challenges.** A challenge is a deny unless you route it somewhere. Send it to a CAPTCHA or step-up flow, or set `challenge_status: 403`.
 
+## Tripwires
+
+A tripwire is a URL on your site that no person ever requests, because it is planted only where machines read: an HTML comment, a link hidden with `display:none`, a `url` in JSON-LD, a `Disallow` line in `robots.txt`. List the paths under `gate.tripwires.paths`. A client that requests one gets `tripwire_hit`, the configured action, and `penalty_secs` in the penalty box, so its next requests fail with `rate_penalty` whatever they ask for. The decision log records the client's user agent, JA4, and ASN with the hit, which is the cheapest labeled fingerprint you will get from live traffic.
+
+```yaml
+gate:
+  tripwires:
+    paths: ["/.internal/export.csv", "/private-area/"]
+```
+
+```html
+<!-- <a href="/.internal/export.csv">export</a> -->
+<a href="/private-area/statements" style="display:none" aria-hidden="true" tabindex="-1">statements</a>
+```
+
+- An entry ending in `/` matches every path under it; any other entry matches exactly. `/.internal/export.csv/` and `/%2einternal/export.csv` do not match the exact entry above, so use the prefix form for a directory and keep exact entries for files. Query strings are never compared.
+- Keep traps out of the accessibility tree. A link hidden only with CSS is still read aloud; add `aria-hidden="true"` and `tabindex="-1"`, or use a comment. Screen-reader users must never trip a wire, which matters for a bank.
+- Tripwires catch raw-HTML readers: the Grok fetcher, Muse's text fetch, and scripted crawlers. Agents that act on a rendered page's accessibility tree, as Muse's browser mode does, never see them. Do not make traps visible to widen coverage; that is the trade.
+- With `rate.enabled: false`, or when the client address resolves to a trusted proxy, only the single request is denied; there is no penalty box to hold the client in.
+- Change paths when you rotate pages. A trap that leaks into a sitemap or a real link becomes a false positive for everyone who follows it.
+
+Prompt-injection canaries, hidden instructions that ask an agent to fetch a beacon URL, are a different tool. A hit proves a language model read the page, which separates agents from scripted bots, but security-aware agents recognize and refuse the trap, so yield on frontier agents is low and the hit measures injection resistance more than identity. Run them only on a research domain you own. Never ship them in a customer deployment, where you would be injecting instructions into agents that hold real customers' credentials.
+
 ## The catalog
 
-Known agents live in the signed `agent_clients.json` dataset: user-agent tokens, `Signature-Agent` origins, operator ASNs, automation tokens, hosting ASNs, and the Chrome stable baseline. Each entry records its provenance as `operator_documented`, `cdn_directory`, or `third_party_reported`, with sources. Muse's and Grok Bot's tokens are third-party reports, not vendor documentation.
+Known agents live in the signed `agent_clients.json` dataset: user-agent tokens, `Signature-Agent` origins, operator ASNs, automation tokens, hosting ASNs, CDN egress ASNs, and the Chrome stable baseline. Each entry records:
 
-Update it with `agentsniff update-signatures`. Add your own entries under `gate.custom_agents`.
+- `status`, its provenance, in order of trust: `lab_observed` (identifiers captured on an origin we control with a per-run nonce URL, so attribution is exact), `operator_documented`, `cdn_directory`, and `third_party_reported`. The gate refuses any other value.
+- `last_confirmed`, the `YYYY-MM-DD` the identifiers were last checked against a live source, or empty when they never were. Only the ChatGPT cloud browser and Grok Bot carry a date today: their key directories were fetched. Treat an old or empty date as a reason to re-verify before you build policy on the entry.
+- `aliases`, the other names readers know the agent by (`dots`, `GrokAgent`, `Meta-WebIndexer`), for search and for mapping old ids.
+- `sources` and `notes`.
+
+Muse's and Grok Bot's tokens are third-party reports and a CDN directory listing, not vendor documentation. The Grok chat fetcher has no entry because it has no stable identifier; it is the behavior profile described above.
+
+Update the dataset with `agentsniff update-signatures`. Add your own entries under `gate.custom_agents`, with the same fields.
+
+## Keeping the catalog current
+
+All three agents this gate is tuned for changed how they present themselves in October 2026: OpenAI started signing its cloud browser, Meta started signing a share of Muse traffic, and Grok Bot stopped. A catalog that is not re-checked is stale within weeks, and a stale entry is the biggest risk this gate carries.
+
+The only ground truth is a labeled capture: pay for each agent, and give every task you hand it a unique per-run URL on an origin you own, such as `https://lab.example.com/r/<agent>/<nonce>`. The nonce makes attribution exact, and that capture earns the `lab_observed` tier. For each run record:
+
+- JA4, JA4H, and JA4T, the HTTP/2 `SETTINGS` and priority frames, header order, and client hints;
+- ASN, IPv4 versus IPv6, and whether the exit is a CDN, a cloud, or the user's own connection;
+- timing between requests and the full subresource sequence, which separates a text fetch (no JavaScript, no assets) from a rendered browser.
+
+Re-run weekly and after every vendor announcement, diff against the previous capture, and update `last_confirmed` for what still holds. Where a cloud build of Chromium differs from retail Chrome of the same version in its HTTP/2 or JA4H behavior, that difference is a candidate signal; the gate does not carry one until the lab has shown it.
+
+The gate is header-only by design: it sees one request at a time plus rate counters. A session layer (asset-to-document ratio, deep links without a referrer chain, uniform action timing) or a JavaScript probe (software GL renderer, timezone against IP geography, no pointer movement before clicks) is where commercial vendors catch Muse and Grok Bot in a real browser. Either is a separate decision, because it changes what the gate is.

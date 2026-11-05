@@ -38,11 +38,11 @@ CLI / loopback dashboard
 | `crates/agentsniff/src/fusion.rs` | Cross-detector fusion |
 | `crates/agentsniff/src/detectors/` | Nine detector modules |
 | `crates/agentsniff/src/integrations/` | Zeek, service enrichment, Nmap XML import |
-| `crates/agentsniff/src/signatures/` | Pinned-key dataset verification and updates |
-| `crates/agentsniff/src/gate/` | Inbound forward-auth agent gate: catalog matching, rate limits, behavior scoring, Web Bot Auth |
+| `crates/agentsniff/src/signatures/` | Re-exports `agentsniff-signatures` and adds the dataset updater |
+| `crates/agentsniff/src/gate/` | Re-exports `agentsniff-gate` and adds the forward-auth HTTP server |
 | `crates/agentsniff/assets/` | Embedded dashboard |
-| `crates/agentsniff-signatures/` | Signed detection datasets and their verifier |
-| `crates/agentsniff-gate/` | Inbound agent gate engine |
+| `crates/agentsniff-signatures/` | Signed detection datasets (`assets/signatures/`) and the pinned-key verifier |
+| `crates/agentsniff-gate/` | Gate engine: catalog matching, rate limits, behavior scoring, Web Bot Auth |
 | `crates/agentsniff-common/` | Shared eBPF/user-space types |
 
 ## Trust boundaries

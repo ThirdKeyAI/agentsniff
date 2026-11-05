@@ -18,6 +18,8 @@ use tower::ServiceExt;
 const CHROME_157: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/157.0.0.0 Safari/537.36";
 const CHROME_139_MAC: &str = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36";
 const TOKEN: &str = "0123456789abcdef0123456789abcdef-gate";
+const CHROME_157_LINUX: &str = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/157.0.0.0 Safari/537.36";
+const CHROME_157_ANDROID: &str = "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/157.0.0.0 Mobile Safari/537.36";
 
 fn catalog() -> AgentCatalog {
     // The shipped datasets, parsed directly: this also checks that the
@@ -216,6 +218,36 @@ fn browser_from_meta_network_is_suspected_muse() {
     assert_eq!(agent.id, "meta_muse_browser");
     assert_eq!(agent.assurance, Assurance::Suspected);
     assert_eq!(decision.action, GateAction::Challenge);
+}
+
+#[test]
+fn linux_chrome_from_cdn_egress_is_challenged_not_blocked() {
+    let gate = engine(enforce());
+    for asn in [13335, 54113] {
+        let decision = decide(
+            &gate,
+            &facts("203.0.113.60", human_headers(CHROME_157_LINUX), Some(asn)),
+        );
+        assert_eq!(decision.action, GateAction::Challenge, "AS{asn}");
+        assert!(signal_ids(&decision).contains(&"cdn_egress_browser"));
+        assert!(decision.agent.is_none());
+        assert_eq!(decision.score, 0.5);
+    }
+}
+
+#[test]
+fn cdn_egress_signal_needs_desktop_linux_chrome_and_an_asn() {
+    let gate = engine(enforce());
+    for (ua, asn) in [
+        (CHROME_157_ANDROID, Some(13335)),
+        (CHROME_157, Some(13335)),
+        (CHROME_157_LINUX, None),
+        (CHROME_157_LINUX, Some(64496)),
+    ] {
+        let decision = decide(&gate, &facts("203.0.113.61", human_headers(ua), asn));
+        assert_eq!(decision.action, GateAction::Allow, "{ua} {asn:?}");
+        assert!(!signal_ids(&decision).contains(&"cdn_egress_browser"));
+    }
 }
 
 #[test]

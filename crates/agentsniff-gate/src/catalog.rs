@@ -54,6 +54,7 @@ pub struct AgentCatalog {
     agents: Vec<AgentEntry>,
     automation_tokens: Vec<String>,
     hosting_asns: HashMap<u32, String>,
+    cdn_egress_asns: HashMap<u32, String>,
     operator_asns: HashMap<u32, usize>,
     signature_agents: HashMap<String, usize>,
     library_ja4: HashMap<String, String>,
@@ -142,6 +143,24 @@ impl AgentCatalog {
                     .and_then(serde_json::Value::as_str)
                     .unwrap_or("hosting provider");
                 catalog.hosting_asns.insert(asn, name.to_string());
+            }
+        }
+        for entry in agent_clients
+            .get("cdn_egress_asns")
+            .and_then(serde_json::Value::as_array)
+            .into_iter()
+            .flatten()
+        {
+            if let Some(asn) = entry
+                .get("asn")
+                .and_then(serde_json::Value::as_u64)
+                .and_then(|n| u32::try_from(n).ok())
+            {
+                let name = entry
+                    .get("name")
+                    .and_then(serde_json::Value::as_str)
+                    .unwrap_or("CDN");
+                catalog.cdn_egress_asns.insert(asn, name.to_string());
             }
         }
         for fingerprint in tls_fingerprints
@@ -265,6 +284,11 @@ impl AgentCatalog {
         self.hosting_asns.get(&asn).map(String::as_str)
     }
 
+    /// CDN egress network that cloud browser agents exit from (Cloudflare, Fastly).
+    pub fn cdn_egress_asn(&self, asn: u32) -> Option<&str> {
+        self.cdn_egress_asns.get(&asn).map(String::as_str)
+    }
+
     pub fn operator_asn_agent(&self, asn: u32) -> Option<&AgentEntry> {
         self.operator_asns
             .get(&asn)
@@ -284,6 +308,15 @@ pub fn is_browser_like(user_agent: &str) -> bool {
         && ["Chrome/", "Safari/", "Firefox/", "Edg/"]
             .iter()
             .any(|marker| user_agent.contains(marker))
+}
+
+/// True for user agents that claim Chrome on desktop Linux: the profile the
+/// ChatGPT cloud browser, Muse, and Grok Bot present. Android Chrome and
+/// ChromeOS carry their own platform tokens and are excluded.
+pub fn is_desktop_linux_chrome(user_agent: &str) -> bool {
+    chrome_major(user_agent).is_some()
+        && user_agent.contains("Linux")
+        && !user_agent.contains("Android")
 }
 
 /// Chrome major version from a user agent, if it claims Chrome.
@@ -353,5 +386,21 @@ mod tests {
         assert!(bad_date
             .add_agents(vec![entry("cdn_directory", "yesterday")])
             .is_err());
+    }
+
+    #[test]
+    fn desktop_linux_chrome() {
+        assert!(is_desktop_linux_chrome(
+            "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/157.0.0.0 Safari/537.36"
+        ));
+        assert!(!is_desktop_linux_chrome(
+            "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/157.0.0.0 Mobile Safari/537.36"
+        ));
+        assert!(!is_desktop_linux_chrome(
+            "Mozilla/5.0 (X11; Linux x86_64; rv:128.0) Gecko/20100101 Firefox/128.0"
+        ));
+        assert!(!is_desktop_linux_chrome(
+            "Mozilla/5.0 (X11; CrOS x86_64 14541.0.0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/157.0.0.0 Safari/537.36"
+        ));
     }
 }

@@ -667,6 +667,21 @@ impl GateEngine {
                     weight: if browser_like { 0.35 } else { 0.25 },
                     detail: format!("origin AS{asn} is a hosting or proxy network: {provider}"),
                 });
+            } else if let Some(provider) = self.catalog.cdn_egress_asn(asn) {
+                // Private Relay exits from the same CDNs but only for Safari,
+                // so the Linux Chrome test already excludes it. WARP users on
+                // Linux Chrome are the known false positive: challenge, never
+                // block, on this signal alone.
+                if catalog::is_desktop_linux_chrome(user_agent) {
+                    out.push(GateSignal {
+                        id: "cdn_egress_browser",
+                        weight: 0.5,
+                        detail: format!(
+                            "Chrome on Linux from AS{asn} ({provider}), a CDN egress that cloud \
+                             browser agents exit from"
+                        ),
+                    });
+                }
             }
         }
 

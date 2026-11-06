@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 2.6.0
+
 ### Gate
 
 - Catalog entries are split by surface: `meta_muse` is now `meta_muse_browser`

@@ -24,7 +24,7 @@ dependencies = [
 
 [[package]]
 name = "agentsniff"
-version = "2.5.0"
+version = "2.6.0"
 dependencies = [
  "agentpin",
  "agentsniff-common",
@@ -66,11 +66,11 @@ dependencies = [
 
 [[package]]
 name = "agentsniff-common"
-version = "2.5.0"
+version = "2.6.0"
 
 [[package]]
 name = "agentsniff-gate"
-version = "2.5.0"
+version = "2.6.0"
 dependencies = [
  "agentsniff-signatures",
  "anyhow",
@@ -87,7 +87,7 @@ dependencies = [
 
 [[package]]
 name = "agentsniff-signatures"
-version = "2.5.0"
+version = "2.6.0"
 dependencies = [
  "anyhow",
  "base64 0.23.1",

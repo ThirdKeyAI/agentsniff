@@ -14,7 +14,7 @@ categories = ["network-programming", "web-programming"]
 include = ["src/**/*", "README.md", "Cargo.toml"]
 
 [dependencies]
-agentsniff-signatures = { path = "../agentsniff-signatures", version = "2.5.0" }
+agentsniff-signatures = { path = "../agentsniff-signatures", version = "2.6.0" }
 anyhow = "1"
 base64 = "0.23"
 chrono = { version = "0.4", features = ["serde"] }

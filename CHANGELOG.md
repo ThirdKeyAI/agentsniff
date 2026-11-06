@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 2.6.0
+
 ### Gate
 
 - Catalog entries are split by surface: `meta_muse` is now `meta_muse_browser`
@@ -14,6 +16,7 @@
 - New `cdn_egress_browser` signal (0.50): Chrome on desktop Linux from
   Cloudflare or Fastly, the exit cloud browser agents use.
 - New `gate.tripwires`: paths that penalty-box any client requesting them.
+- `GateEngine::agent_policy` and catalog iteration (`agents`, `automation_tokens`, `hosting_asns`, `cdn_egress_asns`) for tooling that compiles the policy elsewhere.
 
 ## 2.5.0
 

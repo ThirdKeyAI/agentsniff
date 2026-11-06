@@ -185,6 +185,7 @@ Two optional signals depend on data only the edge has.
 
 - **ASN** (`gate.asn_header`, default `x-asn`): the client's origin autonomous system number, with or without an `AS` prefix. With nginx, use the geoip2 module and a GeoLite2-ASN database. On Cloudflare, a request-header transform rule can set it from `ip.src.asnum`.
 - **JA4** (`gate.ja4_header`, default `x-ja4`): the client's JA4 TLS fingerprint, from a JA4-capable TLS terminator or your CDN's bot-management fields.
+- **CloudFront**: an origin request policy that forwards `CloudFront-Viewer-ASN` and `CloudFront-Viewer-JA4-Fingerprint` gives the gate both; set `gate.asn_header: cloudfront-viewer-asn` and `gate.ja4_header: cloudfront-viewer-ja4-fingerprint`. The managed origin request policies do not forward the fingerprint headers, so create a custom one. Trust these only when the origin accepts traffic from CloudFront alone (an origin custom header secret checked at the origin, or a VPC origin); a client that can reach the origin directly can set them.
 
 Without them the gate still runs; it just has fewer signals.
 

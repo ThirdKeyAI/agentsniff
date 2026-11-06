@@ -309,6 +309,23 @@ impl AgentCatalog {
             .get(&ja4.trim().to_ascii_lowercase())
             .map(String::as_str)
     }
+
+    /// All entries in catalog order; custom agents follow the dataset's.
+    pub fn agents(&self) -> &[AgentEntry] {
+        &self.agents
+    }
+
+    pub fn automation_tokens(&self) -> &[String] {
+        &self.automation_tokens
+    }
+
+    pub fn hosting_asns(&self) -> &HashMap<u32, String> {
+        &self.hosting_asns
+    }
+
+    pub fn cdn_egress_asns(&self) -> &HashMap<u32, String> {
+        &self.cdn_egress_asns
+    }
 }
 
 /// True for user agents that claim to be a mainstream browser.
@@ -411,5 +428,19 @@ mod tests {
         assert!(!is_desktop_linux_chrome(
             "Mozilla/5.0 (X11; CrOS x86_64 14541.0.0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/157.0.0.0 Safari/537.36"
         ));
+    }
+
+    #[test]
+    fn catalog_exposes_entries_tokens_and_asn_tables() {
+        let s = agentsniff_signatures::SignatureData::load_embedded();
+        let c = AgentCatalog::from_values(&s.agent_clients, &s.tls_fingerprints).unwrap();
+        assert_eq!(c.agents().len(), c.len());
+        assert!(c.agents().iter().any(|a| a.id == "openai_crawlers"));
+        assert!(c.automation_tokens().iter().any(|t| t == "curl/"));
+        assert_eq!(
+            c.cdn_egress_asns().get(&13335).map(String::as_str),
+            Some("Cloudflare")
+        );
+        assert!(c.hosting_asns().contains_key(&16509));
     }
 }

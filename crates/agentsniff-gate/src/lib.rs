@@ -17,6 +17,7 @@ pub mod tripwire;
 pub mod webbotauth;
 
 pub use cidr::{canonical_ip, IpCidr};
+pub use webbotauth::origin_of;
 
 use std::collections::HashMap;
 use std::net::IpAddr;
@@ -367,6 +368,12 @@ impl GateEngine {
 
     pub fn trusted_key_count(&self) -> usize {
         self.verifier.trusted_key_count()
+    }
+
+    /// The action a catalog agent id resolves to: `agent_actions`, then the
+    /// kind's `kind_actions` (or `other`), then `default_agent_action`.
+    pub fn agent_policy(&self, id: &str) -> GateAction {
+        self.policy_for(self.catalog.get(id), id)
     }
 
     pub fn evaluate(&self, facts: &RequestFacts) -> GateDecision {
@@ -752,5 +759,43 @@ impl GateEngine {
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn agent_policy_follows_agent_then_kind_then_default() {
+        let mut config = GateConfig::default();
+        config
+            .kind_actions
+            .insert("crawler".into(), GateAction::Challenge);
+        config
+            .kind_actions
+            .insert("other".into(), GateAction::Challenge);
+        config
+            .agent_actions
+            .insert("openai_crawlers".into(), GateAction::Allow);
+        let s = agentsniff_signatures::SignatureData::load_embedded();
+        let engine = GateEngine::from_signatures(config, &s).unwrap();
+        assert_eq!(engine.agent_policy("openai_crawlers"), GateAction::Allow);
+        assert_eq!(
+            engine.agent_policy("anthropic_crawlers"),
+            GateAction::Challenge
+        );
+        assert_eq!(
+            engine.agent_policy("openai_chatgpt_user"),
+            GateAction::Block
+        );
+        assert_eq!(
+            engine.agent_policy(UNIDENTIFIED_SIGNED_AGENT),
+            GateAction::Challenge
+        );
+        assert_eq!(
+            origin_of("https://ChatGPT.com/x"),
+            Some("https://chatgpt.com".into())
+        );
     }
 }

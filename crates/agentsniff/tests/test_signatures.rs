@@ -80,7 +80,41 @@ fn test_tls_fingerprints_have_capture_metadata() {
 #[test]
 fn test_only_approved_mcp_registry_entries_become_domains() {
     let data = SignatureData::load_embedded();
-    assert!(data.verified_mcp_remote_domains().is_empty());
+    let doc = &data.mcp_remote_domains;
+    let allowed: Vec<&str> = doc["policy"]["allowed_publishers"]
+        .as_array()
+        .expect("allowed_publishers")
+        .iter()
+        .filter_map(|v| v.as_str())
+        .collect();
+    assert!(!allowed.is_empty());
+    let verified = data.verified_mcp_remote_domains();
+    assert!(!verified.is_empty());
+    for domain in &verified {
+        let entry = doc["entries"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|e| e["domain"] == domain.as_str())
+            .unwrap_or_else(|| panic!("{domain} has no entry"));
+        let server = entry["server"].as_str().unwrap();
+        assert!(
+            allowed
+                .iter()
+                .any(|p| server == *p || server.starts_with(&format!("{p}/"))),
+            "{domain}: publisher of {server} is not allowlisted"
+        );
+        assert!(
+            domain
+                .bytes()
+                .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'.' || b == b'-'),
+            "{domain}: not a plain hostname"
+        );
+        assert!(
+            domain.split('.').any(|label| label == "mcp"),
+            "{domain}: shared vendor host without an mcp label"
+        );
+    }
 }
 
 #[test]

@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+### Detection
+
+- The signed MCP remote-domain overlay now carries 29 first-party hosted MCP
+  server hostnames (Cloudflare, Atlassian, Stripe, Linear, Notion, PayPal,
+  Zapier, Exa, Apify, Neon, Figma, Canva, monday.com, Postman) imported from
+  the official MCP Registry under a publisher allowlist. A DNS lookup of one
+  from an internal host is an agent-infrastructure indicator. The importer
+  keeps only hosts with an `mcp` DNS label, so shared vendor hosts never
+  become indicators, and skips templated hostnames.
+- The reference MCP `fetch` server's `ModelContextProtocol/` user agent is an
+  automation-client token.
+
 ## 2.6.0
 
 ### Gate

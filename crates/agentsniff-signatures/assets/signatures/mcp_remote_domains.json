@@ -1,11 +1,289 @@
 {
-  "schema_version": 1,
-  "source": "https://registry.modelcontextprotocol.io/v0/servers",
-  "generated_at": null,
+  "entries": [
+    {
+      "domain": "ai-gateway.mcp.cloudflare.com",
+      "publisher_verified": true,
+      "server": "com.cloudflare.mcp/mcp",
+      "source_url": "https://ai-gateway.mcp.cloudflare.com/sse",
+      "status": "active",
+      "updated_at": "2025-09-16T22:06:29.987729Z",
+      "version": "1.0.0"
+    },
+    {
+      "domain": "auditlogs.mcp.cloudflare.com",
+      "publisher_verified": true,
+      "server": "com.cloudflare.mcp/mcp",
+      "source_url": "https://auditlogs.mcp.cloudflare.com/sse",
+      "status": "active",
+      "updated_at": "2025-09-16T22:06:29.987729Z",
+      "version": "1.0.0"
+    },
+    {
+      "domain": "autorag.mcp.cloudflare.com",
+      "publisher_verified": true,
+      "server": "com.cloudflare.mcp/mcp",
+      "source_url": "https://autorag.mcp.cloudflare.com/sse",
+      "status": "active",
+      "updated_at": "2025-09-16T22:06:29.987729Z",
+      "version": "1.0.0"
+    },
+    {
+      "domain": "bindings.mcp.cloudflare.com",
+      "publisher_verified": true,
+      "server": "com.cloudflare.mcp/mcp",
+      "source_url": "https://bindings.mcp.cloudflare.com/sse",
+      "status": "active",
+      "updated_at": "2025-09-16T22:06:29.987729Z",
+      "version": "1.0.0"
+    },
+    {
+      "domain": "browser.mcp.cloudflare.com",
+      "publisher_verified": true,
+      "server": "com.cloudflare.mcp/mcp",
+      "source_url": "https://browser.mcp.cloudflare.com/sse",
+      "status": "active",
+      "updated_at": "2025-09-16T22:06:29.987729Z",
+      "version": "1.0.0"
+    },
+    {
+      "domain": "builds.mcp.cloudflare.com",
+      "publisher_verified": true,
+      "server": "com.cloudflare.mcp/mcp",
+      "source_url": "https://builds.mcp.cloudflare.com/sse",
+      "status": "active",
+      "updated_at": "2025-09-16T22:06:29.987729Z",
+      "version": "1.0.0"
+    },
+    {
+      "domain": "casb.mcp.cloudflare.com",
+      "publisher_verified": true,
+      "server": "com.cloudflare.mcp/mcp",
+      "source_url": "https://casb.mcp.cloudflare.com/sse",
+      "status": "active",
+      "updated_at": "2025-09-16T22:06:29.987729Z",
+      "version": "1.0.0"
+    },
+    {
+      "domain": "containers.mcp.cloudflare.com",
+      "publisher_verified": true,
+      "server": "com.cloudflare.mcp/mcp",
+      "source_url": "https://containers.mcp.cloudflare.com/sse",
+      "status": "active",
+      "updated_at": "2025-09-16T22:06:29.987729Z",
+      "version": "1.0.0"
+    },
+    {
+      "domain": "dex.mcp.cloudflare.com",
+      "publisher_verified": true,
+      "server": "com.cloudflare.mcp/mcp",
+      "source_url": "https://dex.mcp.cloudflare.com/sse",
+      "status": "active",
+      "updated_at": "2025-09-16T22:06:29.987729Z",
+      "version": "1.0.0"
+    },
+    {
+      "domain": "dns-analytics.mcp.cloudflare.com",
+      "publisher_verified": true,
+      "server": "com.cloudflare.mcp/mcp",
+      "source_url": "https://dns-analytics.mcp.cloudflare.com/sse",
+      "status": "active",
+      "updated_at": "2025-09-16T22:06:29.987729Z",
+      "version": "1.0.0"
+    },
+    {
+      "domain": "docs.mcp.cloudflare.com",
+      "publisher_verified": true,
+      "server": "com.cloudflare.mcp/mcp",
+      "source_url": "https://docs.mcp.cloudflare.com/sse",
+      "status": "active",
+      "updated_at": "2025-09-16T22:06:29.987729Z",
+      "version": "1.0.0"
+    },
+    {
+      "domain": "graphql.mcp.cloudflare.com",
+      "publisher_verified": true,
+      "server": "com.cloudflare.mcp/mcp",
+      "source_url": "https://graphql.mcp.cloudflare.com/sse",
+      "status": "active",
+      "updated_at": "2025-09-16T22:06:29.987729Z",
+      "version": "1.0.0"
+    },
+    {
+      "domain": "logs.mcp.cloudflare.com",
+      "publisher_verified": true,
+      "server": "com.cloudflare.mcp/mcp",
+      "source_url": "https://logs.mcp.cloudflare.com/sse",
+      "status": "active",
+      "updated_at": "2025-09-16T22:06:29.987729Z",
+      "version": "1.0.0"
+    },
+    {
+      "domain": "mcp.apify.com",
+      "publisher_verified": true,
+      "server": "com.apify/apify-mcp-server",
+      "source_url": "https://mcp.apify.com/",
+      "status": "active",
+      "updated_at": "2026-03-12T09:02:31.321688Z",
+      "version": "0.9.9"
+    },
+    {
+      "domain": "mcp.atlassian.com",
+      "publisher_verified": true,
+      "server": "com.atlassian/atlassian-mcp-server",
+      "source_url": "https://mcp.atlassian.com/v1/mcp/authv2",
+      "status": "active",
+      "updated_at": "2026-09-09T17:53:32.01107Z",
+      "version": "2.0.0"
+    },
+    {
+      "domain": "mcp.canva.com",
+      "publisher_verified": true,
+      "server": "com.canva.mcp/mcp",
+      "source_url": "https://mcp.canva.com/mcp",
+      "status": "active",
+      "updated_at": "2026-09-25T02:10:54.057249Z",
+      "version": "1.0.0"
+    },
+    {
+      "domain": "mcp.eu.postman.com",
+      "publisher_verified": true,
+      "server": "com.postman/postman-mcp-server",
+      "source_url": "https://mcp.eu.postman.com/minimal",
+      "status": "active",
+      "updated_at": "2026-06-12T12:07:02.082083Z",
+      "version": "2.9.1"
+    },
+    {
+      "domain": "mcp.exa.ai",
+      "publisher_verified": true,
+      "server": "ai.exa/exa",
+      "source_url": "https://mcp.exa.ai/mcp",
+      "status": "active",
+      "updated_at": "2026-09-23T00:29:56.602357Z",
+      "version": "3.4.1"
+    },
+    {
+      "domain": "mcp.figma.com",
+      "publisher_verified": true,
+      "server": "com.figma.mcp/mcp",
+      "source_url": "https://mcp.figma.com/mcp",
+      "status": "active",
+      "updated_at": "2025-10-16T17:40:56.949472Z",
+      "version": "1.0.3"
+    },
+    {
+      "domain": "mcp.linear.app",
+      "publisher_verified": true,
+      "server": "app.linear/linear",
+      "source_url": "https://mcp.linear.app/mcp/readonly",
+      "status": "active",
+      "updated_at": "2026-10-22T16:47:17.1938Z",
+      "version": "1.0.2"
+    },
+    {
+      "domain": "mcp.monday.com",
+      "publisher_verified": true,
+      "server": "com.monday/monday.com",
+      "source_url": "https://mcp.monday.com/sse",
+      "status": "active",
+      "updated_at": "2025-10-23T14:57:35.277178Z",
+      "version": "0.0.1"
+    },
+    {
+      "domain": "mcp.neon.tech",
+      "publisher_verified": true,
+      "server": "com.neon/mcp",
+      "source_url": "https://mcp.neon.tech/mcp",
+      "status": "active",
+      "updated_at": "2026-11-05T19:37:45.419648Z",
+      "version": "2.0.0"
+    },
+    {
+      "domain": "mcp.notion.com",
+      "publisher_verified": true,
+      "server": "com.notion/mcp",
+      "source_url": "https://mcp.notion.com/sse",
+      "status": "active",
+      "updated_at": "2025-09-11T22:25:50.737872Z",
+      "version": "1.0.1"
+    },
+    {
+      "domain": "mcp.paypal.com",
+      "publisher_verified": true,
+      "server": "com.paypal.mcp/mcp",
+      "source_url": "https://mcp.paypal.com/sse",
+      "status": "active",
+      "updated_at": "2025-10-28T19:34:19.455268Z",
+      "version": "1.0.0"
+    },
+    {
+      "domain": "mcp.postman.com",
+      "publisher_verified": true,
+      "server": "com.postman/postman-mcp-server",
+      "source_url": "https://mcp.postman.com/minimal",
+      "status": "active",
+      "updated_at": "2026-06-12T12:07:02.082083Z",
+      "version": "2.9.1"
+    },
+    {
+      "domain": "mcp.stripe.com",
+      "publisher_verified": true,
+      "server": "com.stripe/mcp",
+      "source_url": "https://mcp.stripe.com",
+      "status": "active",
+      "updated_at": "2025-10-28T22:06:18.495159Z",
+      "version": "0.2.4"
+    },
+    {
+      "domain": "mcp.zapier.com",
+      "publisher_verified": true,
+      "server": "com.zapier/mcp",
+      "source_url": "https://mcp.zapier.com/api/v1/connect",
+      "status": "active",
+      "updated_at": "2026-07-29T18:56:40.112909Z",
+      "version": "1.0.1"
+    },
+    {
+      "domain": "observability.mcp.cloudflare.com",
+      "publisher_verified": true,
+      "server": "com.cloudflare.mcp/mcp",
+      "source_url": "https://observability.mcp.cloudflare.com/sse",
+      "status": "active",
+      "updated_at": "2025-09-16T22:06:29.987729Z",
+      "version": "1.0.0"
+    },
+    {
+      "domain": "radar.mcp.cloudflare.com",
+      "publisher_verified": true,
+      "server": "com.cloudflare.mcp/mcp",
+      "source_url": "https://radar.mcp.cloudflare.com/sse",
+      "status": "active",
+      "updated_at": "2025-09-16T22:06:29.987729Z",
+      "version": "1.0.0"
+    }
+  ],
+  "generated_at": "2026-11-07T05:41:16.683600Z",
   "policy": {
+    "allowed_publishers": [
+      "ai.exa",
+      "app.linear",
+      "com.apify",
+      "com.atlassian",
+      "com.canva.mcp",
+      "com.cloudflare.mcp",
+      "com.figma.mcp",
+      "com.monday",
+      "com.neon",
+      "com.notion",
+      "com.paypal.mcp",
+      "com.postman",
+      "com.stripe",
+      "com.zapier"
+    ],
     "maximum_entries": 500,
     "require_active": true,
     "require_publisher_allowlist": true
   },
-  "entries": []
+  "schema_version": 1,
+  "source": "https://registry.modelcontextprotocol.io/v0/servers"
 }

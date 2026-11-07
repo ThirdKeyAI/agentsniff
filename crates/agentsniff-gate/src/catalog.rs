@@ -437,6 +437,13 @@ mod tests {
         assert_eq!(c.agents().len(), c.len());
         assert!(c.agents().iter().any(|a| a.id == "openai_crawlers"));
         assert!(c.automation_tokens().iter().any(|t| t == "curl/"));
+        // The reference MCP fetch server's default user agents.
+        for ua in [
+            "ModelContextProtocol/1.0 (Autonomous; +https://github.com/modelcontextprotocol/servers)",
+            "ModelContextProtocol/1.0 (User-Specified; +https://github.com/modelcontextprotocol/servers)",
+        ] {
+            assert!(c.automation_token(ua).is_some(), "{ua}");
+        }
         assert_eq!(
             c.cdn_egress_asns().get(&13335).map(String::as_str),
             Some("Cloudflare")

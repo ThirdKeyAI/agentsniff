@@ -61,7 +61,7 @@ pub fn parse_nmap_xml(xml: &str) -> Vec<NmapHost> {
         match reader.read_event() {
             Ok(Event::Start(ref e)) | Ok(Event::Empty(ref e)) => {
                 let name = e.name();
-                let tag = std::str::from_utf8(name.as_ref()).unwrap_or("");
+                let tag: &str = name.as_ref();
 
                 match tag {
                     "host" => {
@@ -76,7 +76,7 @@ pub fn parse_nmap_xml(xml: &str) -> Vec<NmapHost> {
                         let mut addr_val: Option<String> = None;
                         let mut addr_type: Option<String> = None;
                         for attr in e.attributes().flatten() {
-                            let key = std::str::from_utf8(attr.key.as_ref()).unwrap_or("");
+                            let key: &str = attr.key.as_ref();
                             let val = attr
                                 .normalized_value(XmlVersion::Implicit1_0)
                                 .unwrap_or_default()
@@ -93,7 +93,7 @@ pub fn parse_nmap_xml(xml: &str) -> Vec<NmapHost> {
                     }
                     "port" if in_host => {
                         for attr in e.attributes().flatten() {
-                            let key = std::str::from_utf8(attr.key.as_ref()).unwrap_or("");
+                            let key: &str = attr.key.as_ref();
                             let val = attr
                                 .normalized_value(XmlVersion::Implicit1_0)
                                 .unwrap_or_default()
@@ -112,7 +112,7 @@ pub fn parse_nmap_xml(xml: &str) -> Vec<NmapHost> {
                     }
                     "state" if in_host => {
                         for attr in e.attributes().flatten() {
-                            let key = std::str::from_utf8(attr.key.as_ref()).unwrap_or("");
+                            let key: &str = attr.key.as_ref();
                             let val = attr
                                 .normalized_value(XmlVersion::Implicit1_0)
                                 .unwrap_or_default()
@@ -128,7 +128,7 @@ pub fn parse_nmap_xml(xml: &str) -> Vec<NmapHost> {
                             let mut product: Option<String> = None;
                             let mut version: Option<String> = None;
                             for attr in e.attributes().flatten() {
-                                let key = std::str::from_utf8(attr.key.as_ref()).unwrap_or("");
+                                let key: &str = attr.key.as_ref();
                                 let val = attr
                                     .normalized_value(XmlVersion::Implicit1_0)
                                     .unwrap_or_default()
@@ -158,7 +158,7 @@ pub fn parse_nmap_xml(xml: &str) -> Vec<NmapHost> {
             }
             Ok(Event::End(ref e)) => {
                 let name_end = e.name();
-                let tag = std::str::from_utf8(name_end.as_ref()).unwrap_or("");
+                let tag: &str = name_end.as_ref();
                 match tag {
                     "host" if in_host => {
                         if let Some(ip) = current_ip.take() {

@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+### Gate
+
+- `gate_load`, a cargo example that load- and soak-tests `/check` with a
+  realistic request mix from many client addresses and reports latency
+  percentiles, decision counts, and the gate's resident memory; and four
+  `cargo fuzz` targets for the structured-field parser, CIDR parsing, Web Bot
+  Auth verification, and the whole decision path. `scripts/gate_vegeta_targets.py`
+  writes the same request mix for vegeta as an independent cross-check. See the
+  gate docs.
+
 ## 2.6.1
 
 ### Detection

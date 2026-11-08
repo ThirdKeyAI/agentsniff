@@ -346,3 +346,44 @@ The only ground truth is a labeled capture: pay for each agent, and give every t
 Re-run weekly and after every vendor announcement, diff against the previous capture, and update `last_confirmed` for what still holds. Where a cloud build of Chromium differs from retail Chrome of the same version in its HTTP/2 or JA4H behavior, that difference is a candidate signal; the gate does not carry one until the lab has shown it.
 
 The gate is header-only by design: it sees one request at a time plus rate counters. A session layer (asset-to-document ratio, deep links without a referrer chain, uniform action timing) or a JavaScript probe (software GL renderer, timezone against IP geography, no pointer movement before clicks) is where commercial vendors catch Muse and Grok Bot in a real browser. Either is a separate decision, because it changes what the gate is.
+
+## Load, soak, and fuzz testing
+
+Two tools in the repository exercise the gate without production traffic.
+
+**Load and soak.** `gate_load` sends a mix of request profiles (complete browsers, browsers missing headers, `curl` and `python-requests`, a self-declared agent, and garbage Web Bot Auth signatures) from many distinct `X-Forwarded-For` addresses, and reports throughput, decision counts, latency percentiles, and the gate's resident memory. Start the gate in enforce mode with the decision log pointed somewhere cheap, then:
+
+```bash
+cargo run --release -p agentsniff --example gate_load -- \
+    --rps 2000 --duration 3600 --clients 300000 --pid "$(pgrep -f 'agentsniff gate')"
+```
+
+`--rps 0` runs unthrottled. Use more clients than `rate.max_tracked_clients` (default 100,000) so the run covers eviction, and watch the `rss` column stay flat once the table is full. The gate must trust the generator's address (loopback is trusted by default) or every request counts as one client.
+
+Baseline measured 2026-11-08 on a 24-core Linux host over loopback, generator and gate on the same machine, enforce mode, default configuration:
+
+| Run | Throughput | p50 | p99 | p99.9 | Errors | Gate RSS |
+|---|---:|---:|---:|---:|---:|---:|
+| Unthrottled, 64 connections, 300k clients, 60s | 207,000 rps | 0.26ms | 1.05ms | 1.55ms | 0 | 67MB |
+| 5,000 rps with the decision log on a file, 60s | 5,000 rps | 0.18ms | 0.42ms | 0.97ms | 0 | 58MB |
+| Soak, 2,000 rps, 300k clients, 60 min (7.2M requests) | 2,000 rps | 0.21ms | 0.81ms | 2.02ms | 0 | 48 to 58MB |
+
+Resident memory settled within ten minutes and moved between 48MB and 58MB for the rest of the hour as the rate table evicted and refilled. `/stats` counted every request and dropped no log lines. Latency is measured by the generator and includes its own HTTP client, so the gate alone is faster than these numbers.
+
+For an independent measurement, `scripts/gate_vegeta_targets.py` writes the same request mix as a [vegeta](https://github.com/tsenart/vegeta) targets file. Vegeta 12.13 on the same host, 64 connections:
+
+| Run | Throughput | p50 | p99 | max | Errors |
+|---|---:|---:|---:|---:|---:|
+| 5,000 rps, 60s | 5,000 rps | 79µs | 214µs | 212ms | 0 |
+| 20,000 rps, 60s | 20,000 rps | 88µs | 554µs | 8ms | 0 |
+| Unthrottled, 60s | 185,000 rps | 217µs | 1.31ms | 14ms | 0 |
+
+Vegeta counts 401 and 403 as failures in its success ratio; read the status-code line instead, which should match the mix (about 60% allow, 30% challenge, 10% block).
+
+**Fuzzing.** `crates/agentsniff-gate/fuzz` holds four `cargo fuzz` targets (nightly toolchain): `sfv` (RFC 8941 structured fields, with a serialize-and-reparse fixed-point check), `cidr`, `webbotauth` (arbitrary headers against a pinned key, asserting nothing ever verifies), and `engine` (the whole decision path, asserting the score stays in range).
+
+```bash
+cd crates/agentsniff-gate && cargo +nightly fuzz run engine -- -max_total_time=600 -jobs=2
+```
+
+Each target ran clean for ten minutes with two jobs on 2026-11-08 (14,000 to 280,000 executions per second depending on the target). A found input lands in `fuzz/artifacts/<target>/`; reproduce it with `cargo +nightly fuzz run <target> <that file>`.

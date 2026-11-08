@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 2.6.1
 
 ### Detection
 
@@ -13,6 +13,14 @@
   become indicators, and skips templated hostnames.
 - The reference MCP `fetch` server's `ModelContextProtocol/` user agent is an
   automation-client token.
+
+### Dependencies
+
+- aya 0.16 and aya-log 0.4 for the optional eBPF capture (the loader now
+  passes the interface name as a C string, which aya 0.16 requires),
+  quick-xml 0.42 for the Nmap XML importer, ed25519-dalek 3 for Web Bot Auth
+  verification, socket2 0.6, serde_json 1.0.154. The lock file now carries a
+  single aya and a single socket2.
 
 ## 2.6.0
 

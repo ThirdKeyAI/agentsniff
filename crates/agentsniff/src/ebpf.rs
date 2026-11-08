@@ -151,13 +151,14 @@ mod loader {
         attach_type: TcAttachType,
     ) -> EbpfProgramStatus {
         match (|| -> anyhow::Result<()> {
-            let _ = tc::qdisc_add_clsact(interface); // ignore if already exists
+            let interface = std::ffi::CString::new(interface)?;
+            let _ = tc::qdisc_add_clsact(&interface); // ignore if already exists
             let prog: &mut SchedClassifier = ebpf
                 .program_mut(prog_name)
                 .ok_or_else(|| anyhow::anyhow!("program '{}' not found", prog_name))?
                 .try_into()?;
             prog.load()?;
-            prog.attach(interface, attach_type)?;
+            prog.attach(&interface, attach_type)?;
             Ok(())
         })() {
             Ok(()) => EbpfProgramStatus::Attached,

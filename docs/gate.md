@@ -370,6 +370,16 @@ Baseline measured 2026-11-08 on a 24-core Linux host over loopback, generator an
 
 Resident memory settled within ten minutes and moved between 48MB and 58MB for the rest of the hour as the rate table evicted and refilled. `/stats` counted every request and dropped no log lines. Latency is measured by the generator and includes its own HTTP client, so the gate alone is faster than these numbers.
 
+For an independent measurement, `scripts/gate_vegeta_targets.py` writes the same request mix as a [vegeta](https://github.com/tsenart/vegeta) targets file. Vegeta 12.13 on the same host, 64 connections:
+
+| Run | Throughput | p50 | p99 | max | Errors |
+|---|---:|---:|---:|---:|---:|
+| 5,000 rps, 60s | 5,000 rps | 79µs | 214µs | 212ms | 0 |
+| 20,000 rps, 60s | 20,000 rps | 88µs | 554µs | 8ms | 0 |
+| Unthrottled, 60s | 185,000 rps | 217µs | 1.31ms | 14ms | 0 |
+
+Vegeta counts 401 and 403 as failures in its success ratio; read the status-code line instead, which should match the mix (about 60% allow, 30% challenge, 10% block).
+
 **Fuzzing.** `crates/agentsniff-gate/fuzz` holds four `cargo fuzz` targets (nightly toolchain): `sfv` (RFC 8941 structured fields, with a serialize-and-reparse fixed-point check), `cidr`, `webbotauth` (arbitrary headers against a pinned key, asserting nothing ever verifies), and `engine` (the whole decision path, asserting the score stays in range).
 
 ```bash

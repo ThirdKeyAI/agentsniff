@@ -4,18 +4,19 @@
 use std::io::{Read, Write};
 use std::net::TcpListener;
 use std::process::Command;
-use std::sync::{Arc, Mutex};
-use std::time::Instant;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Arc;
+use std::time::{Duration, Instant};
 
-/// A server that answers every request with 404 and records each connection time.
-fn not_an_agent_server() -> (u16, Arc<Mutex<Vec<Instant>>>) {
+/// A server that answers every request with 404 and counts connections.
+fn not_an_agent_server() -> (u16, Arc<AtomicUsize>) {
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     let port = listener.local_addr().unwrap().port();
-    let accepts = Arc::new(Mutex::new(Vec::new()));
-    let log = Arc::clone(&accepts);
+    let accepts = Arc::new(AtomicUsize::new(0));
+    let counter = Arc::clone(&accepts);
     std::thread::spawn(move || {
         for stream in listener.incoming().flatten() {
-            log.lock().unwrap().push(Instant::now());
+            counter.fetch_add(1, Ordering::SeqCst);
             let mut stream = stream;
             let mut buf = [0u8; 4096];
             let _ = stream.set_read_timeout(Some(std::time::Duration::from_millis(200)));
@@ -40,6 +41,7 @@ fn probe(args: &[&str]) -> std::process::Output {
 fn probe_non_agent_prints_empty_record_and_respects_rate() {
     let (port, accepts) = not_an_agent_server();
     let target = format!("127.0.0.1:{port}");
+    let started = Instant::now();
     let output = probe(&[
         &target,
         "--detectors",
@@ -47,6 +49,7 @@ fn probe_non_agent_prints_empty_record_and_respects_rate() {
         "--rate",
         "10",
     ]);
+    let elapsed = started.elapsed();
     assert!(
         output.status.success(),
         "stderr: {}",
@@ -60,14 +63,17 @@ fn probe_non_agent_prints_empty_record_and_respects_rate() {
     assert_eq!(record["signals"].as_array().unwrap().len(), 0);
     assert!(record["id"].as_str().unwrap().starts_with("asset-"));
 
-    // Every request opened a new connection (Connection: close), so connection
-    // gaps reflect the 10/s cap. Allow some scheduler slack.
-    let times = accepts.lock().unwrap().clone();
-    assert!(times.len() >= 3, "only {} connections", times.len());
-    for pair in times.windows(2) {
-        let gap = pair[1].duration_since(pair[0]).as_millis();
-        assert!(gap >= 80, "connections {gap}ms apart under a 10/s cap");
-    }
+    // Every request opened a new connection (Connection: close), so N
+    // connections under a 10/s cap keep the process alive for at least
+    // (N - 1) * 100ms. Wall time can only grow under load, unlike per-accept
+    // timestamps taken by the server thread. Allow some scheduler slack.
+    let n = accepts.load(Ordering::SeqCst);
+    assert!(n >= 3, "only {n} connections");
+    let floor = Duration::from_millis(80 * (n as u64 - 1));
+    assert!(
+        elapsed >= floor,
+        "{n} connections in {elapsed:?} under a 10/s cap"
+    );
 }
 
 #[test]

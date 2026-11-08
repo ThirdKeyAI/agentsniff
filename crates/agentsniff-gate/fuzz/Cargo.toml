@@ -1,0 +1,45 @@
+[package]
+name = "agentsniff-gate-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2021"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+arbitrary = { version = "1", features = ["derive"] }
+http = "1"
+agentsniff-gate = { path = ".." }
+agentsniff-signatures = { path = "../../agentsniff-signatures" }
+
+[[bin]]
+name = "sfv"
+path = "fuzz_targets/sfv.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "cidr"
+path = "fuzz_targets/cidr.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "webbotauth"
+path = "fuzz_targets/webbotauth.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "engine"
+path = "fuzz_targets/engine.rs"
+test = false
+doc = false
+bench = false
+
+[workspace]

@@ -386,4 +386,4 @@ Vegeta counts 401 and 403 as failures in its success ratio; read the status-code
 cd crates/agentsniff-gate && cargo +nightly fuzz run engine -- -max_total_time=600 -jobs=2
 ```
 
-Each target ran clean for ten minutes with two jobs on 2026-11-08 (14,000 to 280,000 executions per second depending on the target). A found input lands in `fuzz/artifacts/<target>/`; reproduce it with `cargo +nightly fuzz run <target> <that file>`.
+Each target ran clean for ten minutes with two jobs on 2026-11-08 (14,000 to 280,000 executions per second depending on the target). A found input lands in `fuzz/artifacts/<target>/`; reproduce it with `cargo +nightly fuzz run <target> <that file>`. The `Gate fuzz` workflow runs all four targets for five minutes each on pull requests that touch the gate or signatures crates and weekly on a schedule; `workflow_dispatch` accepts a longer per-target budget.

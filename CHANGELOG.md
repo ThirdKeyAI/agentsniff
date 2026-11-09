@@ -11,6 +11,8 @@
   Auth verification, and the whole decision path. `scripts/gate_vegeta_targets.py`
   writes the same request mix for vegeta as an independent cross-check. See the
   gate docs.
+- A `Gate fuzz` CI workflow runs the four fuzz targets on pull requests that
+  touch the gate or signatures crates, weekly, and on demand.
 
 ## 2.6.1
 

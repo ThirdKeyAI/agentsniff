@@ -14,6 +14,15 @@
 - A `Gate fuzz` CI workflow runs the four fuzz targets on pull requests that
   touch the gate or signatures crates, weekly, and on demand.
 
+### Dependencies
+
+- `cargo audit` carries a documented, temporary exception for RUSTSEC-2026-0459
+  (SQLite bug in the C library bundled by libsqlite3-sys 0.37, reachable only
+  through an attacker-controlled database and WAL file; AgentSniff opens only
+  its operator-configured database). rusqlite 0.41 fixes it but cannot coexist
+  with sqlx 0.9.0 in one lockfile; the exception goes away with the next sqlx
+  release.
+
 ## 2.6.1
 
 ### Detection

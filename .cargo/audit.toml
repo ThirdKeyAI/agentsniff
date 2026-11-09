@@ -1,0 +1,11 @@
+[advisories]
+# RUSTSEC-2026-0459 (CVE-2026-119375): SQLite bug in the C library bundled by
+# libsqlite3-sys 0.37, reachable only by opening an attacker-controlled database
+# together with a crafted WAL file. AgentSniff opens only the operator-configured
+# `sqlite_path` database and its own backup snapshots, never a file supplied over
+# the network. The fix is libsqlite3-sys 0.39 via rusqlite 0.41, but sqlx-sqlite
+# 0.9.0 caps libsqlite3-sys below 0.38 and the `links = "sqlite3"` rule forbids
+# two copies even though the sqlx sqlite backend is never enabled here. sqlx main
+# already allows < 0.40; remove this entry and bump rusqlite to 0.41 as soon as
+# sqlx 0.9.1 (or later) is on crates.io. Added 2026-11-09.
+ignore = ["RUSTSEC-2026-0459"]

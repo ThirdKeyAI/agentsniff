@@ -15,7 +15,7 @@ RUN go install github.com/zmap/zgrab2/cmd/zgrab2@v1.0.0 \
     && cp /go/pkg/mod/github.com/zmap/zgrab2@v1.0.0/LICENSE /out/third-party/zgrab2/LICENSE \
     && cp /go/bin/zgrab2 /out/zgrab2
 
-FROM debian:bookworm-slim@sha256:99c0b25c46d0214d5a2091092e7908907dcaecd6a962cde0ac700acee222b6f3 AS pdtools
+FROM debian:bookworm-slim@sha256:734a72b3d6142a71993b4bc580ca01d8ca687f77a2c422d96a961d3376b179bc AS pdtools
 ARG TARGETARCH=amd64
 ARG NAABU_VERSION=2.6.1
 ARG NAABU_SHA256_AMD64=018c4c9884dea971eda860435ede3021d1150732f34cfd245498c6726d8cab90
@@ -67,7 +67,7 @@ RUN set -eu; mkdir -p /src; \
       verify-go-notices "/bin-check/$3" "/src/$3.csv"; \
     done
 
-FROM debian:bookworm-slim@sha256:99c0b25c46d0214d5a2091092e7908907dcaecd6a962cde0ac700acee222b6f3
+FROM debian:bookworm-slim@sha256:734a72b3d6142a71993b4bc580ca01d8ca687f77a2c422d96a961d3376b179bc
 
 LABEL maintainer="ThirdKey AI"
 LABEL description="AgentSniff - AI Agent Network Scanner"
